@@ -17,10 +17,16 @@ VALUES
   ('11111111-1111-1111-1111-111111111111', 'Tech Coffee Shop', 'company', 'Coffee shop chain with multiple branches');
 
 -- Step 2: Create test accounts
-INSERT INTO accounts (account_id, entity_id, account_name, account_type, bank_name, account_number, currency, current_balance)
+INSERT INTO accounts (account_id, entity_id, account_name, account_type, bank_name, account_number, currency)
 VALUES
-  (1, '11111111-1111-1111-1111-111111111111', 'Techcombank Business Account', 'bank', 'Techcombank', '19036521488888', 'VND', 500000000.00),
-  (2, '11111111-1111-1111-1111-111111111111', 'Cash Register - District 1 Store', 'cash', NULL, NULL, 'VND', 50000000.00);
+  (1, '11111111-1111-1111-1111-111111111111', 'Techcombank Business Account', 'bank', 'Techcombank', '19036521488888', 'VND'),
+  (2, '11111111-1111-1111-1111-111111111111', 'Cash Register - District 1 Store', 'cash', NULL, NULL, 'VND');
+
+-- Step 3: Create initial balance records
+INSERT INTO account_balance (account_id, balance_date, balance_amount, balance_type, notes, created_by_user_id)
+VALUES
+  (1, '2024-11-01 00:00:00+07', 500000000.00, 'opening', 'Opening balance for Nov 2024', 1001),
+  (2, '2024-11-01 00:00:00+07', 150000000.00, 'opening', 'Opening balance for Nov 2024', 1001);
 
 -- ============================================================================
 -- EXAMPLE 1: USER MANUAL TRANSACTION
@@ -401,6 +407,83 @@ SELECT
 FROM original_transaction
 WHERE updated_at IS NOT NULL
 ORDER BY updated_at DESC;
+
+-- ============================================================================
+-- ACCOUNT BALANCE QUERIES
+-- ============================================================================
+
+-- Query 8: Get current balance for an account
+SELECT
+  ab.account_id,
+  a.account_name,
+  ab.balance_amount,
+  ab.balance_date,
+  ab.balance_type
+FROM account_balance ab
+JOIN accounts a ON ab.account_id = a.account_id
+WHERE ab.account_id = 1
+ORDER BY ab.balance_date DESC
+LIMIT 1;
+
+-- Query 9: Get balance history for an account
+SELECT
+  balance_date,
+  balance_amount,
+  balance_type,
+  notes,
+  created_at
+FROM account_balance
+WHERE account_id = 1
+ORDER BY balance_date DESC;
+
+-- Query 10: Get all accounts with their latest balances
+SELECT
+  a.account_id,
+  a.account_name,
+  a.account_type,
+  a.bank_name,
+  ab.balance_amount as current_balance,
+  ab.balance_date as last_updated,
+  ab.balance_type
+FROM accounts a
+LEFT JOIN LATERAL (
+  SELECT balance_amount, balance_date, balance_type
+  FROM account_balance
+  WHERE account_id = a.account_id
+  ORDER BY balance_date DESC
+  LIMIT 1
+) ab ON true
+WHERE a.is_active = true
+ORDER BY a.account_name;
+
+-- Query 11: Record end-of-day closing balance
+INSERT INTO account_balance (account_id, balance_date, balance_amount, balance_type, notes, created_by_user_id)
+VALUES (1, '2024-11-30 23:59:59+07', 506950000.00, 'closing', 'End of month closing balance', 1001);
+
+-- Query 12: Get balance reconciliation report (compare opening vs closing)
+SELECT
+  a.account_name,
+  opening.balance_amount as opening_balance,
+  closing.balance_amount as closing_balance,
+  closing.balance_amount - opening.balance_amount as net_change,
+  opening.balance_date as period_start,
+  closing.balance_date as period_end
+FROM accounts a
+LEFT JOIN LATERAL (
+  SELECT balance_amount, balance_date
+  FROM account_balance
+  WHERE account_id = a.account_id AND balance_type = 'opening'
+  ORDER BY balance_date DESC
+  LIMIT 1
+) opening ON true
+LEFT JOIN LATERAL (
+  SELECT balance_amount, balance_date
+  FROM account_balance
+  WHERE account_id = a.account_id AND balance_type = 'closing'
+  ORDER BY balance_date DESC
+  LIMIT 1
+) closing ON true
+WHERE a.is_active = true;
 
 -- ============================================================================
 -- WORKFLOW EXAMPLE: Manual Transaction → Split in Main_transaction

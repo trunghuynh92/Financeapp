@@ -17,6 +17,9 @@ DROP TABLE IF EXISTS original_transaction CASCADE;
 -- Drop Import_Batch table
 DROP TABLE IF EXISTS import_batch CASCADE;
 
+-- Drop Account_Balance table
+DROP TABLE IF EXISTS account_balance CASCADE;
+
 -- Drop Accounts table
 DROP TABLE IF EXISTS accounts CASCADE;
 

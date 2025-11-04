@@ -42,6 +42,7 @@ CREATE TRIGGER update_entities_updated_at
 -- ----------------------------------------------------------------------------
 -- Account Table
 -- Purpose: Store bank accounts or cash accounts for tracking transactions
+-- Note: Balance information is stored separately in account_balance table
 -- ----------------------------------------------------------------------------
 CREATE TABLE accounts (
   account_id SERIAL PRIMARY KEY,
@@ -51,7 +52,6 @@ CREATE TABLE accounts (
   bank_name VARCHAR(255),
   account_number VARCHAR(100),
   currency VARCHAR(3) DEFAULT 'VND',
-  current_balance DECIMAL(15,2) DEFAULT 0.00,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -71,6 +71,43 @@ CREATE POLICY "Enable all access for accounts" ON accounts
 
 CREATE TRIGGER update_accounts_updated_at
   BEFORE UPDATE ON accounts
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- ----------------------------------------------------------------------------
+-- Account_Balance Table
+-- Purpose: Track account balances over time for historical reconciliation
+-- Each account can have multiple balance snapshots for audit trail
+-- ----------------------------------------------------------------------------
+CREATE TABLE account_balance (
+  balance_id SERIAL PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+  balance_date TIMESTAMPTZ NOT NULL,
+  balance_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  balance_type VARCHAR(50) NOT NULL CHECK (balance_type IN ('opening', 'closing', 'current', 'reconciled')),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by_user_id INTEGER,
+
+  -- Ensure one balance record per account per date per type
+  CONSTRAINT unique_account_balance_date_type UNIQUE (account_id, balance_date, balance_type)
+);
+
+CREATE INDEX idx_account_balance_account ON account_balance(account_id);
+CREATE INDEX idx_account_balance_date ON account_balance(balance_date DESC);
+CREATE INDEX idx_account_balance_account_date ON account_balance(account_id, balance_date DESC);
+CREATE INDEX idx_account_balance_type ON account_balance(balance_type);
+
+ALTER TABLE account_balance ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable all access for account_balance" ON account_balance
+  FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+CREATE TRIGGER update_account_balance_updated_at
+  BEFORE UPDATE ON account_balance
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
