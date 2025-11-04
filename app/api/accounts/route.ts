@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import type { CreateAccountInput } from '@/types/account'
+import { createOrUpdateCheckpoint } from '@/lib/checkpoint-service'
 
 // GET /api/accounts - List all accounts with filters
 export async function GET(request: NextRequest) {
@@ -129,15 +130,35 @@ export async function POST(request: NextRequest) {
 
     // Set initial balance if provided
     if (body.initial_balance !== undefined && body.initial_balance !== 0) {
-      const { error: balanceError } = await supabase
-        .from('account_balances')
-        .update({ current_balance: body.initial_balance })
-        .eq('account_id', newAccount.account_id)
+      // If opening_balance_date is provided, create a checkpoint
+      // This follows the "No money without origin" principle
+      if (body.opening_balance_date) {
+        try {
+          await createOrUpdateCheckpoint({
+            account_id: newAccount.account_id,
+            checkpoint_date: new Date(body.opening_balance_date),
+            declared_balance: body.initial_balance,
+            notes: body.opening_balance_notes || 'Opening balance',
+          })
+          console.log('Checkpoint created for opening balance')
+        } catch (checkpointError) {
+          console.error('Error creating opening balance checkpoint:', checkpointError)
+          // Account was created but checkpoint creation failed
+          // We'll still return success but log the error
+        }
+      } else {
+        // Legacy behavior: Just update account_balances directly
+        // Note: This doesn't follow "No money without origin" principle
+        const { error: balanceError } = await supabase
+          .from('account_balances')
+          .update({ current_balance: body.initial_balance })
+          .eq('account_id', newAccount.account_id)
 
-      if (balanceError) {
-        console.error('Error setting initial balance:', balanceError)
-        // Account was created but balance update failed
-        // We'll still return success but log the error
+        if (balanceError) {
+          console.error('Error setting initial balance:', balanceError)
+          // Account was created but balance update failed
+          // We'll still return success but log the error
+        }
       }
     }
 
