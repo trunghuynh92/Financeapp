@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { DatePicker } from "@/components/ui/date-picker"
 import { supabase, type Entity } from "@/lib/supabase"
 import type { Account, AccountType, Currency, CreateAccountInput, UpdateAccountInput } from "@/types/account"
 import { ACCOUNT_TYPE_CONFIG, CURRENCIES } from "@/types/account"
@@ -461,19 +462,12 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="opening_balance_date">Opening Balance Date</Label>
-                <Input
-                  id="opening_balance_date"
-                  type="date"
-                  value={openingBalanceDate}
-                  onChange={(e) => setOpeningBalanceDate(e.target.value)}
-                  max={new Date().toISOString().split('T')[0]}
-                />
-                <p className="text-xs text-muted-foreground">
-                  The date when this opening balance is effective
-                </p>
-              </div>
+              <DatePicker
+                label="Opening Balance Date"
+                value={openingBalanceDate}
+                onChange={setOpeningBalanceDate}
+                max={new Date().toISOString().split('T')[0]}
+              />
             </div>
           )}
         </div>

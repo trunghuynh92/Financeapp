@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { DatePicker } from "@/components/ui/date-picker"
 import type { Account } from "@/types/account"
 import { formatCurrency } from "@/lib/account-utils"
 
@@ -122,20 +123,12 @@ export function BalanceEditDialog({
             </p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="balance_date">Balance Update Date</Label>
-            <Input
-              id="balance_date"
-              type="date"
-              value={balanceDate}
-              onChange={(e) => setBalanceDate(e.target.value)}
-              max={new Date().toISOString().split('T')[0]}
-            />
-            <p className="text-xs text-muted-foreground">
-              The date when this balance is effective
-            </p>
-          </div>
-
+          <DatePicker
+            label="Balance Update Date"
+            value={balanceDate}
+            onChange={setBalanceDate}
+            max={new Date().toISOString().split('T')[0]}
+          />
           {currentBalance !== parseFloat(balance || "0") && (
             <div className="rounded-lg bg-muted p-3 space-y-1">
               <p className="text-sm font-medium">Balance Change</p>
