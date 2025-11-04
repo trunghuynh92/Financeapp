@@ -26,6 +26,7 @@ import {
 } from "@/lib/account-utils"
 import { AccountFormDialog } from "@/components/account-form-dialog"
 import { AccountDeleteDialog } from "@/components/account-delete-dialog"
+import { BalanceEditDialog } from "@/components/balance-edit-dialog"
 
 const AccountTypeIcon = ({ type, className }: { type: AccountType; className?: string }) => {
   const icons = {
@@ -46,6 +47,7 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
   const [loading, setLoading] = useState(true)
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isBalanceEditDialogOpen, setIsBalanceEditDialogOpen] = useState(false)
 
   useEffect(() => {
     fetchAccount()
@@ -192,12 +194,24 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
       {/* Balance Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Current Balance</CardTitle>
-          <CardDescription>
-            {balanceData?.last_updated
-              ? `Last updated: ${formatDateTime(balanceData.last_updated)}`
-              : "No recent updates"}
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Current Balance</CardTitle>
+              <CardDescription>
+                {balanceData?.last_updated
+                  ? `Last updated: ${formatDateTime(balanceData.last_updated)}`
+                  : "No recent updates"}
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsBalanceEditDialogOpen(true)}
+            >
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit Balance
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="text-4xl font-bold mb-6">
@@ -281,6 +295,14 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
         onOpenChange={setIsDeleteDialogOpen}
         account={account as Account}
         onSuccess={handleDeleteSuccess}
+      />
+
+      <BalanceEditDialog
+        open={isBalanceEditDialogOpen}
+        onOpenChange={setIsBalanceEditDialogOpen}
+        account={account as Account}
+        currentBalance={balance}
+        onSuccess={fetchAccount}
       />
     </div>
   )
