@@ -48,6 +48,8 @@ export interface CreateAccountInput {
   credit_limit?: number
   loan_reference?: string
   initial_balance?: number
+  opening_balance_date?: string // ISO 8601 date for checkpoint creation
+  opening_balance_notes?: string // Notes for the checkpoint
 }
 
 export interface UpdateAccountInput {
