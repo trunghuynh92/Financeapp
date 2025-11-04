@@ -2,12 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Building2, FileText, Settings, DollarSign } from "lucide-react"
+import { Home, Building2, FileText, Settings, DollarSign, Wallet } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Entities", href: "/dashboard/entities", icon: Building2 },
+  { name: "Accounts", href: "/dashboard/accounts", icon: Wallet },
   { name: "Transactions", href: "/dashboard/transactions", icon: DollarSign },
   { name: "Reports", href: "/dashboard/reports", icon: FileText },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
@@ -24,7 +25,7 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 p-4">
         {navigation.map((item) => {
           const Icon = item.icon
-          const isActive = pathname === item.href
+          const isActive = pathname === item.href || pathname?.startsWith(item.href + '/')
           return (
             <Link
               key={item.name}
