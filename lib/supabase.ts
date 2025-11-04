@@ -13,3 +13,13 @@ export type Entity = {
   created_at: string
   updated_at: string
 }
+
+// Re-export account types for convenience
+export type {
+  Account,
+  AccountBalance,
+  AccountWithBalance,
+  AccountWithEntity,
+  AccountType,
+  Currency
+} from '@/types/account'
