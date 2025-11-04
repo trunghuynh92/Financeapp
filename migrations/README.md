@@ -61,7 +61,28 @@ Run these queries to verify everything was migrated correctly.
 - ✅ `check_debit_or_credit` constraint exists
 - ✅ Triggers on all tables
 
-### Step 3: Optional - Migrate to Historical Balance Tracking (OPTIONAL)
+### Step 3: Fix Account Balances Trigger Error (REQUIRED IF YOU GET TRIGGER ERRORS)
+
+**File:** `003_fix_account_balances_trigger.sql`
+
+⚠️ **Run this if you're getting this error:**
+```
+Error updating balance: { code: '42703', message: 'record "new" has no field "updated_at"' }
+```
+
+This migration:
+- Adds `updated_at` column to `account_balances` table (if missing)
+- Fixes the trigger to properly update timestamps
+- Resolves balance update errors
+
+**How to run:**
+1. Open Supabase SQL Editor
+2. Copy and paste the contents of `003_fix_account_balances_trigger.sql`
+3. Click **Run**
+
+**Duration:** ~2 seconds
+
+### Step 4: Optional - Migrate to Historical Balance Tracking (OPTIONAL)
 
 **File:** `002_migrate_account_balances_optional.sql`
 
