@@ -1,0 +1,157 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
+
+// GET /api/transactions - List all transactions with filters
+export async function GET(request: NextRequest) {
+  try {
+    const searchParams = request.nextUrl.searchParams
+    const accountId = searchParams.get('account_id')
+    const transactionSource = searchParams.get('transaction_source')
+    const startDate = searchParams.get('start_date')
+    const endDate = searchParams.get('end_date')
+    const search = searchParams.get('search')
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '50')
+
+    // Start building query
+    let query = supabase
+      .from('original_transaction')
+      .select(`
+        *,
+        account:accounts(account_id, account_name, account_type, bank_name),
+        import_batch:import_batch(import_batch_id, import_file_name, import_date)
+      `)
+
+    // Apply filters
+    if (accountId) {
+      query = query.eq('account_id', accountId)
+    }
+
+    if (transactionSource) {
+      query = query.eq('transaction_source', transactionSource)
+    }
+
+    if (startDate) {
+      query = query.gte('transaction_date', startDate)
+    }
+
+    if (endDate) {
+      query = query.lte('transaction_date', endDate)
+    }
+
+    if (search) {
+      query = query.or(`description.ilike.%${search}%,bank_reference.ilike.%${search}%`)
+    }
+
+    // Apply pagination
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    // Execute query with pagination
+    const { data, error, count } = await query
+      .order('transaction_date', { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      console.error('Error fetching transactions:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // Get total count
+    const { count: totalCount } = await supabase
+      .from('original_transaction')
+      .select('*', { count: 'exact', head: true })
+
+    return NextResponse.json({
+      data: data || [],
+      pagination: {
+        page,
+        limit,
+        total: totalCount || 0,
+        totalPages: Math.ceil((totalCount || 0) / limit),
+      },
+    })
+  } catch (error) {
+    console.error('Unexpected error:', error)
+    return NextResponse.json(
+      { error: 'An unexpected error occurred' },
+      { status: 500 }
+    )
+  }
+}
+
+// POST /api/transactions - Create new transaction
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+
+    // Validate required fields
+    if (!body.account_id || !body.transaction_date) {
+      return NextResponse.json(
+        { error: 'Missing required fields: account_id, transaction_date' },
+        { status: 400 }
+      )
+    }
+
+    // Validate that either debit or credit is provided, not both
+    const hasDebit = body.debit_amount !== null && body.debit_amount !== undefined
+    const hasCredit = body.credit_amount !== null && body.credit_amount !== undefined
+
+    if (hasDebit && hasCredit) {
+      return NextResponse.json(
+        { error: 'Cannot have both debit_amount and credit_amount. Provide only one.' },
+        { status: 400 }
+      )
+    }
+
+    if (!hasDebit && !hasCredit) {
+      return NextResponse.json(
+        { error: 'Must provide either debit_amount or credit_amount' },
+        { status: 400 }
+      )
+    }
+
+    // Generate a unique transaction ID
+    const timestamp = Date.now()
+    const random = Math.random().toString(36).substring(2, 9)
+    const raw_transaction_id = `TXN-${timestamp}-${random}`
+
+    // Create transaction
+    const { data: newTransaction, error: transactionError } = await supabase
+      .from('original_transaction')
+      .insert([
+        {
+          raw_transaction_id,
+          account_id: body.account_id,
+          transaction_date: body.transaction_date,
+          description: body.description || null,
+          debit_amount: body.debit_amount || null,
+          credit_amount: body.credit_amount || null,
+          balance: body.balance || null,
+          bank_reference: body.bank_reference || null,
+          transaction_source: body.transaction_source || 'user_manual',
+          import_batch_id: body.import_batch_id || null,
+          import_file_name: body.import_file_name || null,
+          created_by_user_id: body.created_by_user_id || null,
+        },
+      ])
+      .select(`
+        *,
+        account:accounts(account_id, account_name, account_type, bank_name)
+      `)
+      .single()
+
+    if (transactionError) {
+      console.error('Error creating transaction:', transactionError)
+      return NextResponse.json({ error: transactionError.message }, { status: 500 })
+    }
+
+    return NextResponse.json(newTransaction, { status: 201 })
+  } catch (error) {
+    console.error('Unexpected error:', error)
+    return NextResponse.json(
+      { error: 'An unexpected error occurred' },
+      { status: 500 }
+    )
+  }
+}
