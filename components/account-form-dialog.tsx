@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText, CalendarIcon } from "lucide-react"
-import { format } from "date-fns"
+import { Loader2, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,13 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Calendar } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { cn } from "@/lib/utils"
 import { supabase, type Entity } from "@/lib/supabase"
 import type { Account, AccountType, Currency, CreateAccountInput, UpdateAccountInput } from "@/types/account"
 import { ACCOUNT_TYPE_CONFIG, CURRENCIES } from "@/types/account"
@@ -60,7 +52,7 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
     initial_balance: "",
   })
 
-  const [openingBalanceDate, setOpeningBalanceDate] = useState<Date>(new Date())
+  const [openingBalanceDate, setOpeningBalanceDate] = useState("")
 
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -93,7 +85,7 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
           loan_reference: "",
           initial_balance: "",
         })
-        setOpeningBalanceDate(new Date())
+        setOpeningBalanceDate(new Date().toISOString().split('T')[0])
       }
       setStep(1)
       setErrors({})
@@ -470,29 +462,14 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
               </div>
 
               <div className="space-y-2">
-                <Label>Opening Balance Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !openingBalanceDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {openingBalanceDate ? format(openingBalanceDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={openingBalanceDate}
-                      onSelect={(date) => setOpeningBalanceDate(date || new Date())}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                <Label htmlFor="opening_balance_date">Opening Balance Date</Label>
+                <Input
+                  id="opening_balance_date"
+                  type="date"
+                  value={openingBalanceDate}
+                  onChange={(e) => setOpeningBalanceDate(e.target.value)}
+                  max={new Date().toISOString().split('T')[0]}
+                />
                 <p className="text-xs text-muted-foreground">
                   The date when this opening balance is effective
                 </p>

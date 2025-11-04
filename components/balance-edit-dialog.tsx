@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, CalendarIcon } from "lucide-react"
-import { format } from "date-fns"
+import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -14,14 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Calendar } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { cn } from "@/lib/utils"
-import type { Account, Currency } from "@/types/account"
+import type { Account } from "@/types/account"
 import { formatCurrency } from "@/lib/account-utils"
 
 interface BalanceEditDialogProps {
@@ -41,13 +33,15 @@ export function BalanceEditDialog({
 }: BalanceEditDialogProps) {
   const [loading, setLoading] = useState(false)
   const [balance, setBalance] = useState("")
-  const [balanceDate, setBalanceDate] = useState<Date>(new Date())
+  const [balanceDate, setBalanceDate] = useState("")
   const [error, setError] = useState("")
 
   useEffect(() => {
     if (open && account) {
       setBalance(currentBalance.toString())
-      setBalanceDate(new Date())
+      // Set to today's date in YYYY-MM-DD format
+      const today = new Date()
+      setBalanceDate(today.toISOString().split('T')[0])
       setError("")
     }
   }, [open, account, currentBalance])
@@ -70,7 +64,7 @@ export function BalanceEditDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           balance: newBalance,
-          updated_date: balanceDate.toISOString()
+          updated_date: new Date(balanceDate).toISOString()
         }),
       })
 
@@ -129,29 +123,14 @@ export function BalanceEditDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>Balance Update Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !balanceDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {balanceDate ? format(balanceDate, "PPP") : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={balanceDate}
-                  onSelect={(date) => setBalanceDate(date || new Date())}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <Label htmlFor="balance_date">Balance Update Date</Label>
+            <Input
+              id="balance_date"
+              type="date"
+              value={balanceDate}
+              onChange={(e) => setBalanceDate(e.target.value)}
+              max={new Date().toISOString().split('T')[0]}
+            />
             <p className="text-xs text-muted-foreground">
               The date when this balance is effective
             </p>
