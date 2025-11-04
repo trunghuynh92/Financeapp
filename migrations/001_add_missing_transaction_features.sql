@@ -183,7 +183,10 @@ ON original_transaction(import_batch_id);
 CREATE INDEX IF NOT EXISTS idx_original_transaction_date
 ON original_transaction(transaction_date DESC);
 
-RAISE NOTICE 'Created all indexes on original_transaction';
+DO $$
+BEGIN
+    RAISE NOTICE 'Created all indexes on original_transaction';
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- STEP 5: Create or replace update_updated_at_column() trigger function
@@ -228,7 +231,10 @@ CREATE TRIGGER update_account_balances_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
-RAISE NOTICE 'Created all updated_at triggers';
+DO $$
+BEGIN
+    RAISE NOTICE 'Created all updated_at triggers';
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- STEP 7: Create indexes on other tables for performance
@@ -248,7 +254,10 @@ CREATE INDEX IF NOT EXISTS idx_import_batch_status ON import_batch(import_status
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
 CREATE INDEX IF NOT EXISTS idx_entities_created_at ON entities(created_at DESC);
 
-RAISE NOTICE 'Created all supporting indexes';
+DO $$
+BEGIN
+    RAISE NOTICE 'Created all supporting indexes';
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- MIGRATION COMPLETE
