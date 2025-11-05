@@ -16,6 +16,7 @@ export interface BalanceCheckpoint {
   adjustment_amount: number
   is_reconciled: boolean
   notes: string | null
+  import_batch_id: number | null // Links to import_batch, NULL for manual checkpoints
   created_by_user_id: number | null
   created_at: string
   updated_at: string
@@ -154,6 +155,7 @@ export interface CreateOrUpdateCheckpointParams {
   checkpoint_date: Date
   declared_balance: number
   notes?: string | null
+  import_batch_id?: number | null // For import-created checkpoints
   user_id?: number | null
 }
 

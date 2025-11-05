@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import type { CreateAccountInput } from '@/types/account'
 import { createOrUpdateCheckpoint } from '@/lib/checkpoint-service'
 
-// GET /api/accounts - List all accounts with filters
+// GET /api/accounts - List all accounts with filters and calculated balances
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -14,12 +14,11 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
 
-    // Start building query
+    // Start building query - fetch accounts with entities (NO balance join)
     let query = supabase
       .from('accounts')
       .select(`
         *,
-        balance:account_balances(current_balance, last_updated),
         entity:entities(id, name, type)
       `)
 
@@ -45,7 +44,7 @@ export async function GET(request: NextRequest) {
     const to = from + limit - 1
 
     // Execute query with pagination
-    const { data, error, count } = await query
+    const { data: accounts, error, count } = await query
       .order('created_at', { ascending: false })
       .range(from, to)
 
@@ -54,13 +53,59 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // Calculate balance for each account from ALL transactions
+    const accountsWithBalances = await Promise.all(
+      (accounts || []).map(async (account) => {
+        // Fetch all transactions for this account
+        const { data: transactions, error: txError } = await supabase
+          .from('original_transaction')
+          .select('credit_amount, debit_amount')
+          .eq('account_id', account.account_id)
+
+        if (txError) {
+          console.error(`Error fetching transactions for account ${account.account_id}:`, txError)
+          // Return account with 0 balance if transaction fetch fails
+          return {
+            ...account,
+            balance: { current_balance: 0, last_updated: new Date().toISOString() },
+          }
+        }
+
+        // Calculate balance from ALL transactions INCLUDING adjustments
+        let totalCredits = 0
+        let totalDebits = 0
+
+        if (transactions && transactions.length > 0) {
+          for (const tx of transactions) {
+            if (tx.credit_amount) {
+              totalCredits += tx.credit_amount
+            }
+            if (tx.debit_amount) {
+              totalDebits += tx.debit_amount
+            }
+          }
+        }
+
+        const calculatedBalance = totalCredits - totalDebits
+
+        // Return account with calculated balance in same format as before
+        return {
+          ...account,
+          balance: {
+            current_balance: calculatedBalance,
+            last_updated: new Date().toISOString(),
+          },
+        }
+      })
+    )
+
     // Get total count
     const { count: totalCount } = await supabase
       .from('accounts')
       .select('*', { count: 'exact', head: true })
 
     return NextResponse.json({
-      data: data || [],
+      data: accountsWithBalances || [],
       pagination: {
         page,
         limit,

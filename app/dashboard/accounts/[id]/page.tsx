@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Pencil, Trash2, Loader2, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText } from "lucide-react"
+import { ArrowLeft, Pencil, Trash2, Loader2, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -27,6 +27,9 @@ import {
 import { AccountFormDialog } from "@/components/account-form-dialog"
 import { AccountDeleteDialog } from "@/components/account-delete-dialog"
 import { BalanceEditDialog } from "@/components/balance-edit-dialog"
+import { BankImportDialog } from "@/components/bank-import-dialog"
+import { CheckpointHistoryCard } from "@/components/checkpoint-history-card"
+import { BalanceCheckpoint } from "@/types/checkpoint"
 
 const AccountTypeIcon = ({ type, className }: { type: AccountType; className?: string }) => {
   const icons = {
@@ -44,13 +47,18 @@ const AccountTypeIcon = ({ type, className }: { type: AccountType; className?: s
 export default function AccountDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const [account, setAccount] = useState<AccountWithEntity | null>(null)
+  const [checkpoints, setCheckpoints] = useState<BalanceCheckpoint[]>([])
+  const [calculatedBalance, setCalculatedBalance] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isBalanceEditDialogOpen, setIsBalanceEditDialogOpen] = useState(false)
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
 
   useEffect(() => {
     fetchAccount()
+    fetchCheckpoints()
+    fetchCalculatedBalance()
   }, [params.id])
 
   async function fetchAccount() {
@@ -73,6 +81,38 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
     }
   }
 
+  async function fetchCheckpoints() {
+    try {
+      const response = await fetch(`/api/accounts/${params.id}/checkpoints`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch checkpoints")
+      }
+
+      const data = await response.json()
+      setCheckpoints(data.data || [])
+    } catch (error) {
+      console.error("Error fetching checkpoints:", error)
+      // Don't redirect on checkpoint fetch failure, just log it
+    }
+  }
+
+  async function fetchCalculatedBalance() {
+    try {
+      const response = await fetch(`/api/accounts/${params.id}/calculated-balance`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch calculated balance")
+      }
+
+      const data = await response.json()
+      setCalculatedBalance(data.data.calculated_balance)
+    } catch (error) {
+      console.error("Error fetching calculated balance:", error)
+      setCalculatedBalance(0) // Default to 0 if calculation fails
+    }
+  }
+
   function handleDeleteSuccess() {
     router.push("/dashboard/accounts")
   }
@@ -92,7 +132,8 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
   const config = ACCOUNT_TYPE_CONFIG[account.account_type]
   const status = getStatusColor(account.is_active)
   const balanceData = Array.isArray(account.balance) ? account.balance[0] : account.balance
-  const balance = balanceData?.current_balance || 0
+  // Use calculated balance from transactions instead of stored current_balance
+  const balance = calculatedBalance !== null ? calculatedBalance : 0
   const entity = Array.isArray(account.entity) ? account.entity[0] : account.entity
 
   const isCreditType = isCreditAccount(account.account_type)
@@ -198,19 +239,27 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
             <div>
               <CardTitle>Current Balance</CardTitle>
               <CardDescription>
-                {balanceData?.last_updated
-                  ? `Last updated: ${formatDateTime(balanceData.last_updated)}`
-                  : "No recent updates"}
+                Calculated from all transactions
               </CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsBalanceEditDialogOpen(true)}
-            >
-              <Pencil className="mr-2 h-4 w-4" />
-              Create Checkpoint
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsImportDialogOpen(true)}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Import Statement
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBalanceEditDialogOpen(true)}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Create Checkpoint
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -265,6 +314,16 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
         </CardContent>
       </Card>
 
+      {/* Checkpoint History */}
+      <CheckpointHistoryCard
+        accountId={account.account_id}
+        checkpoints={checkpoints}
+        onRefresh={() => {
+          fetchCheckpoints()
+          fetchCalculatedBalance()
+        }}
+      />
+
       {/* Transactions Preview (Placeholder for Week 3) */}
       <Card>
         <CardHeader>
@@ -302,7 +361,23 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
         onOpenChange={setIsBalanceEditDialogOpen}
         account={account as Account}
         currentBalance={balance}
-        onSuccess={fetchAccount}
+        onSuccess={() => {
+          fetchAccount()
+          fetchCheckpoints()
+          fetchCalculatedBalance()
+        }}
+      />
+
+      <BankImportDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+        accountId={account.account_id}
+        accountName={account.account_name}
+        onSuccess={() => {
+          fetchAccount()
+          fetchCheckpoints()
+          fetchCalculatedBalance()
+        }}
       />
     </div>
   )

@@ -73,6 +73,7 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
           credit_limit: account.credit_limit?.toString() || "",
           loan_reference: account.loan_reference || "",
           initial_balance: "",
+          opening_balance_notes: "",
         })
       } else {
         // Reset form for adding
@@ -462,7 +463,7 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 mb-4">
                 <p className="text-sm text-blue-900 font-medium mb-1">💡 Balance Checkpoint System</p>
                 <p className="text-xs text-blue-700">
-                  When you enter a starting balance, the system creates a "checkpoint" to track your declared balance.
+                  When you enter a starting balance, the system creates a &quot;checkpoint&quot; to track your declared balance.
                   Any unexplained amount will be flagged until you add historical transactions.
                 </p>
               </div>

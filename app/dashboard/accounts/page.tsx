@@ -91,35 +91,37 @@ export default function AccountsPage() {
     try {
       setLoading(true)
 
-      let query = supabase
-        .from("accounts")
-        .select(`
-          *,
-          balance:account_balances(current_balance, last_updated),
-          entity:entities(id, name, type)
-        `)
+      // Build query parameters for API
+      const params = new URLSearchParams()
 
-      // Apply filters
       if (selectedEntity !== "all") {
-        query = query.eq("entity_id", selectedEntity)
+        params.set("entity_id", selectedEntity)
       }
 
       if (selectedTypes.length > 0) {
-        query = query.in("account_type", selectedTypes)
+        params.set("account_type", selectedTypes.join(","))
       }
 
       if (statusFilter !== "all") {
-        query = query.eq("is_active", statusFilter === "active")
+        params.set("is_active", statusFilter === "active" ? "true" : "false")
       }
 
       if (searchQuery) {
-        query = query.or(`account_name.ilike.%${searchQuery}%,bank_name.ilike.%${searchQuery}%`)
+        params.set("search", searchQuery)
       }
 
-      const { data, error } = await query.order("created_at", { ascending: false })
+      // Use high limit to get all accounts (no pagination for UI)
+      params.set("limit", "1000")
 
-      if (error) throw error
-      setAccounts(data || [])
+      // Fetch accounts with calculated balances from API
+      const response = await fetch(`/api/accounts?${params.toString()}`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch accounts")
+      }
+
+      const result = await response.json()
+      setAccounts(result.data || [])
     } catch (error) {
       console.error("Error fetching accounts:", error)
     } finally {

@@ -178,6 +178,7 @@ export async function createOrUpdateCheckpoint(
     checkpoint_date,
     declared_balance,
     notes = null,
+    import_batch_id = null,
     user_id = null,
   } = params
 
@@ -237,6 +238,7 @@ export async function createOrUpdateCheckpoint(
           adjustment_amount,
           is_reconciled,
           notes,
+          import_batch_id,
           created_by_user_id: user_id,
         })
         .select()

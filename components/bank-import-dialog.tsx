@@ -1,0 +1,1001 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, Loader2, ArrowLeft, ArrowRight, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import {
+  parseCSVFile,
+  detectColumnTypes,
+  detectDateFormat,
+  generateColumnMappings,
+} from "@/lib/csv-parser"
+import {
+  ParsedCSVData,
+  ColumnDetectionResult,
+  ColumnMapping,
+  ColumnType,
+  DateFormat,
+  ImportWithCheckpointResult,
+} from "@/types/import"
+import {
+  getDateFormatExample,
+  getColumnTypeLabel,
+  getColumnTypeDescription,
+} from "@/types/import"
+
+interface BankImportDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  accountId: number
+  accountName: string
+  onSuccess: () => void
+}
+
+type ImportStep = 1 | 2 | 3 | 4
+
+export function BankImportDialog({
+  open,
+  onOpenChange,
+  accountId,
+  accountName,
+  onSuccess,
+}: BankImportDialogProps) {
+  const [currentStep, setCurrentStep] = useState<ImportStep>(1)
+  const [loading, setLoading] = useState(false)
+
+  // Step 1: File upload and statement details
+  const [file, setFile] = useState<File | null>(null)
+  const [statementStartDate, setStatementStartDate] = useState("")
+  const [statementEndDate, setStatementEndDate] = useState("")
+  const [statementEndingBalance, setStatementEndingBalance] = useState("")
+
+  // Step 2: Column mapping
+  const [parsedData, setParsedData] = useState<ParsedCSVData | null>(null)
+  const [columnDetections, setColumnDetections] = useState<ColumnDetectionResult[]>([])
+  const [columnMappings, setColumnMappings] = useState<ColumnMapping[]>([])
+  const [dateFormat, setDateFormat] = useState<DateFormat>('dd/mm/yyyy')
+  const [hasNegativeDebits, setHasNegativeDebits] = useState(false)
+
+  // Step 4: Results
+  const [importResult, setImportResult] = useState<ImportWithCheckpointResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [rollbackConfirmOpen, setRollbackConfirmOpen] = useState(false)
+  const [isRollingBack, setIsRollingBack] = useState(false)
+
+  // Reset state when dialog opens/closes
+  useEffect(() => {
+    if (!open) {
+      setTimeout(() => {
+        setCurrentStep(1)
+        setFile(null)
+        setStatementStartDate("")
+        setStatementEndDate("")
+        setStatementEndingBalance("")
+        setParsedData(null)
+        setColumnDetections([])
+        setColumnMappings([])
+        setDateFormat('dd/mm/yyyy')
+        setHasNegativeDebits(false)
+        setImportResult(null)
+        setError(null)
+      }, 200)
+    }
+  }, [open])
+
+  // ===========================================================================
+  // Step 1: File Upload
+  // ===========================================================================
+
+  async function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
+    const selectedFile = event.target.files?.[0]
+    if (!selectedFile) return
+
+    // Validate file type
+    if (!selectedFile.name.match(/\.(csv|CSV)$/)) {
+      setError("Please upload a CSV file")
+      return
+    }
+
+    setFile(selectedFile)
+    setError(null)
+
+    // Auto-parse CSV for preview
+    try {
+      setLoading(true)
+      const parsed = await parseCSVFile(selectedFile)
+      setParsedData(parsed)
+
+      // Auto-detect columns
+      const detections = detectColumnTypes(parsed.headers, parsed.rows)
+      setColumnDetections(detections)
+
+      // Auto-detect date format
+      const dateColumn = detections.find(d => d.suggestedType === 'transaction_date')
+      if (dateColumn) {
+        const dateDetection = detectDateFormat(dateColumn.sampleValues)
+        if (dateDetection.detectedFormat !== 'unknown') {
+          setDateFormat(dateDetection.detectedFormat)
+        }
+      }
+
+      // Auto-detect negative debits
+      const amountColumn = detections.find(d => d.suggestedType === 'amount')
+      if (amountColumn) {
+        setHasNegativeDebits(true)
+      }
+
+      // Auto-populate statement dates and ending balance from CSV
+      if (parsed.detectedStartDate) {
+        setStatementStartDate(parsed.detectedStartDate)
+      }
+      if (parsed.detectedEndDate) {
+        setStatementEndDate(parsed.detectedEndDate)
+      }
+      if (parsed.detectedEndingBalance !== null && parsed.detectedEndingBalance !== undefined) {
+        setStatementEndingBalance(parsed.detectedEndingBalance.toString())
+      }
+
+      // Generate initial mappings
+      const mappings = generateColumnMappings(detections, dateFormat)
+      setColumnMappings(mappings)
+    } catch (err: any) {
+      setError(err.message || "Failed to parse CSV file")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function canProceedFromStep1(): boolean {
+    return (
+      file !== null &&
+      statementStartDate !== "" &&
+      statementEndDate !== "" &&
+      statementEndingBalance !== "" &&
+      !isNaN(parseFloat(statementEndingBalance))
+    )
+  }
+
+  // ===========================================================================
+  // Step 2: Column Mapping
+  // ===========================================================================
+
+  function updateColumnMapping(csvColumn: string, mappedTo: ColumnType) {
+    setColumnMappings(prev =>
+      prev.map(mapping => {
+        if (mapping.csvColumn === csvColumn) {
+          const updated: ColumnMapping = {
+            ...mapping,
+            mappedTo,
+          }
+
+          // Add date format for date columns
+          if (mappedTo === 'transaction_date') {
+            updated.dateFormat = dateFormat
+          }
+
+          // Add negative debit flag for amount columns
+          if (mappedTo === 'amount') {
+            updated.isNegativeDebit = hasNegativeDebits
+          }
+
+          return updated
+        }
+        return mapping
+      })
+    )
+  }
+
+  function canProceedFromStep2(): boolean {
+    const hasDateColumn = columnMappings.some(m => m.mappedTo === 'transaction_date')
+    const hasAmountColumn = columnMappings.some(
+      m => m.mappedTo === 'debit_amount' || m.mappedTo === 'credit_amount' || m.mappedTo === 'amount'
+    )
+    return hasDateColumn && hasAmountColumn
+  }
+
+  const validationErrors: string[] = []
+  if (!columnMappings.some(m => m.mappedTo === 'transaction_date')) {
+    validationErrors.push('Transaction Date column is required')
+  }
+  if (
+    !columnMappings.some(
+      m => m.mappedTo === 'debit_amount' || m.mappedTo === 'credit_amount' || m.mappedTo === 'amount'
+    )
+  ) {
+    validationErrors.push('At least one amount column (Debit, Credit, or Amount) is required')
+  }
+
+  // ===========================================================================
+  // Step 3: Preview
+  // ===========================================================================
+
+  const previewRows = parsedData?.rows.slice(0, 10) || []
+
+  // ===========================================================================
+  // Step 4: Import
+  // ===========================================================================
+
+  async function handleImport() {
+    if (!parsedData || !file) return
+
+    try {
+      setLoading(true)
+      setError(null)
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('accountId', accountId.toString())
+      formData.append('statementStartDate', statementStartDate)
+      formData.append('statementEndDate', statementEndDate)
+      formData.append('statementEndingBalance', statementEndingBalance)
+      formData.append('columnMappings', JSON.stringify(columnMappings))
+      formData.append('dateFormat', dateFormat)
+      formData.append('hasNegativeDebits', hasNegativeDebits.toString())
+
+      const response = await fetch(`/api/accounts/${accountId}/import`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to import transactions')
+      }
+
+      const result = await response.json()
+      setImportResult(result.data)
+      setCurrentStep(4)
+    } catch (err: any) {
+      setError(err.message || 'Failed to import transactions')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ===========================================================================
+  // Rollback Import
+  // ===========================================================================
+
+  async function handleRollback() {
+    if (!importResult) return
+
+    try {
+      setIsRollingBack(true)
+      setError(null)
+
+      const response = await fetch(`/api/import-batches/${importResult.importSummary.importBatchId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to rollback import')
+      }
+
+      // Close dialog and refresh account data
+      onSuccess()
+      onOpenChange(false)
+    } catch (err: any) {
+      setError(err.message || 'Failed to rollback import')
+      setRollbackConfirmOpen(false)
+    } finally {
+      setIsRollingBack(false)
+    }
+  }
+
+  // ===========================================================================
+  // Render Steps
+  // ===========================================================================
+
+  function renderStep() {
+    switch (currentStep) {
+      case 1:
+        return renderStep1()
+      case 2:
+        return renderStep2()
+      case 3:
+        return renderStep3()
+      case 4:
+        return renderStep4()
+    }
+  }
+
+  function renderStep1() {
+    return (
+      <div className="space-y-6">
+        {/* Warning Message */}
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className="flex gap-3">
+            <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="space-y-2 text-sm">
+              <p className="font-medium text-blue-900">Bank Statement Import</p>
+              <ul className="list-disc list-inside space-y-1 text-blue-700">
+                <li>Upload CSV file from your bank statement</li>
+                <li>System will auto-detect columns and date format</li>
+                <li>Checkpoint created to verify against statement ending balance</li>
+                <li>Flags duplicates and discrepancies automatically</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* File Upload */}
+        <div className="space-y-2">
+          <Label htmlFor="file">Bank Statement File (CSV) *</Label>
+          <div className="flex items-center gap-4">
+            <Input
+              id="file"
+              type="file"
+              accept=".csv"
+              onChange={handleFileSelect}
+              className="flex-1"
+            />
+            {file && (
+              <Badge variant="secondary" className="flex items-center gap-2">
+                <FileSpreadsheet className="h-3 w-3" />
+                {file.name}
+              </Badge>
+            )}
+          </div>
+          {parsedData && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                ✓ Parsed {parsedData.totalRows} transactions from {parsedData.headers.length} columns
+                {parsedData.detectedHeaderRow !== undefined && parsedData.detectedHeaderRow > 0 &&
+                  ` (header found at row ${parsedData.detectedHeaderRow + 1})`}
+              </p>
+              {(parsedData.detectedStartDate || parsedData.detectedEndDate || parsedData.detectedEndingBalance) && (
+                <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <p className="text-xs text-blue-700 font-medium mb-1">Auto-Detected from CSV:</p>
+                  <ul className="text-xs text-blue-600 space-y-0.5">
+                    {parsedData.detectedStartDate && <li>• Start Date: {parsedData.detectedStartDate}</li>}
+                    {parsedData.detectedEndDate && <li>• End Date: {parsedData.detectedEndDate}</li>}
+                    {parsedData.detectedEndingBalance && <li>• Ending Balance: {parsedData.detectedEndingBalance.toLocaleString()}</li>}
+                  </ul>
+                  <p className="text-xs text-blue-600 mt-1">You can adjust these values if needed.</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Statement Details */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="startDate">Statement Start Date *</Label>
+            <Input
+              id="startDate"
+              type="date"
+              value={statementStartDate}
+              onChange={(e) => setStatementStartDate(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="endDate">Statement End Date *</Label>
+            <Input
+              id="endDate"
+              type="date"
+              value={statementEndDate}
+              onChange={(e) => setStatementEndDate(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="endingBalance">Statement Ending Balance *</Label>
+          <Input
+            id="endingBalance"
+            type="number"
+            step="0.01"
+            placeholder="Balance at end of statement period"
+            value={statementEndingBalance}
+            onChange={(e) => setStatementEndingBalance(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            This balance will be used to create a checkpoint and detect discrepancies
+          </p>
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-sm text-red-800">{error}</p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderStep2() {
+    return (
+      <div className="space-y-6">
+        {/* Info Message */}
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className="flex gap-3">
+            <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-700">
+              <p className="font-medium mb-1">Column Mapping</p>
+              <p>
+                We&apos;ve auto-detected columns from your CSV. Review and adjust mappings below.
+                At minimum, you need Transaction Date and one Amount column.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Date Format Selection */}
+        <div className="space-y-2">
+          <Label>Date Format</Label>
+          <Select value={dateFormat} onValueChange={(value) => setDateFormat(value as DateFormat)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="dd/mm/yyyy">dd/mm/yyyy (25/12/2024) - Vietnam</SelectItem>
+              <SelectItem value="dd-mm-yyyy">dd-mm-yyyy (25-12-2024) - Vietnam</SelectItem>
+              <SelectItem value="dd.mm.yyyy">dd.mm.yyyy (25.12.2024) - Germany</SelectItem>
+              <SelectItem value="mm/dd/yyyy">mm/dd/yyyy (12/25/2024) - USA</SelectItem>
+              <SelectItem value="yyyy-mm-dd">yyyy-mm-dd (2024-12-25) - ISO</SelectItem>
+              <SelectItem value="yyyy/mm/dd">yyyy/mm/dd (2024/12/25) - Japan</SelectItem>
+              <SelectItem value="dd MMM yyyy">dd MMM yyyy (25 Dec 2024)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Example: {getDateFormatExample(dateFormat)}
+          </p>
+        </div>
+
+        {/* Negative Debit Toggle */}
+        <div className="space-y-2">
+          <Label>Amount Column Format</Label>
+          <Select
+            value={hasNegativeDebits ? 'negative' : 'separate'}
+            onValueChange={(value) => setHasNegativeDebits(value === 'negative')}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="separate">Separate Debit and Credit columns</SelectItem>
+              <SelectItem value="negative">Single Amount column (negative = debit)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {hasNegativeDebits
+              ? 'Negative values will be treated as debits (money out)'
+              : 'Debit and credit are in separate columns'}
+          </p>
+        </div>
+
+        {/* Column Mapping Table */}
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>CSV Column</TableHead>
+                <TableHead>Sample Data</TableHead>
+                <TableHead>Map To</TableHead>
+                <TableHead>Confidence</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {columnMappings.map((mapping, index) => {
+                const detection = columnDetections[index]
+                return (
+                  <TableRow key={mapping.csvColumn}>
+                    <TableCell className="font-medium">{mapping.csvColumn}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
+                      {detection.sampleValues.slice(0, 2).map((v, i) => (
+                        <span key={i}>
+                          {String(v || '—')}
+                          {i < 1 && ', '}
+                        </span>
+                      ))}
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={mapping.mappedTo}
+                        onValueChange={(value) => updateColumnMapping(mapping.csvColumn, value as ColumnType)}
+                      >
+                        <SelectTrigger className="w-[200px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="transaction_date">
+                            {getColumnTypeLabel('transaction_date')}
+                          </SelectItem>
+                          <SelectItem value="description">
+                            {getColumnTypeLabel('description')}
+                          </SelectItem>
+                          <SelectItem value="debit_amount">
+                            {getColumnTypeLabel('debit_amount')}
+                          </SelectItem>
+                          <SelectItem value="credit_amount">
+                            {getColumnTypeLabel('credit_amount')}
+                          </SelectItem>
+                          <SelectItem value="amount">
+                            {getColumnTypeLabel('amount')}
+                          </SelectItem>
+                          <SelectItem value="balance">
+                            {getColumnTypeLabel('balance')}
+                          </SelectItem>
+                          <SelectItem value="reference">
+                            {getColumnTypeLabel('reference')}
+                          </SelectItem>
+                          <SelectItem value="ignore">
+                            {getColumnTypeLabel('ignore')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={detection.confidence > 0.7 ? 'default' : 'secondary'}
+                        className="text-xs"
+                      >
+                        {Math.round(detection.confidence * 100)}%
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Validation Errors */}
+        {validationErrors.length > 0 && (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 p-3">
+            <p className="text-sm font-medium text-orange-900 mb-2">Required mappings:</p>
+            <ul className="list-disc list-inside space-y-1 text-sm text-orange-700">
+              {validationErrors.map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderStep3() {
+    return (
+      <div className="space-y-6">
+        {/* Info Message */}
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className="flex gap-3">
+            <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-700">
+              <p className="font-medium mb-1">Preview First 10 Transactions</p>
+              <p>
+                Review the data below. If it looks correct, click Import to proceed.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Import Summary */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-muted-foreground">Total Transactions</p>
+            <p className="text-2xl font-bold">{parsedData?.totalRows || 0}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-muted-foreground">Statement Period</p>
+            <p className="text-sm font-medium">
+              {new Date(statementStartDate).toLocaleDateString()} -{' '}
+              {new Date(statementEndDate).toLocaleDateString()}
+            </p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-muted-foreground">Ending Balance</p>
+            <p className="text-2xl font-bold">
+              {parseFloat(statementEndingBalance).toLocaleString('vi-VN')}
+            </p>
+          </div>
+        </div>
+
+        {/* Preview Table */}
+        <div className="border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto max-h-96">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">#</TableHead>
+                  {columnMappings
+                    .filter(m => m.mappedTo !== 'ignore')
+                    .map(mapping => (
+                      <TableHead key={mapping.csvColumn}>
+                        {getColumnTypeLabel(mapping.mappedTo)}
+                      </TableHead>
+                    ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {previewRows.map((row, index) => (
+                  <TableRow key={index}>
+                    <TableCell className="text-sm text-muted-foreground">{index + 1}</TableCell>
+                    {columnMappings
+                      .filter(m => m.mappedTo !== 'ignore')
+                      .map(mapping => (
+                        <TableCell key={mapping.csvColumn} className="text-sm">
+                          {String(row[mapping.csvColumn] || '—')}
+                        </TableCell>
+                      ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function renderStep4() {
+    if (!importResult) return null
+
+    const { importSummary, checkpoint } = importResult
+
+    return (
+      <div className="space-y-6">
+        {/* Success Message */}
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+          <div className="flex gap-3">
+            <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-green-700">
+              <p className="font-medium mb-1">Import Completed Successfully!</p>
+              <p>
+                {importSummary.successfulImports} of {importSummary.totalRows} transactions imported.
+                Checkpoint created to verify balance.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Import Summary */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded-lg border p-4">
+            <p className="text-sm text-muted-foreground mb-2">Import Statistics</p>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Total Rows:</span>
+                <span className="font-medium">{importSummary.totalRows}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Successful:</span>
+                <span className="font-medium text-green-600">{importSummary.successfulImports}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Failed:</span>
+                <span className="font-medium text-red-600">{importSummary.failedImports}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Duplicates:</span>
+                <span className="font-medium text-orange-600">{importSummary.duplicatesDetected}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <p className="text-sm text-muted-foreground mb-2">Checkpoint Status</p>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Declared Balance:</span>
+                <span className="font-medium">{checkpoint.declared_balance.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Calculated Balance:</span>
+                <span className="font-medium">{checkpoint.calculated_balance.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Adjustment:</span>
+                <span className={`font-medium ${checkpoint.is_reconciled ? 'text-green-600' : 'text-orange-600'}`}>
+                  {checkpoint.adjustment_amount.toLocaleString()}
+                </span>
+              </div>
+              <div className="pt-2 border-t">
+                <Badge variant={checkpoint.is_reconciled ? 'default' : 'secondary'}>
+                  {checkpoint.is_reconciled ? '✓ Reconciled' : '⚠ Discrepancy Flagged'}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Adjustment Warning */}
+        {!checkpoint.is_reconciled && (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+            <div className="flex gap-3">
+              <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-orange-700">
+                <p className="font-medium mb-1">Balance Discrepancy Detected</p>
+                <p>
+                  The statement ending balance ({checkpoint.declared_balance.toLocaleString()}) doesn&apos;t match
+                  the calculated balance ({checkpoint.calculated_balance.toLocaleString()}).
+                </p>
+                <p className="mt-2">
+                  <strong>Possible reasons:</strong>
+                </p>
+                <ul className="list-disc list-inside mt-1 space-y-1">
+                  <li>Duplicate transactions (check if you manually entered some already)</li>
+                  <li>Missing transactions from the statement</li>
+                  <li>Transactions from before the statement period</li>
+                </ul>
+                <p className="mt-2">
+                  Review the checkpoint and flagged transactions to reconcile the difference.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Errors */}
+        {importSummary.errors.length > 0 && (
+          <div className="rounded-lg border p-4">
+            <p className="text-sm font-medium mb-2">Import Errors:</p>
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {importSummary.errors.map((err, i) => (
+                <p key={i} className="text-sm text-muted-foreground">
+                  Row {err.rowIndex}: {err.error}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Rollback Button */}
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Need to undo this import?</p>
+              <p className="text-xs text-gray-600 mt-1">
+                This will delete all {importSummary.successfulImports} imported transactions.
+                Checkpoints will automatically recalculate.
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setRollbackConfirmOpen(true)}
+              disabled={isRollingBack}
+            >
+              {isRollingBack ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Rolling back...
+                </>
+              ) : (
+                'Rollback Import'
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {/* Rollback Confirmation Dialog */}
+        {rollbackConfirmOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0">
+                  <AlertCircle className="h-6 w-6 text-red-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold mb-2">Confirm Rollback</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Are you sure you want to rollback this import? This will permanently delete:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 mb-4">
+                    <li><strong>{importSummary.successfulImports}</strong> imported transactions</li>
+                    <li>Import batch record will be marked as &quot;rolled back&quot;</li>
+                    <li>Related checkpoints will automatically recalculate</li>
+                  </ul>
+                  <p className="text-sm font-medium text-red-600">
+                    This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setRollbackConfirmOpen(false)}
+                  disabled={isRollingBack}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    setRollbackConfirmOpen(false)
+                    handleRollback()
+                  }}
+                  disabled={isRollingBack}
+                >
+                  {isRollingBack ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Rolling back...
+                    </>
+                  ) : (
+                    'Yes, Rollback Import'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ===========================================================================
+  // Navigation
+  // ===========================================================================
+
+  function goBack() {
+    if (currentStep > 1) {
+      setCurrentStep((prev) => (prev - 1) as ImportStep)
+    }
+  }
+
+  function goNext() {
+    if (currentStep === 1 && canProceedFromStep1()) {
+      setCurrentStep(2)
+    } else if (currentStep === 2 && canProceedFromStep2()) {
+      setCurrentStep(3)
+    } else if (currentStep === 3) {
+      handleImport()
+    }
+  }
+
+  function canGoNext(): boolean {
+    switch (currentStep) {
+      case 1:
+        return canProceedFromStep1()
+      case 2:
+        return canProceedFromStep2()
+      case 3:
+        return true
+      case 4:
+        return false
+      default:
+        return false
+    }
+  }
+
+  function getNextButtonLabel(): string {
+    switch (currentStep) {
+      case 1:
+        return 'Next: Map Columns'
+      case 2:
+        return 'Next: Preview'
+      case 3:
+        return 'Import Transactions'
+      case 4:
+        return 'Done'
+      default:
+        return 'Next'
+    }
+  }
+
+  // ===========================================================================
+  // Render
+  // ===========================================================================
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            Import Bank Statement - {accountName}
+          </DialogTitle>
+          <DialogDescription>
+            Step {currentStep} of 4: {
+              currentStep === 1 ? 'Upload File' :
+              currentStep === 2 ? 'Map Columns' :
+              currentStep === 3 ? 'Preview & Confirm' :
+              'Import Results'
+            }
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Step Indicator */}
+        <div className="flex items-center justify-between mb-4">
+          {[1, 2, 3, 4].map((step) => (
+            <div key={step} className="flex items-center flex-1">
+              <div
+                className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
+                  currentStep >= step
+                    ? 'bg-primary border-primary text-white'
+                    : 'border-gray-300 text-gray-400'
+                }`}
+              >
+                {currentStep > step ? <CheckCircle className="h-5 w-5" /> : step}
+              </div>
+              {step < 4 && (
+                <div
+                  className={`flex-1 h-0.5 mx-2 ${
+                    currentStep > step ? 'bg-primary' : 'bg-gray-300'
+                  }`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Step Content */}
+        <div className="py-4">
+          {renderStep()}
+        </div>
+
+        {/* Footer */}
+        <DialogFooter className="flex justify-between sm:justify-between">
+          <div>
+            {currentStep > 1 && currentStep < 4 && (
+              <Button variant="outline" onClick={goBack} disabled={loading}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            {currentStep === 4 ? (
+              <Button
+                onClick={() => {
+                  onSuccess()
+                  onOpenChange(false)
+                }}
+              >
+                Done
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+                  Cancel
+                </Button>
+                <Button onClick={goNext} disabled={!canGoNext() || loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {currentStep === 3 ? 'Importing...' : 'Processing...'}
+                    </>
+                  ) : (
+                    <>
+                      {getNextButtonLabel()}
+                      {currentStep < 3 && <ArrowRight className="ml-2 h-4 w-4" />}
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
