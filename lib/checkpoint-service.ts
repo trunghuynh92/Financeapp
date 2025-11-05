@@ -664,14 +664,27 @@ export async function deleteCheckpoint(checkpointId: number): Promise<void> {
 
     const accountId = checkpoint.account_id
 
-    // Delete the checkpoint (CASCADE will delete the adjustment transaction)
-    const { error } = await supabase
+    // IMPORTANT: Delete the adjustment transaction FIRST
+    // We do this explicitly because CASCADE may not be set up in the database
+    const { error: txDeleteError } = await supabase
+      .from('original_transaction')
+      .delete()
+      .eq('checkpoint_id', checkpointId)
+      .eq('is_balance_adjustment', true)
+
+    if (txDeleteError) {
+      console.error('Error deleting adjustment transaction:', txDeleteError)
+      // Continue anyway - the checkpoint deletion is more important
+    }
+
+    // Delete the checkpoint
+    const { error: checkpointDeleteError } = await supabase
       .from('balance_checkpoints')
       .delete()
       .eq('checkpoint_id', checkpointId)
 
-    if (error) {
-      throw new Error(`Failed to delete checkpoint: ${error.message}`)
+    if (checkpointDeleteError) {
+      throw new Error(`Failed to delete checkpoint: ${checkpointDeleteError.message}`)
     }
 
     // Recalculate all remaining checkpoints
