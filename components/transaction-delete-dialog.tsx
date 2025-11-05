@@ -19,6 +19,8 @@ interface Transaction {
   description: string | null
   debit_amount: number | null
   credit_amount: number | null
+  is_balance_adjustment?: boolean
+  checkpoint_id?: number
 }
 
 interface TransactionDeleteDialogProps {
@@ -35,9 +37,16 @@ export function TransactionDeleteDialog({
   onSuccess,
 }: TransactionDeleteDialogProps) {
   const [loading, setLoading] = useState(false)
+  const isBalanceAdjustment = transaction?.is_balance_adjustment === true
 
   async function handleDelete() {
     if (!transaction) return
+
+    // Prevent deletion of balance adjustment transactions
+    if (isBalanceAdjustment) {
+      alert("Cannot delete balance adjustment transactions. Please delete the associated checkpoint instead.")
+      return
+    }
 
     try {
       setLoading(true)
@@ -48,7 +57,7 @@ export function TransactionDeleteDialog({
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Failed to delete transaction")
+        throw new Error(error.message || error.error || "Failed to delete transaction")
       }
 
       onSuccess()
@@ -89,38 +98,68 @@ export function TransactionDeleteDialog({
             <AlertDialogTitle>Delete Transaction</AlertDialogTitle>
           </div>
           <AlertDialogDescription className="pt-3 space-y-2">
-            <p>
-              Are you sure you want to delete this transaction?
-            </p>
-            {transaction && (
-              <div className="bg-muted p-3 rounded-md space-y-1 text-sm">
-                {transaction.description && (
-                  <p className="font-medium">{transaction.description}</p>
+            {isBalanceAdjustment ? (
+              <>
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-3">
+                  <p className="text-sm text-orange-700 font-medium mb-1">
+                    System-Generated Balance Adjustment
+                  </p>
+                  <p className="text-sm text-orange-700">
+                    This transaction was automatically created by the checkpoint system and cannot be deleted directly.
+                  </p>
+                  <p className="text-xs text-orange-600 mt-2">
+                    <strong>To remove this adjustment:</strong> Delete the associated checkpoint instead.
+                  </p>
+                </div>
+                {transaction && (
+                  <div className="bg-muted p-3 rounded-md space-y-1 text-sm">
+                    {transaction.description && (
+                      <p className="font-medium">{transaction.description}</p>
+                    )}
+                    <p className="text-muted-foreground">{getTransactionAmount()}</p>
+                  </div>
                 )}
-                <p className="text-muted-foreground">{getTransactionAmount()}</p>
-              </div>
+              </>
+            ) : (
+              <>
+                <p>
+                  Are you sure you want to delete this transaction?
+                </p>
+                {transaction && (
+                  <div className="bg-muted p-3 rounded-md space-y-1 text-sm">
+                    {transaction.description && (
+                      <p className="font-medium">{transaction.description}</p>
+                    )}
+                    <p className="text-muted-foreground">{getTransactionAmount()}</p>
+                  </div>
+                )}
+                <p className="text-destructive font-medium">
+                  This action cannot be undone.
+                </p>
+              </>
             )}
-            <p className="text-destructive font-medium">
-              This action cannot be undone.
-            </p>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Deleting...
-              </>
-            ) : (
-              "Delete Transaction"
-            )}
-          </Button>
+          <AlertDialogCancel disabled={loading}>
+            {isBalanceAdjustment ? "Close" : "Cancel"}
+          </AlertDialogCancel>
+          {!isBalanceAdjustment && (
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Transaction"
+              )}
+            </Button>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

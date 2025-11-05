@@ -46,15 +46,27 @@ export async function PATCH(
     const transactionId = params.id
     const body = await request.json()
 
-    // Check if transaction exists
+    // Check if transaction exists and get is_balance_adjustment flag
     const { data: existingTransaction, error: fetchError } = await supabase
       .from('original_transaction')
-      .select('raw_transaction_id')
+      .select('raw_transaction_id, is_balance_adjustment, checkpoint_id')
       .eq('raw_transaction_id', transactionId)
       .single()
 
     if (fetchError || !existingTransaction) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
+    }
+
+    // Prevent editing balance adjustment transactions
+    if (existingTransaction.is_balance_adjustment) {
+      return NextResponse.json(
+        {
+          error: 'Cannot edit balance adjustment transaction',
+          message: 'This is a system-generated balance adjustment transaction. To modify it, edit the associated checkpoint instead.',
+          checkpoint_id: existingTransaction.checkpoint_id,
+        },
+        { status: 403 }
+      )
     }
 
     // Validate debit/credit logic if they're being updated
@@ -121,15 +133,27 @@ export async function DELETE(
   try {
     const transactionId = params.id
 
-    // Check if transaction exists
+    // Check if transaction exists and get is_balance_adjustment flag
     const { data: existingTransaction, error: fetchError } = await supabase
       .from('original_transaction')
-      .select('raw_transaction_id, description')
+      .select('raw_transaction_id, description, is_balance_adjustment, checkpoint_id')
       .eq('raw_transaction_id', transactionId)
       .single()
 
     if (fetchError || !existingTransaction) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
+    }
+
+    // Prevent deleting balance adjustment transactions
+    if (existingTransaction.is_balance_adjustment) {
+      return NextResponse.json(
+        {
+          error: 'Cannot delete balance adjustment transaction',
+          message: 'This is a system-generated balance adjustment transaction. To remove it, delete the associated checkpoint instead.',
+          checkpoint_id: existingTransaction.checkpoint_id,
+        },
+        { status: 403 }
+      )
     }
 
     // Delete transaction

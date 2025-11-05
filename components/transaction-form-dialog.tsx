@@ -39,6 +39,8 @@ interface Transaction {
   balance: number | null
   bank_reference: string | null
   transaction_source: 'imported_bank' | 'user_manual' | 'system_opening' | 'auto_adjustment'
+  is_balance_adjustment?: boolean
+  checkpoint_id?: number
 }
 
 interface TransactionFormDialogProps {
@@ -57,6 +59,7 @@ export function TransactionFormDialog({
   onSuccess,
 }: TransactionFormDialogProps) {
   const isEditing = !!transaction
+  const isBalanceAdjustment = transaction?.is_balance_adjustment === true
 
   const [loading, setLoading] = useState(false)
   const [transactionType, setTransactionType] = useState<'debit' | 'credit'>('debit')
@@ -196,6 +199,37 @@ export function TransactionFormDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Warning for Balance Adjustment Transactions */}
+        {isBalanceAdjustment && (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+            <div className="flex gap-3">
+              <svg
+                className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <div className="text-sm text-orange-700">
+                <p className="font-medium mb-1">System-Generated Balance Adjustment</p>
+                <p className="mb-2">
+                  This transaction was automatically created by the checkpoint system and cannot be edited directly.
+                </p>
+                <p className="text-xs">
+                  <strong>To modify this adjustment:</strong> Edit or delete the associated checkpoint instead.
+                  The adjustment will recalculate automatically.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-4 py-4">
           {/* Account Selection */}
           <div className="space-y-2">
@@ -203,8 +237,9 @@ export function TransactionFormDialog({
             <Select
               value={formData.account_id}
               onValueChange={(value) => setFormData({ ...formData, account_id: value })}
+              disabled={isBalanceAdjustment}
             >
-              <SelectTrigger id="account">
+              <SelectTrigger id="account" disabled={isBalanceAdjustment}>
                 <SelectValue placeholder="Select account" />
               </SelectTrigger>
               <SelectContent>
@@ -228,6 +263,7 @@ export function TransactionFormDialog({
               type="date"
               value={formData.transaction_date}
               onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
+              disabled={isBalanceAdjustment}
             />
             {errors.transaction_date && (
               <p className="text-sm text-destructive">{errors.transaction_date}</p>
@@ -241,6 +277,7 @@ export function TransactionFormDialog({
               value={transactionType}
               onValueChange={(value: 'debit' | 'credit') => setTransactionType(value)}
               className="grid grid-cols-2 gap-4"
+              disabled={isBalanceAdjustment}
             >
               <div>
                 <RadioGroupItem
@@ -285,6 +322,7 @@ export function TransactionFormDialog({
               placeholder="0.00"
               value={formData.amount}
               onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+              disabled={isBalanceAdjustment}
             />
             {errors.amount && (
               <p className="text-sm text-destructive">{errors.amount}</p>
@@ -300,6 +338,7 @@ export function TransactionFormDialog({
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               maxLength={500}
+              disabled={isBalanceAdjustment}
             />
             <p className="text-xs text-muted-foreground">
               {formData.description.length}/500 characters
@@ -316,6 +355,7 @@ export function TransactionFormDialog({
               placeholder="0.00"
               value={formData.balance}
               onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
+              disabled={isBalanceAdjustment}
             />
             <p className="text-xs text-muted-foreground">
               The account balance after this transaction
@@ -331,6 +371,7 @@ export function TransactionFormDialog({
               value={formData.bank_reference}
               onChange={(e) => setFormData({ ...formData, bank_reference: e.target.value })}
               maxLength={100}
+              disabled={isBalanceAdjustment}
             />
           </div>
 
@@ -340,8 +381,9 @@ export function TransactionFormDialog({
             <Select
               value={formData.transaction_source}
               onValueChange={(value) => setFormData({ ...formData, transaction_source: value })}
+              disabled={isBalanceAdjustment}
             >
-              <SelectTrigger id="source">
+              <SelectTrigger id="source" disabled={isBalanceAdjustment}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -360,18 +402,20 @@ export function TransactionFormDialog({
             onClick={() => onOpenChange(false)}
             disabled={loading}
           >
-            Cancel
+            {isBalanceAdjustment ? "Close" : "Cancel"}
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isEditing ? "Updating..." : "Creating..."}
-              </>
-            ) : (
-              <>{isEditing ? "Update Transaction" : "Create Transaction"}</>
-            )}
-          </Button>
+          {!isBalanceAdjustment && (
+            <Button onClick={handleSubmit} disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {isEditing ? "Updating..." : "Creating..."}
+                </>
+              ) : (
+                <>{isEditing ? "Update Transaction" : "Create Transaction"}</>
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
