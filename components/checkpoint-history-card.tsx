@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { format } from "date-fns"
-import { Calendar, CheckCircle, AlertCircle, Upload, Edit2, Trash2, Filter } from "lucide-react"
+import { Calendar, CheckCircle, AlertCircle, Upload, Edit2, Trash2, Filter, RotateCcw } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -57,6 +57,8 @@ export function CheckpointHistoryCard({
   const [editingCheckpoint, setEditingCheckpoint] = useState<BalanceCheckpoint | null>(null)
   const [deletingCheckpoint, setDeletingCheckpoint] = useState<BalanceCheckpoint | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [rollingBackCheckpoint, setRollingBackCheckpoint] = useState<BalanceCheckpoint | null>(null)
+  const [isRollingBack, setIsRollingBack] = useState(false)
 
   // Filter checkpoints
   const filteredCheckpoints = checkpoints.filter(cp => {
@@ -99,6 +101,35 @@ export function CheckpointHistoryCard({
       alert(error instanceof Error ? error.message : "Failed to delete checkpoint")
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  async function handleRollback() {
+    if (!rollingBackCheckpoint) return
+
+    setIsRollingBack(true)
+    try {
+      const response = await fetch(
+        `/api/accounts/${accountId}/checkpoints/${rollingBackCheckpoint.checkpoint_id}/rollback`,
+        { method: "POST" }
+      )
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || "Failed to rollback import")
+      }
+
+      const result = await response.json()
+      onRefresh()
+      setRollingBackCheckpoint(null)
+
+      // Show success message
+      alert(result.message || "Import rolled back successfully")
+    } catch (error) {
+      console.error("Error rolling back import:", error)
+      alert(error instanceof Error ? error.message : "Failed to rollback import")
+    } finally {
+      setIsRollingBack(false)
     }
   }
 
@@ -273,7 +304,15 @@ export function CheckpointHistoryCard({
                             </Button>
                           </>
                         ) : (
-                          <span className="text-xs text-muted-foreground">Import-managed</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setRollingBackCheckpoint(checkpoint)}
+                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                          >
+                            <RotateCcw className="h-4 w-4 mr-1" />
+                            Rollback
+                          </Button>
                         )}
                       </div>
                     </TableCell>
@@ -320,6 +359,50 @@ export function CheckpointHistoryCard({
               className="bg-red-600 hover:bg-red-700"
             >
               {isDeleting ? "Deleting..." : "Delete Checkpoint"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Rollback Confirmation Dialog */}
+      <AlertDialog open={!!rollingBackCheckpoint} onOpenChange={(open) => !open && setRollingBackCheckpoint(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-orange-100">
+                <RotateCcw className="h-5 w-5 text-orange-600" />
+              </div>
+              <AlertDialogTitle>Rollback Import?</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="pt-3 space-y-3">
+              <p>
+                Are you sure you want to rollback the import from{" "}
+                {rollingBackCheckpoint && format(new Date(rollingBackCheckpoint.checkpoint_date), "MMMM dd, yyyy")}
+                {rollingBackCheckpoint?.import_batch_id && ` (Import #${rollingBackCheckpoint.import_batch_id})`}?
+              </p>
+              <div className="rounded-lg border border-orange-200 bg-orange-50 p-3">
+                <p className="text-sm text-orange-700 font-medium mb-1">
+                  This will:
+                </p>
+                <ul className="text-sm text-orange-700 list-disc list-inside space-y-1">
+                  <li>Delete the checkpoint and its balance adjustment</li>
+                  <li>Delete all transactions from this import batch</li>
+                  <li>Recalculate all remaining checkpoints</li>
+                </ul>
+              </div>
+              <p className="text-destructive font-medium">
+                This action cannot be undone.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRollingBack}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRollback}
+              disabled={isRollingBack}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {isRollingBack ? "Rolling back..." : "Rollback Import"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -300,8 +300,9 @@ function processRow(
 
       case 'debit_amount': {
         const amount = parseAmount(value)
-        if (amount !== null && amount > 0) {
-          transactionData.debit_amount = amount
+        if (amount !== null && amount !== 0) {
+          // Convert to positive if negative (e.g., Techcombank format)
+          transactionData.debit_amount = Math.abs(amount)
           transactionData.credit_amount = null
           hasRequiredFields = true
         }
@@ -310,8 +311,9 @@ function processRow(
 
       case 'credit_amount': {
         const amount = parseAmount(value)
-        if (amount !== null && amount > 0) {
-          transactionData.credit_amount = amount
+        if (amount !== null && amount !== 0) {
+          // Convert to positive if negative
+          transactionData.credit_amount = Math.abs(amount)
           transactionData.debit_amount = null
           hasRequiredFields = true
         }

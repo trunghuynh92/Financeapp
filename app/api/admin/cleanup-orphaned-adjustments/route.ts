@@ -12,12 +12,11 @@ export async function POST(request: NextRequest) {
   try {
     console.log('🔍 Starting cleanup of orphaned balance adjustment transactions...')
 
-    // Step 1: Get all balance adjustment transactions with checkpoint_id
+    // Step 1: Get all balance adjustment transactions
     const { data: adjustmentTransactions, error: fetchError } = await supabase
       .from('original_transaction')
       .select('raw_transaction_id, checkpoint_id, description, credit_amount, debit_amount, account_id')
       .eq('is_balance_adjustment', true)
-      .not('checkpoint_id', 'is', null)
 
     if (fetchError) {
       throw new Error(`Failed to fetch adjustment transactions: ${fetchError.message}`)
@@ -34,14 +33,22 @@ export async function POST(request: NextRequest) {
 
     console.log(`📊 Found ${adjustmentTransactions.length} balance adjustment transactions`)
 
-    // Step 2: Check each one to see if its checkpoint exists
+    // Step 2: Check each one to see if it's orphaned
     const orphanedTransactions = []
 
     for (const tx of adjustmentTransactions) {
+      // Case 1: checkpoint_id is null - definitely orphaned
+      if (tx.checkpoint_id === null) {
+        orphanedTransactions.push(tx)
+        console.log(`❌ Orphaned: ${tx.raw_transaction_id} (checkpoint_id is NULL)`)
+        continue
+      }
+
+      // Case 2: checkpoint_id points to non-existent checkpoint
       const { data: checkpoint, error: checkError } = await supabase
         .from('balance_checkpoints')
         .select('checkpoint_id')
-        .eq('checkpoint_id', tx.checkpoint_id!)
+        .eq('checkpoint_id', tx.checkpoint_id)
         .maybeSingle()
 
       if (checkError) {
