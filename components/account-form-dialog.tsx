@@ -51,6 +51,7 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
     credit_limit: "",
     loan_reference: "",
     initial_balance: "",
+    opening_balance_notes: "",
   })
 
   const [openingBalanceDate, setOpeningBalanceDate] = useState("")
@@ -85,6 +86,7 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
           credit_limit: "",
           loan_reference: "",
           initial_balance: "",
+          opening_balance_notes: "",
         })
         setOpeningBalanceDate(new Date().toISOString().split('T')[0])
       }
@@ -200,6 +202,8 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
           credit_limit: formData.credit_limit ? parseFloat(formData.credit_limit) : undefined,
           loan_reference: formData.loan_reference || undefined,
           initial_balance: formData.initial_balance ? parseFloat(formData.initial_balance) : undefined,
+          opening_balance_date: openingBalanceDate || undefined,
+          opening_balance_notes: formData.opening_balance_notes || undefined,
         }
 
         const response = await fetch("/api/accounts", {
@@ -448,6 +452,14 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
           {/* Step 3: Initial Balance */}
           {step === 3 && !isEditing && (
             <div className="space-y-4">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 mb-4">
+                <p className="text-sm text-blue-900 font-medium mb-1">💡 Balance Checkpoint System</p>
+                <p className="text-xs text-blue-700">
+                  When you enter a starting balance, the system creates a "checkpoint" to track your declared balance.
+                  Any unexplained amount will be flagged until you add historical transactions.
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="initial_balance">Starting Balance (Optional)</Label>
                 <Input
@@ -458,16 +470,34 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
                   onChange={(e) => setFormData({ ...formData, initial_balance: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Enter the current balance for this account. Leave empty for 0.
+                  Enter the current balance for this account. Leave empty to start at 0.
                 </p>
               </div>
 
-              <DatePicker
-                label="Opening Balance Date"
-                value={openingBalanceDate}
-                onChange={setOpeningBalanceDate}
-                max={new Date().toISOString().split('T')[0]}
-              />
+              <div className="space-y-2">
+                <DatePicker
+                  label="Balance Date *"
+                  value={openingBalanceDate}
+                  onChange={setOpeningBalanceDate}
+                  max={new Date().toISOString().split('T')[0]}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The date you know this balance (e.g., bank statement date)
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="opening_balance_notes">Notes (Optional)</Label>
+                <Input
+                  id="opening_balance_notes"
+                  placeholder="e.g., From March bank statement"
+                  value={formData.opening_balance_notes}
+                  onChange={(e) => setFormData({ ...formData, opening_balance_notes: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Document where this balance came from
+                </p>
+              </div>
             </div>
           )}
         </div>
