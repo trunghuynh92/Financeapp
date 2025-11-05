@@ -165,11 +165,13 @@ export interface RecalculateCheckpointsParams {
 }
 
 export interface BalanceAdjustmentTransactionData {
+  raw_transaction_id: string
   account_id: number
   transaction_date: Date
   description: string
-  credit_amount: number
-  debit_amount: number
+  credit_amount: number | null  // Either credit OR debit is null (DB constraint)
+  debit_amount: number | null   // Either credit OR debit is null (DB constraint)
+  transaction_source: 'auto_adjustment'  // Always auto_adjustment for balance adjustments
   checkpoint_id: number
   is_balance_adjustment: boolean
   is_flagged: boolean

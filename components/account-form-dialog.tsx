@@ -216,6 +216,13 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
           const error = await response.json()
           throw new Error(error.error || "Failed to create account")
         }
+
+        // Check for warnings in the response
+        const result = await response.json()
+        if (result.warning) {
+          console.warn('⚠️ Checkpoint warning:', result.warning)
+          alert(`⚠️ ${result.warning}`)
+        }
       }
 
       onSuccess()

@@ -209,7 +209,7 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
               onClick={() => setIsBalanceEditDialogOpen(true)}
             >
               <Pencil className="mr-2 h-4 w-4" />
-              Edit Balance
+              Create Checkpoint
             </Button>
           </div>
         </CardHeader>

@@ -105,12 +105,13 @@ export async function createOrUpdateBalanceAdjustmentTransaction(
     }
 
     // Prepare transaction data
-    const transactionData: Partial<BalanceAdjustmentTransactionData> = {
+    // NOTE: Database constraint requires that either debit OR credit is NULL, not 0
+    const transactionData = {
       account_id,
       transaction_date: new Date(checkpoint_date),
       description: CHECKPOINT_CONFIG.BALANCE_ADJUSTMENT_DESCRIPTION,
-      credit_amount: adjustment_amount > 0 ? adjustment_amount : 0,
-      debit_amount: adjustment_amount < 0 ? Math.abs(adjustment_amount) : 0,
+      credit_amount: adjustment_amount > 0 ? adjustment_amount : null,
+      debit_amount: adjustment_amount < 0 ? Math.abs(adjustment_amount) : null,
       checkpoint_id,
       is_balance_adjustment: true,
       is_flagged: true,
@@ -118,6 +119,7 @@ export async function createOrUpdateBalanceAdjustmentTransaction(
 
     if (existing) {
       // Update existing transaction
+      // NOTE: Must use null (not 0) for the unused amount field
       const { error: updateError } = await supabase
         .from('original_transaction')
         .update({
@@ -132,14 +134,19 @@ export async function createOrUpdateBalanceAdjustmentTransaction(
       }
     } else {
       // Create new transaction
+      // Generate unique transaction ID for balance adjustment
+      const raw_transaction_id = `BAL-ADJ-${checkpoint_id}`
+
       const { error: insertError } = await supabase
         .from('original_transaction')
         .insert({
+          raw_transaction_id: raw_transaction_id,
           account_id: transactionData.account_id,
           transaction_date: transactionData.transaction_date?.toISOString(),
           description: transactionData.description,
           credit_amount: transactionData.credit_amount,
           debit_amount: transactionData.debit_amount,
+          transaction_source: 'auto_adjustment',  // Mark as system-generated adjustment
           checkpoint_id: transactionData.checkpoint_id,
           is_balance_adjustment: transactionData.is_balance_adjustment,
           is_flagged: transactionData.is_flagged,
@@ -248,9 +255,97 @@ export async function createOrUpdateCheckpoint(
     // Step 5: Update account opening balance date
     await updateAccountOpeningBalanceDate(account_id)
 
+    // Step 6: Sync account_balances table with calculated balance
+    await syncAccountBalance(account_id)
+
     return checkpoint
   } catch (error) {
     console.error('Error in createOrUpdateCheckpoint:', error)
+    throw error
+  }
+}
+
+// ==============================================================================
+// Helper Function: Sync account_balances from Calculated Balance
+// ==============================================================================
+
+/**
+ * Syncs account_balances.current_balance with the latest calculated balance
+ * Called after checkpoint creation/update to keep balance cache in sync
+ *
+ * account_balances table now serves as a cached/computed value:
+ * - Source of truth = checkpoints + transactions
+ * - account_balances = cached for quick queries
+ */
+export async function syncAccountBalance(accountId: number): Promise<void> {
+  try {
+    console.log(`Syncing account_balances for account ${accountId}...`)
+
+    // Get the most recent checkpoint to determine current balance
+    const { data: latestCheckpoint, error: checkpointError } = await supabase
+      .from('balance_checkpoints')
+      .select('*')
+      .eq('account_id', accountId)
+      .order('checkpoint_date', { ascending: false })
+      .order('checkpoint_id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (checkpointError) {
+      throw new Error(`Failed to fetch latest checkpoint: ${checkpointError.message}`)
+    }
+
+    let calculatedBalance = 0
+
+    if (latestCheckpoint) {
+      // If checkpoint exists, current balance = calculated + adjustment
+      // (adjustment represents the unexplained amount)
+      calculatedBalance = latestCheckpoint.calculated_balance + latestCheckpoint.adjustment_amount
+      console.log(`Latest checkpoint found:`, {
+        checkpoint_date: latestCheckpoint.checkpoint_date,
+        declared_balance: latestCheckpoint.declared_balance,
+        calculated_balance: latestCheckpoint.calculated_balance,
+        adjustment_amount: latestCheckpoint.adjustment_amount,
+        total: calculatedBalance,
+      })
+    } else {
+      // No checkpoint - calculate from all transactions
+      const { data: transactions, error: txError } = await supabase
+        .from('original_transaction')
+        .select('credit_amount, debit_amount')
+        .eq('account_id', accountId)
+        .eq('is_balance_adjustment', false)
+
+      if (txError) {
+        throw new Error(`Failed to fetch transactions: ${txError.message}`)
+      }
+
+      // Calculate balance: sum(credits) - sum(debits)
+      if (transactions && transactions.length > 0) {
+        const totalCredit = transactions.reduce((sum, tx) => sum + (tx.credit_amount || 0), 0)
+        const totalDebit = transactions.reduce((sum, tx) => sum + (tx.debit_amount || 0), 0)
+        calculatedBalance = totalCredit - totalDebit
+      }
+
+      console.log(`No checkpoint found, calculated from ${transactions?.length || 0} transactions: ${calculatedBalance}`)
+    }
+
+    // Update account_balances table
+    const { error: updateError } = await supabase
+      .from('account_balances')
+      .update({
+        current_balance: calculatedBalance,
+        last_updated: new Date().toISOString(),
+      })
+      .eq('account_id', accountId)
+
+    if (updateError) {
+      throw new Error(`Failed to update account_balances: ${updateError.message}`)
+    }
+
+    console.log(`✅ account_balances synced successfully for account ${accountId}: ${calculatedBalance}`)
+  } catch (error) {
+    console.error('Error in syncAccountBalance:', error)
     throw error
   }
 }
@@ -353,6 +448,9 @@ export async function recalculateAllCheckpoints(
 
     // Update account opening balance date
     await updateAccountOpeningBalanceDate(account_id)
+
+    // Sync account_balances with latest calculated balance
+    await syncAccountBalance(account_id)
 
     return results
   } catch (error) {

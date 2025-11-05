@@ -129,35 +129,52 @@ export async function POST(request: NextRequest) {
     }
 
     // Set initial balance if provided
+    let checkpointWarning: string | null = null
+
     if (body.initial_balance !== undefined && body.initial_balance !== 0) {
       // If opening_balance_date is provided, create a checkpoint
       // This follows the "No money without origin" principle
       if (body.opening_balance_date) {
         try {
-          await createOrUpdateCheckpoint({
+          console.log('Creating checkpoint with params:', {
+            account_id: newAccount.account_id,
+            checkpoint_date: body.opening_balance_date,
+            declared_balance: body.initial_balance,
+            notes: body.opening_balance_notes || 'Opening balance',
+          })
+
+          const checkpoint = await createOrUpdateCheckpoint({
             account_id: newAccount.account_id,
             checkpoint_date: new Date(body.opening_balance_date),
             declared_balance: body.initial_balance,
             notes: body.opening_balance_notes || 'Opening balance',
           })
-          console.log('Checkpoint created for opening balance')
-        } catch (checkpointError) {
-          console.error('Error creating opening balance checkpoint:', checkpointError)
-          // Account was created but checkpoint creation failed
-          // We'll still return success but log the error
+
+          console.log('✅ Checkpoint created successfully:', checkpoint)
+        } catch (checkpointError: any) {
+          console.error('❌ Error creating opening balance checkpoint:', checkpointError)
+          console.error('Error details:', {
+            message: checkpointError.message,
+            stack: checkpointError.stack,
+          })
+
+          checkpointWarning = `Account created successfully, but checkpoint creation failed: ${checkpointError.message}. Please check server logs.`
         }
       } else {
         // Legacy behavior: Just update account_balances directly
         // Note: This doesn't follow "No money without origin" principle
+        console.log('No opening_balance_date provided, using legacy balance update')
+
         const { error: balanceError } = await supabase
           .from('account_balances')
           .update({ current_balance: body.initial_balance })
           .eq('account_id', newAccount.account_id)
 
         if (balanceError) {
-          console.error('Error setting initial balance:', balanceError)
-          // Account was created but balance update failed
-          // We'll still return success but log the error
+          console.error('❌ Error setting initial balance:', balanceError)
+          checkpointWarning = `Account created successfully, but balance update failed: ${balanceError.message}`
+        } else {
+          console.log('✅ Legacy balance updated successfully')
         }
       }
     }
@@ -172,6 +189,17 @@ export async function POST(request: NextRequest) {
       `)
       .eq('account_id', newAccount.account_id)
       .single()
+
+    // Return account with optional warning about checkpoint creation
+    if (checkpointWarning) {
+      return NextResponse.json(
+        {
+          ...completeAccount,
+          warning: checkpointWarning,
+        },
+        { status: 201 }
+      )
+    }
 
     return NextResponse.json(completeAccount, { status: 201 })
   } catch (error) {
