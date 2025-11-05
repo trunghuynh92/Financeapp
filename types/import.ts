@@ -151,6 +151,11 @@ export interface ImportWithCheckpointResult {
     calculated_balance: number
     adjustment_amount: number
     is_reconciled: boolean
+    checkpoint_date: string
+  }
+  recalculationSummary: {
+    checkpointsRecalculated: number  // How many existing checkpoints were recalculated
+    message: string                   // User-friendly message
   }
   duplicateWarnings: Array<{
     importedTransaction: ImportedTransactionData

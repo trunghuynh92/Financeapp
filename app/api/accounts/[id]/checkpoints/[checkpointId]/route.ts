@@ -67,11 +67,12 @@ export async function GET(
 }
 
 // ==============================================================================
-// PUT /api/accounts/[id]/checkpoints/[checkpointId]
+// PUT/PATCH /api/accounts/[id]/checkpoints/[checkpointId]
 // Update a checkpoint's declared balance or notes
+// Both PUT and PATCH supported for flexibility
 // ==============================================================================
 
-export async function PUT(
+async function updateCheckpointHandler(
   request: NextRequest,
   { params }: { params: { id: string; checkpointId: string } }
 ) {
@@ -123,7 +124,7 @@ export async function PUT(
       )
     }
 
-    // Update checkpoint
+    // Update checkpoint (this will trigger recalculation of all checkpoints)
     const updatedCheckpoint = await createOrUpdateCheckpoint({
       account_id: accountId,
       checkpoint_date: new Date(existingCheckpoint.checkpoint_date),
@@ -150,6 +151,9 @@ export async function PUT(
     )
   }
 }
+
+export const PUT = updateCheckpointHandler
+export const PATCH = updateCheckpointHandler
 
 // ==============================================================================
 // DELETE /api/accounts/[id]/checkpoints/[checkpointId]

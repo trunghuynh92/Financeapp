@@ -173,6 +173,14 @@ export async function POST(
     const checkpointDate = new Date(statementEndDate)
     const endingBalance = parseFloat(statementEndingBalance)
 
+    // Count existing checkpoints BEFORE creating new one
+    // to determine how many will be recalculated
+    const { count: existingCheckpointsCount } = await supabase
+      .from('balance_checkpoints')
+      .select('*', { count: 'exact', head: true })
+      .eq('account_id', accountId)
+      .gte('checkpoint_date', checkpointDate.toISOString())
+
     const checkpoint = await createOrUpdateCheckpoint({
       account_id: accountId,
       checkpoint_date: checkpointDate,
@@ -182,6 +190,17 @@ export async function POST(
       ).toLocaleDateString()} to ${checkpointDate.toLocaleDateString()}`,
       import_batch_id: importBatch.import_batch_id,
     })
+
+    // Prepare recalculation summary
+    const recalculationSummary = {
+      checkpointsRecalculated: existingCheckpointsCount || 0,
+      message:
+        (existingCheckpointsCount || 0) > 0
+          ? `Recalculated ${existingCheckpointsCount} existing checkpoint${
+              existingCheckpointsCount === 1 ? '' : 's'
+            } due to statement date`
+          : 'No existing checkpoints affected',
+    }
 
     // Prepare import summary
     const importSummary: ImportSummary = {
@@ -202,7 +221,9 @@ export async function POST(
         calculated_balance: checkpoint.calculated_balance,
         adjustment_amount: checkpoint.adjustment_amount,
         is_reconciled: checkpoint.is_reconciled,
+        checkpoint_date: checkpoint.checkpoint_date,
       },
+      recalculationSummary,
       duplicateWarnings: [], // TODO: Implement duplicate detection
     }
 

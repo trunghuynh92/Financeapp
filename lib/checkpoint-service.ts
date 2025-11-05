@@ -169,6 +169,9 @@ export async function createOrUpdateBalanceAdjustmentTransaction(
 /**
  * Creates or updates a balance checkpoint for an account
  * This is the main entry point for checkpoint management
+ *
+ * IMPORTANT: After creating/updating, this triggers recalculation of ALL checkpoints
+ * to ensure adjustments are correct regardless of creation order
  */
 export async function createOrUpdateCheckpoint(
   params: CreateOrUpdateCheckpointParams
@@ -183,15 +186,7 @@ export async function createOrUpdateCheckpoint(
   } = params
 
   try {
-    // Step 1: Calculate balance from transactions up to checkpoint date
-    const balanceCalc = await calculateBalanceUpToDate(account_id, checkpoint_date)
-    const calculated_balance = balanceCalc.calculated_balance
-
-    // Step 2: Calculate adjustment amount
-    const adjustment_amount = declared_balance - calculated_balance
-    const is_reconciled = Math.abs(adjustment_amount) < CHECKPOINT_CONFIG.RECONCILIATION_THRESHOLD
-
-    // Step 3: Check if checkpoint already exists for this account and date
+    // Step 1: Check if checkpoint already exists for this account and date
     const { data: existing, error: fetchError } = await supabase
       .from('balance_checkpoints')
       .select('*')
@@ -206,14 +201,11 @@ export async function createOrUpdateCheckpoint(
     let checkpoint: BalanceCheckpoint
 
     if (existing) {
-      // Update existing checkpoint
+      // Update existing checkpoint (just update declared balance and notes)
       const { data: updated, error: updateError } = await supabase
         .from('balance_checkpoints')
         .update({
           declared_balance,
-          calculated_balance,
-          adjustment_amount,
-          is_reconciled,
           notes,
           updated_at: new Date().toISOString(),
         })
@@ -227,16 +219,16 @@ export async function createOrUpdateCheckpoint(
 
       checkpoint = updated
     } else {
-      // Create new checkpoint
+      // Create new checkpoint (calculated values will be set by recalculation)
       const { data: created, error: insertError } = await supabase
         .from('balance_checkpoints')
         .insert({
           account_id,
           checkpoint_date: checkpoint_date.toISOString(),
           declared_balance,
-          calculated_balance,
-          adjustment_amount,
-          is_reconciled,
+          calculated_balance: 0, // Will be recalculated
+          adjustment_amount: 0,   // Will be recalculated
+          is_reconciled: false,   // Will be recalculated
           notes,
           import_batch_id,
           created_by_user_id: user_id,
@@ -251,16 +243,28 @@ export async function createOrUpdateCheckpoint(
       checkpoint = created
     }
 
-    // Step 4: Create or update balance adjustment transaction
-    await createOrUpdateBalanceAdjustmentTransaction(checkpoint)
+    // Step 2: Recalculate ALL checkpoints for this account
+    // This ensures adjustments are correct regardless of creation order
+    await recalculateAllCheckpoints({ account_id })
 
-    // Step 5: Update account opening balance date
+    // Step 3: Fetch the updated checkpoint after recalculation
+    const { data: finalCheckpoint, error: finalError } = await supabase
+      .from('balance_checkpoints')
+      .select('*')
+      .eq('checkpoint_id', checkpoint.checkpoint_id)
+      .single()
+
+    if (finalError || !finalCheckpoint) {
+      throw new Error(`Failed to fetch recalculated checkpoint: ${finalError?.message}`)
+    }
+
+    // Step 4: Update account opening balance date
     await updateAccountOpeningBalanceDate(account_id)
 
-    // Step 6: Sync account_balances table with calculated balance
+    // Step 5: Sync account_balances table with calculated balance
     await syncAccountBalance(account_id)
 
-    return checkpoint
+    return finalCheckpoint
   } catch (error) {
     console.error('Error in createOrUpdateCheckpoint:', error)
     throw error
@@ -357,8 +361,16 @@ export async function syncAccountBalance(accountId: number): Promise<void> {
 // ==============================================================================
 
 /**
- * Recalculates all checkpoints for an account
- * Called when transactions are added/edited/deleted
+ * Recalculates all checkpoints for an account IN CHRONOLOGICAL ORDER
+ * This ensures adjustments are calculated correctly regardless of creation order
+ *
+ * Key algorithm:
+ * 1. Process all checkpoints sorted by checkpoint_date ASC
+ * 2. For each checkpoint, calculate balance from:
+ *    - All non-adjustment transactions up to checkpoint date
+ *    - Adjustment transactions from PREVIOUS checkpoints only (by date, not creation time)
+ * 3. This ensures that a checkpoint dated Oct 5 created AFTER a checkpoint dated Oct 15
+ *    will have the correct adjustment amount
  */
 export async function recalculateAllCheckpoints(
   params: RecalculateCheckpointsParams
@@ -366,54 +378,104 @@ export async function recalculateAllCheckpoints(
   const { account_id, from_date, to_date, checkpoint_ids } = params
 
   try {
-    // Build query for checkpoints
-    let query = supabase
+    // Fetch ALL checkpoints for the account in chronological order
+    // We need to recalculate all, not just filtered ones, to get correct adjustment chain
+    const { data: allCheckpoints, error: fetchError } = await supabase
       .from('balance_checkpoints')
       .select('*')
       .eq('account_id', account_id)
       .order('checkpoint_date', { ascending: true })
-
-    // Apply filters if provided
-    if (from_date) {
-      query = query.gte('checkpoint_date', from_date.toISOString())
-    }
-    if (to_date) {
-      query = query.lte('checkpoint_date', to_date.toISOString())
-    }
-    if (checkpoint_ids && checkpoint_ids.length > 0) {
-      query = query.in('checkpoint_id', checkpoint_ids)
-    }
-
-    const { data: checkpoints, error: fetchError } = await query
+      .order('checkpoint_id', { ascending: true }) // Tie-breaker for same dates
 
     if (fetchError) {
       throw new Error(`Failed to fetch checkpoints: ${fetchError.message}`)
     }
 
-    if (!checkpoints || checkpoints.length === 0) {
+    if (!allCheckpoints || allCheckpoints.length === 0) {
       return []
     }
 
-    // Recalculate each checkpoint
+    // Determine which checkpoints to actually recalculate (for return results)
+    let checkpointsToRecalculate = allCheckpoints
+    if (from_date || to_date || checkpoint_ids) {
+      checkpointsToRecalculate = allCheckpoints.filter(cp => {
+        const cpDate = new Date(cp.checkpoint_date)
+        if (from_date && cpDate < from_date) return false
+        if (to_date && cpDate > to_date) return false
+        if (checkpoint_ids && !checkpoint_ids.includes(cp.checkpoint_id)) return false
+        return true
+      })
+    }
+
     const results: CheckpointRecalculationResult[] = []
 
-    for (const checkpoint of checkpoints) {
+    // Process each checkpoint in chronological order
+    for (const checkpoint of allCheckpoints) {
+      const checkpointDate = new Date(checkpoint.checkpoint_date)
+
+      // Calculate balance from:
+      // 1. Non-adjustment transactions up to checkpoint date
+      const { data: nonAdjustmentTxs, error: txError } = await supabase
+        .from('original_transaction')
+        .select('credit_amount, debit_amount')
+        .eq('account_id', account_id)
+        .eq('is_balance_adjustment', false)
+        .lte('transaction_date', checkpointDate.toISOString())
+
+      if (txError) {
+        throw new Error(`Failed to fetch transactions: ${txError.message}`)
+      }
+
+      let totalCredits = 0
+      let totalDebits = 0
+
+      // Sum non-adjustment transactions
+      if (nonAdjustmentTxs && nonAdjustmentTxs.length > 0) {
+        for (const tx of nonAdjustmentTxs) {
+          if (tx.credit_amount) totalCredits += tx.credit_amount
+          if (tx.debit_amount) totalDebits += tx.debit_amount
+        }
+      }
+
+      // 2. Adjustment transactions from PREVIOUS checkpoints only (by date)
+      // Get checkpoints with earlier dates
+      const previousCheckpoints = allCheckpoints.filter(cp =>
+        new Date(cp.checkpoint_date) < checkpointDate
+      )
+
+      if (previousCheckpoints.length > 0) {
+        const previousCheckpointIds = previousCheckpoints.map(cp => cp.checkpoint_id)
+
+        const { data: previousAdjustments, error: adjError } = await supabase
+          .from('original_transaction')
+          .select('credit_amount, debit_amount')
+          .eq('account_id', account_id)
+          .eq('is_balance_adjustment', true)
+          .in('checkpoint_id', previousCheckpointIds)
+
+        if (adjError) {
+          throw new Error(`Failed to fetch previous adjustments: ${adjError.message}`)
+        }
+
+        // Sum previous adjustments
+        if (previousAdjustments && previousAdjustments.length > 0) {
+          for (const tx of previousAdjustments) {
+            if (tx.credit_amount) totalCredits += tx.credit_amount
+            if (tx.debit_amount) totalDebits += tx.debit_amount
+          }
+        }
+      }
+
+      const newCalculatedBalance = totalCredits - totalDebits
+      const newAdjustmentAmount = checkpoint.declared_balance - newCalculatedBalance
+      const newIsReconciled = Math.abs(newAdjustmentAmount) < CHECKPOINT_CONFIG.RECONCILIATION_THRESHOLD
+
+      // Store old values for results
       const oldCalculatedBalance = checkpoint.calculated_balance
       const oldAdjustmentAmount = checkpoint.adjustment_amount
       const oldIsReconciled = checkpoint.is_reconciled
 
-      // Recalculate balance
-      const balanceCalc = await calculateBalanceUpToDate(
-        account_id,
-        new Date(checkpoint.checkpoint_date)
-      )
-      const newCalculatedBalance = balanceCalc.calculated_balance
-
-      // Calculate new adjustment
-      const newAdjustmentAmount = checkpoint.declared_balance - newCalculatedBalance
-      const newIsReconciled = Math.abs(newAdjustmentAmount) < CHECKPOINT_CONFIG.RECONCILIATION_THRESHOLD
-
-      // Update checkpoint
+      // Update checkpoint record
       const { error: updateError } = await supabase
         .from('balance_checkpoints')
         .update({
@@ -428,24 +490,50 @@ export async function recalculateAllCheckpoints(
         throw new Error(`Failed to update checkpoint ${checkpoint.checkpoint_id}: ${updateError.message}`)
       }
 
-      // Update or create adjustment transaction
-      await createOrUpdateBalanceAdjustmentTransaction({
-        ...checkpoint,
-        calculated_balance: newCalculatedBalance,
-        adjustment_amount: newAdjustmentAmount,
-        is_reconciled: newIsReconciled,
-      })
+      // Delete old adjustment transaction
+      await supabase
+        .from('original_transaction')
+        .delete()
+        .eq('checkpoint_id', checkpoint.checkpoint_id)
+        .eq('is_balance_adjustment', true)
 
-      results.push({
-        checkpoint_id: checkpoint.checkpoint_id,
-        old_calculated_balance: oldCalculatedBalance,
-        new_calculated_balance: newCalculatedBalance,
-        old_adjustment_amount: oldAdjustmentAmount,
-        new_adjustment_amount: newAdjustmentAmount,
-        old_is_reconciled: oldIsReconciled,
-        new_is_reconciled: newIsReconciled,
-        adjustment_transaction_updated: true,
-      })
+      // Create new adjustment transaction if needed
+      if (Math.abs(newAdjustmentAmount) >= CHECKPOINT_CONFIG.RECONCILIATION_THRESHOLD) {
+        const raw_transaction_id = `BAL-ADJ-${checkpoint.checkpoint_id}`
+
+        const { error: insertError } = await supabase
+          .from('original_transaction')
+          .insert({
+            raw_transaction_id,
+            account_id,
+            transaction_date: checkpointDate.toISOString(),
+            description: CHECKPOINT_CONFIG.BALANCE_ADJUSTMENT_DESCRIPTION,
+            credit_amount: newAdjustmentAmount > 0 ? newAdjustmentAmount : null,
+            debit_amount: newAdjustmentAmount < 0 ? Math.abs(newAdjustmentAmount) : null,
+            transaction_source: 'auto_adjustment',
+            checkpoint_id: checkpoint.checkpoint_id,
+            is_balance_adjustment: true,
+            is_flagged: true,
+          })
+
+        if (insertError) {
+          throw new Error(`Failed to create adjustment transaction: ${insertError.message}`)
+        }
+      }
+
+      // Add to results if this checkpoint was requested for recalculation
+      if (checkpointsToRecalculate.find(cp => cp.checkpoint_id === checkpoint.checkpoint_id)) {
+        results.push({
+          checkpoint_id: checkpoint.checkpoint_id,
+          old_calculated_balance: oldCalculatedBalance,
+          new_calculated_balance: newCalculatedBalance,
+          old_adjustment_amount: oldAdjustmentAmount,
+          new_adjustment_amount: newAdjustmentAmount,
+          old_is_reconciled: oldIsReconciled,
+          new_is_reconciled: newIsReconciled,
+          adjustment_transaction_updated: true,
+        })
+      }
     }
 
     // Update account opening balance date
@@ -563,6 +651,7 @@ export async function getCheckpointById(
 
 /**
  * Delete a checkpoint and its associated balance adjustment transaction
+ * After deletion, recalculates all remaining checkpoints
  */
 export async function deleteCheckpoint(checkpointId: number): Promise<void> {
   try {
@@ -572,6 +661,8 @@ export async function deleteCheckpoint(checkpointId: number): Promise<void> {
     if (!checkpoint) {
       throw new Error(`Checkpoint ${checkpointId} not found`)
     }
+
+    const accountId = checkpoint.account_id
 
     // Delete the checkpoint (CASCADE will delete the adjustment transaction)
     const { error } = await supabase
@@ -583,8 +674,16 @@ export async function deleteCheckpoint(checkpointId: number): Promise<void> {
       throw new Error(`Failed to delete checkpoint: ${error.message}`)
     }
 
+    // Recalculate all remaining checkpoints
+    // This ensures that if we deleted a checkpoint with an earlier date,
+    // later checkpoints get their adjustments recalculated correctly
+    await recalculateAllCheckpoints({ account_id: accountId })
+
     // Update account opening balance date
-    await updateAccountOpeningBalanceDate(checkpoint.account_id)
+    await updateAccountOpeningBalanceDate(accountId)
+
+    // Sync account balance
+    await syncAccountBalance(accountId)
   } catch (error) {
     console.error('Error in deleteCheckpoint:', error)
     throw error

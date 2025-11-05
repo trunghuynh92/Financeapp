@@ -728,6 +728,24 @@ export function BankImportDialog({
           </div>
         </div>
 
+        {/* Recalculation Summary */}
+        {importResult.recalculationSummary.checkpointsRecalculated > 0 && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="flex gap-3">
+              <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-blue-700">
+                <p className="font-medium mb-1">Checkpoints Recalculated</p>
+                <p>
+                  {importResult.recalculationSummary.message}
+                </p>
+                <p className="mt-2 text-xs">
+                  All affected checkpoints have been automatically updated to reflect the imported transactions.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Adjustment Warning */}
         {!checkpoint.is_reconciled && (
           <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
