@@ -3,8 +3,23 @@ import { AccountType, Currency, CURRENCY_SYMBOLS, ACCOUNT_TYPE_CONFIG } from '@/
 /**
  * Format a number as currency with the specified currency code
  */
-export function formatCurrency(amount: number, currency: Currency = 'VND'): string {
+export function formatCurrency(amount: number, currency: Currency = 'VND', short: boolean = false): string {
   const symbol = CURRENCY_SYMBOLS[currency]
+
+  // Short format for charts (abbreviated)
+  if (short) {
+    const absAmount = Math.abs(amount)
+    const sign = amount < 0 ? '-' : ''
+
+    if (absAmount >= 1_000_000_000) {
+      return `${sign}${(absAmount / 1_000_000_000).toFixed(1)}B${symbol}`
+    } else if (absAmount >= 1_000_000) {
+      return `${sign}${(absAmount / 1_000_000).toFixed(1)}M${symbol}`
+    } else if (absAmount >= 1_000) {
+      return `${sign}${(absAmount / 1_000).toFixed(0)}K${symbol}`
+    }
+    return `${sign}${absAmount}${symbol}`
+  }
 
   // Format based on currency
   if (currency === 'VND') {

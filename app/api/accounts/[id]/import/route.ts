@@ -99,21 +99,35 @@ export async function POST(
       const worksheet = workbook.Sheets[firstSheetName]
       const rawData = XLSX.utils.sheet_to_json(worksheet, {
         header: 1,
-        raw: false,
+        raw: false, // Use formatted text values to preserve thousand separators
         defval: null,
       }) as (string | number | null)[][]
 
+      // Filter out completely empty rows (rows with formatting but no actual data)
+      const filteredData = rawData.filter(row => {
+        // Keep row if it has at least one non-empty cell
+        return row.some(cell => {
+          if (cell === null || cell === undefined) return false
+          const str = String(cell).trim()
+          return str.length > 0
+        })
+      })
+
       // Convert to CSV text format for existing parser
-      const csvText = rawData
+      // IMPORTANT: Properly escape newlines and quotes to preserve structure
+      const csvText = filteredData
         .map(row =>
           row.map(cell => {
             if (cell === null || cell === undefined) return ''
             const str = String(cell)
-            // Escape quotes and wrap in quotes if contains comma
-            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-              return `"${str.replace(/"/g, '""')}"`
+            // Always quote cells that contain special characters
+            // Replace actual newlines with space to prevent CSV row breaks
+            const cleaned = str.replace(/[\r\n]+/g, ' ').trim()
+            // Escape quotes and wrap in quotes if contains comma or quotes
+            if (cleaned.includes(',') || cleaned.includes('"')) {
+              return `"${cleaned.replace(/"/g, '""')}"`
             }
-            return str
+            return cleaned
           }).join(',')
         )
         .join('\n')
@@ -146,6 +160,8 @@ export async function POST(
     const transactionsToInsert: any[] = []
     const errors: Array<{ rowIndex: number; error: string }> = []
 
+    console.log(`📊 Processing ${parsedCSV.rows.length} rows from import...`)
+
     for (let i = 0; i < parsedCSV.rows.length; i++) {
       const row = parsedCSV.rows[i]
       const rowIndex = i + 2 // +2 because row 1 is header, and we're 0-indexed
@@ -176,8 +192,11 @@ export async function POST(
               bank_reference: transactionData.bank_reference,
             },
           })
+        } else {
+          console.log(`⚠️  Row ${rowIndex}: processRow returned null (skipped)`)
         }
       } catch (err: any) {
+        console.error(`❌ Row ${rowIndex} error:`, err.message)
         errors.push({
           rowIndex,
           error: err.message || 'Failed to process row',
@@ -188,6 +207,12 @@ export async function POST(
           error: err.message,
         })
       }
+    }
+
+    console.log(`✅ Successfully processed ${transactionsToInsert.length} transactions`)
+    console.log(`❌ Failed to process ${errors.length} rows`)
+    if (errors.length > 0) {
+      console.log('First few errors:', errors.slice(0, 5))
     }
 
     // Bulk insert transactions
@@ -218,8 +243,18 @@ export async function POST(
 
     // Create checkpoint with statement ending balance
     // Set checkpoint to END of day to ensure all same-day transactions are included in calculation
-    const checkpointDate = new Date(statementEndDate)
-    checkpointDate.setHours(23, 59, 59, 999)  // End of day (23:59:59.999)
+    // Parse date in local timezone to avoid UTC conversion issues
+    const dateMatch = statementEndDate.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    let checkpointDate: Date
+    if (dateMatch) {
+      // ISO format: create date directly in local timezone
+      const [, year, month, day] = dateMatch
+      checkpointDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 23, 59, 59, 999)
+    } else {
+      // Fallback for other formats
+      checkpointDate = new Date(statementEndDate)
+      checkpointDate.setHours(23, 59, 59, 999)
+    }
     const endingBalance = parseFloat(statementEndingBalance)
 
     // Count existing checkpoints BEFORE creating new one
@@ -314,6 +349,13 @@ function processRow(
   fileName: string,
   rowIndex: number
 ): any | null {
+  // Debug logging for first row
+  if (rowIndex === 0) {
+    console.log('🔍 First row data:', row)
+    console.log('🔍 Column mappings:', columnMappings.map(m => `${m.csvColumn} -> ${m.mappedTo}`))
+    console.log('🔍 Available columns in row:', Object.keys(row))
+  }
+
   const transactionData: any = {
     account_id: accountId,
     transaction_source: 'imported_bank',

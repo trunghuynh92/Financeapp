@@ -52,6 +52,10 @@ export type DateFormat =
   | 'yyyy-mm-dd'    // ISO (2024-12-25)
   | 'yyyy/mm/dd'    // Japan (2024/12/25)
   | 'dd MMM yyyy'   // Bank format (25 Dec 2024)
+  | 'mm/dd/yy'      // USA 2-digit year (12/25/24)
+  | 'dd/mm/yy'      // Europe/Vietnam 2-digit year (25/12/24)
+  | 'm/d/yy'        // USA short format (6/30/25)
+  | 'd/m/yy'        // Europe/Vietnam short format (6/3/25)
   | 'unknown'
 
 export interface DateFormatDetectionResult {
@@ -207,6 +211,10 @@ export function isValidDateFormat(format: string): format is DateFormat {
     'yyyy-mm-dd',
     'yyyy/mm/dd',
     'dd MMM yyyy',
+    'mm/dd/yy',
+    'dd/mm/yy',
+    'm/d/yy',
+    'd/m/yy',
   ].includes(format)
 }
 
@@ -219,6 +227,10 @@ export function getDateFormatExample(format: DateFormat): string {
     'yyyy-mm-dd': '2024-12-25',
     'yyyy/mm/dd': '2024/12/25',
     'dd MMM yyyy': '25 Dec 2024',
+    'mm/dd/yy': '12/25/24',
+    'dd/mm/yy': '25/12/24',
+    'm/d/yy': '6/30/25',
+    'd/m/yy': '6/3/25',
     'unknown': 'Unknown format',
   }
   return examples[format]

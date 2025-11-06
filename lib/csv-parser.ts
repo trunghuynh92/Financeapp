@@ -98,13 +98,16 @@ function findHeaderRow(lines: string[]): number {
   const headerKeywords = [
     'date', 'ngày', 'ngay', 'transaction date', 'giao dich',
     'description', 'chi tiết', 'mô tả', 'particulars', 'details', 'dien giai', 'diễn giải',
-    'debit', 'credit', 'chi', 'thu', 'amount', 'số tiền',
+    'debit', 'credit', 'chi', 'thu', 'amount', 'số tiền', 'ghi nợ', 'ghi có',
     'balance', 'số dư', 'sodu', 'running balance',
-    'reference', 'but toan', 'số but toan',
+    'reference', 'but toan', 'số but toan', 'giao dịch', 'séc',
     'account', 'tai khoan', 'tài khoản',
     'bank', 'ngan hang', 'ngân hàng',
     'fee', 'phi', 'phí', 'interest', 'lai', 'lãi'
   ]
+
+  // Strong indicators that this is a header row (Vietnamese "STT" = row number)
+  const strongHeaderIndicators = ['stt', 'no.', '#', 'row']
 
   let bestMatchIndex = 0
   let bestMatchScore = 0
@@ -118,16 +121,52 @@ function findHeaderRow(lines: string[]): number {
 
     // Initialize score
     let score = 0
-    const normalizedLine = lines[i].toLowerCase()
+    // Normalize line: remove newlines, convert to lowercase
+    const normalizedLine = lines[i].replace(/[\r\n]+/g, ' ').toLowerCase()
 
     // Count header keyword matches (HEAVILY WEIGHTED - 3 points each)
     let keywordMatches = 0
+    let hasStrongIndicator = false
+    let hasVeryLongCell = false
+
     for (const keyword of headerKeywords) {
       if (normalizedLine.includes(keyword)) {
         keywordMatches++
       }
     }
+
+    // Check for strong header indicators
+    for (const indicator of strongHeaderIndicators) {
+      if (normalizedLine.includes(indicator)) {
+        hasStrongIndicator = true
+        break
+      }
+    }
+
+    // Check for very long cells (likely metadata)
+    for (const col of nonEmptyColumns) {
+      if (col.length > 50) {
+        hasVeryLongCell = true
+        break
+      }
+    }
+
     score += keywordMatches * 3
+
+    // HUGE bonus for strong header indicators (like "STT")
+    if (hasStrongIndicator) {
+      score += 10
+    }
+
+    // Require minimum keyword matches to be considered a header
+    if (keywordMatches < 3) {
+      score -= 10
+    }
+
+    // Heavy penalty: Row has very long cell content (likely metadata)
+    if (hasVeryLongCell) {
+      score -= 15
+    }
 
     // Bonus: More columns = more likely to be header (5+ columns gets bonus)
     if (nonEmptyColumns.length >= 5) {
@@ -188,16 +227,29 @@ function extractStatementMetadata(
     return { startDate: null, endDate: null, endingBalance: null }
   }
 
-  // Find date column (support both Vietnamese and English)
-  const dateColumn = headers.find(h => {
-    const normalized = h.toLowerCase()
+  // Find date column - prioritize "effective date" over other date columns
+  // First, look for "effective date" or "ngày hiệu lực"
+  let dateColumn = headers.find(h => {
+    const normalized = h.toLowerCase().replace(/\s+/g, ' ')
     return (
-      normalized.includes('date') ||
-      normalized.includes('ngày') ||
-      normalized.includes('ngay') ||
-      normalized.includes('giao dich')
+      normalized.includes('effective') ||
+      normalized.includes('hiệu lực') ||
+      normalized.includes('hieu luc')
     )
   })
+
+  // Fallback: Find any date column (support both Vietnamese and English)
+  if (!dateColumn) {
+    dateColumn = headers.find(h => {
+      const normalized = h.toLowerCase()
+      return (
+        normalized.includes('date') ||
+        normalized.includes('ngày') ||
+        normalized.includes('ngay') ||
+        normalized.includes('giao dich')
+      )
+    })
+  }
 
   if (!dateColumn) {
     return { startDate: null, endDate: null, endingBalance: null }
@@ -226,8 +278,16 @@ function extractStatementMetadata(
   const earliestDateEntry = datesWithRows[0]
   const latestDateEntry = datesWithRows[datesWithRows.length - 1]
 
-  const startDate = earliestDateEntry.date.toISOString().split('T')[0]
-  const endDate = latestDateEntry.date.toISOString().split('T')[0]
+  // Format dates in local timezone to avoid UTC conversion shifting dates
+  const formatLocalDate = (date: Date): string => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const startDate = formatLocalDate(earliestDateEntry.date)
+  const endDate = formatLocalDate(latestDateEntry.date)
 
   // Find balance/running balance column
   const balanceColumn = headers.find(h => {
@@ -409,6 +469,59 @@ const DATE_FORMAT_PATTERNS: Array<{
       return isValidDate(date) ? date : null
     },
   },
+  // 2-digit year formats
+  {
+    format: 'mm/dd/yy',
+    regex: /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/,
+    parser: (value) => {
+      const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+      if (!match) return null
+      const [, month, day, yearStr] = match
+      // Y2K conversion: 00-29 → 2000-2029, 30-99 → 1930-1999
+      const year = parseInt(yearStr) < 30 ? 2000 + parseInt(yearStr) : 1900 + parseInt(yearStr)
+      const date = new Date(year, parseInt(month) - 1, parseInt(day))
+      return isValidDate(date) ? date : null
+    },
+  },
+  {
+    format: 'dd/mm/yy',
+    regex: /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/,
+    parser: (value) => {
+      const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+      if (!match) return null
+      const [, day, month, yearStr] = match
+      // Y2K conversion: 00-29 → 2000-2029, 30-99 → 1930-1999
+      const year = parseInt(yearStr) < 30 ? 2000 + parseInt(yearStr) : 1900 + parseInt(yearStr)
+      const date = new Date(year, parseInt(month) - 1, parseInt(day))
+      return isValidDate(date) ? date : null
+    },
+  },
+  {
+    format: 'm/d/yy',
+    regex: /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/,
+    parser: (value) => {
+      const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+      if (!match) return null
+      const [, month, day, yearStr] = match
+      // Y2K conversion: 00-29 → 2000-2029, 30-99 → 1930-1999
+      const year = parseInt(yearStr) < 30 ? 2000 + parseInt(yearStr) : 1900 + parseInt(yearStr)
+      const date = new Date(year, parseInt(month) - 1, parseInt(day))
+      return isValidDate(date) ? date : null
+    },
+  },
+  {
+    format: 'd/m/yy',
+    regex: /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/,
+    parser: (value) => {
+      const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+      if (!match) return null
+      const [, day, month, yearStr] = match
+      // Y2K conversion: 00-29 → 2000-2029, 30-99 → 1930-1999
+      const year = parseInt(yearStr) < 30 ? 2000 + parseInt(yearStr) : 1900 + parseInt(yearStr)
+      const date = new Date(year, parseInt(month) - 1, parseInt(day))
+      return isValidDate(date) ? date : null
+    },
+  },
   {
     format: 'dd MMM yyyy',
     regex: /^(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})$/i,
@@ -578,7 +691,8 @@ function detectSingleColumnType(
   if (
     normalizedName.includes('date') ||
     normalizedName.includes('ngày') || // Vietnamese
-    normalizedName.includes('ngay')
+    normalizedName.includes('ngay') ||
+    normalizedName.includes('giao dịch')
   ) {
     const dateDetection = detectDateFormat(sampleValues)
     return {
@@ -617,7 +731,8 @@ function detectSingleColumnType(
     normalizedName.includes('spent') ||
     normalizedName.includes('payment') ||
     normalizedName.includes('chi') || // Vietnamese
-    normalizedName.includes('rút')
+    normalizedName.includes('rút') ||
+    normalizedName.includes('ghi nợ')
   ) {
     const hasNumbers = sampleValues.some(v => typeof v === 'string' && !isNaN(parseFloat(v)))
     return {
@@ -636,7 +751,8 @@ function detectSingleColumnType(
     normalizedName.includes('received') ||
     normalizedName.includes('income') ||
     normalizedName.includes('thu') || // Vietnamese
-    normalizedName.includes('nạp')
+    normalizedName.includes('nạp') ||
+    normalizedName.includes('ghi có')
   ) {
     const hasNumbers = sampleValues.some(v => typeof v === 'string' && !isNaN(parseFloat(v)))
     return {
@@ -739,6 +855,7 @@ function detectSingleColumnType(
 /**
  * Parse amount from string, handling various formats
  * Handles: 1,000.50 or 1.000,50 or 1 000.50 or (1000) for negative
+ * Also handles multiple thousand separators: 111.244.435 or 111,244,435
  */
 export function parseAmount(value: string | number | null): number | null {
   if (value === null || value === undefined || value === '') return null
@@ -756,19 +873,52 @@ export function parseAmount(value: string | number | null): number | null {
   // Remove currency symbols
   cleaned = cleaned.replace(/[₫$€£¥]/g, '')
 
-  // Determine decimal separator (last . or ,)
+  // Count occurrences of dots and commas
+  const dotCount = (cleaned.match(/\./g) || []).length
+  const commaCount = (cleaned.match(/,/g) || []).length
+
+  // Determine decimal separator based on position and count
   const lastDot = cleaned.lastIndexOf('.')
   const lastComma = cleaned.lastIndexOf(',')
 
-  if (lastDot > lastComma) {
-    // Dot is decimal separator: 1,000.50 -> 1000.50
+  // If multiple dots or commas, they're thousand separators
+  // The decimal separator (if any) should be the LAST one and have <=2 digits after it
+  if (dotCount > 1) {
+    // Multiple dots = dots are thousand separators (European style: 111.244.435)
+    cleaned = cleaned.replace(/\./g, '')
+  } else if (commaCount > 1) {
+    // Multiple commas = commas are thousand separators (US style: 111,244,435)
     cleaned = cleaned.replace(/,/g, '')
-  } else if (lastComma > lastDot) {
-    // Comma is decimal separator: 1.000,50 -> 1000.50
-    cleaned = cleaned.replace(/\./g, '').replace(',', '.')
+  } else if (dotCount === 1 && commaCount === 1) {
+    // Both present, determine which is decimal by position
+    if (lastDot > lastComma) {
+      // Dot comes last, it's decimal: 1,000.50 -> 1000.50
+      cleaned = cleaned.replace(/,/g, '')
+    } else {
+      // Comma comes last, it's decimal: 1.000,50 -> 1000.50
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.')
+    }
+  } else if (dotCount === 1) {
+    // Only one dot - check if it's decimal (has 1-2 digits after) or thousand separator
+    const digitsAfterDot = cleaned.length - lastDot - 1
+    if (digitsAfterDot === 3) {
+      // Exactly 3 digits after dot = thousand separator (e.g., 1.000)
+      cleaned = cleaned.replace(/\./g, '')
+    }
+    // Otherwise keep the dot as decimal separator
+  } else if (commaCount === 1) {
+    // Only one comma - check if it's decimal (has 1-2 digits after) or thousand separator
+    const digitsAfterComma = cleaned.length - lastComma - 1
+    if (digitsAfterComma === 3) {
+      // Exactly 3 digits after comma = thousand separator (e.g., 1,000)
+      cleaned = cleaned.replace(/,/g, '')
+    } else {
+      // Comma is decimal separator, convert to dot
+      cleaned = cleaned.replace(',', '.')
+    }
   } else {
-    // No decimal separator, just remove all: 1 000 -> 1000
-    cleaned = cleaned.replace(/[,\s]/g, '')
+    // No dots or commas, just remove spaces
+    cleaned = cleaned.replace(/\s/g, '')
   }
 
   const parsed = parseFloat(cleaned)

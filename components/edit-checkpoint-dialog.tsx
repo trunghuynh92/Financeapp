@@ -81,12 +81,6 @@ export function EditCheckpointDialog({
     }
   }
 
-  function formatCurrency(value: string): string {
-    const num = parseFloat(value.replace(/,/g, ""))
-    if (isNaN(num)) return value
-    return new Intl.NumberFormat("vi-VN").format(num)
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
@@ -114,10 +108,11 @@ export function EditCheckpointDialog({
               <Input
                 id="declared"
                 type="text"
-                value={formatCurrency(declaredBalance)}
+                value={declaredBalance}
                 onChange={(e) => {
-                  const rawValue = e.target.value.replace(/,/g, "")
-                  setDeclaredBalance(rawValue)
+                  // Only allow numbers, dots, and minus sign
+                  const value = e.target.value.replace(/[^0-9.-]/g, "")
+                  setDeclaredBalance(value)
                 }}
                 placeholder="Enter balance amount"
                 required

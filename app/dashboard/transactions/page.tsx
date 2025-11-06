@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Pencil, Trash2, Loader2, Search, DollarSign, ArrowUpCircle, ArrowDownCircle, Eye } from "lucide-react"
+import { Plus, Pencil, Trash2, Loader2, Search, DollarSign, ArrowUpCircle, ArrowDownCircle, Eye, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -59,6 +59,13 @@ interface Transaction {
   account?: Account
 }
 
+interface PaginationInfo {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -66,6 +73,18 @@ export default function TransactionsPage() {
   const [selectedAccount, setSelectedAccount] = useState<string>("all")
   const [selectedSource, setSelectedSource] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(50)
+  const [pagination, setPagination] = useState<PaginationInfo>({
+    page: 1,
+    limit: 50,
+    total: 0,
+    totalPages: 0,
+  })
 
   // Dialog states
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false)
@@ -75,8 +94,11 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     fetchAccounts()
-    fetchTransactions()
   }, [])
+
+  useEffect(() => {
+    fetchTransactions()
+  }, [currentPage, itemsPerPage, selectedAccount, selectedSource, searchQuery, startDate, endDate])
 
   async function fetchAccounts() {
     try {
@@ -94,6 +116,9 @@ export default function TransactionsPage() {
       setLoading(true)
 
       const params = new URLSearchParams()
+      params.append('page', currentPage.toString())
+      params.append('limit', itemsPerPage.toString())
+
       if (selectedAccount !== "all") {
         params.append('account_id', selectedAccount)
       }
@@ -103,12 +128,19 @@ export default function TransactionsPage() {
       if (searchQuery) {
         params.append('search', searchQuery)
       }
+      if (startDate) {
+        params.append('start_date', startDate)
+      }
+      if (endDate) {
+        params.append('end_date', endDate)
+      }
 
       const response = await fetch(`/api/transactions?${params.toString()}`)
       if (!response.ok) throw new Error('Failed to fetch transactions')
 
       const result = await response.json()
       setTransactions(result.data || [])
+      setPagination(result.pagination)
     } catch (error) {
       console.error("Error fetching transactions:", error)
     } finally {
@@ -116,12 +148,7 @@ export default function TransactionsPage() {
     }
   }
 
-  // Refetch when filters change
-  useEffect(() => {
-    fetchTransactions()
-  }, [selectedAccount, selectedSource, searchQuery])
-
-  // Calculate totals
+  // Calculate totals from current page
   const totalDebit = transactions.reduce((sum, t) => sum + (t.debit_amount || 0), 0)
   const totalCredit = transactions.reduce((sum, t) => sum + (t.credit_amount || 0), 0)
 
@@ -153,6 +180,26 @@ export default function TransactionsPage() {
     return config[source as keyof typeof config] || { label: source, color: 'bg-gray-100 text-gray-800' }
   }
 
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= pagination.totalPages) {
+      setCurrentPage(newPage)
+    }
+  }
+
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(parseInt(value))
+    setCurrentPage(1) // Reset to first page when changing items per page
+  }
+
+  const clearFilters = () => {
+    setSelectedAccount("all")
+    setSelectedSource("all")
+    setSearchQuery("")
+    setStartDate("")
+    setEndDate("")
+    setCurrentPage(1)
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -180,33 +227,33 @@ export default function TransactionsPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{transactions.length}</div>
+            <div className="text-2xl font-bold">{pagination.total}</div>
             <p className="text-xs text-muted-foreground">
-              All time
+              Filtered results
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Debit</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Debit (Page)</CardTitle>
             <ArrowUpCircle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{formatCurrency(totalDebit)}</div>
             <p className="text-xs text-muted-foreground">
-              Money out
+              Current page
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Credit</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Credit (Page)</CardTitle>
             <ArrowDownCircle className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{formatCurrency(totalCredit)}</div>
             <p className="text-xs text-muted-foreground">
-              Money in
+              Current page
             </p>
           </CardContent>
         </Card>
@@ -216,10 +263,10 @@ export default function TransactionsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
-          <CardDescription>Filter transactions by account and source</CardDescription>
+          <CardDescription>Filter transactions by various criteria</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
             {/* Search */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Search</label>
@@ -228,7 +275,10 @@ export default function TransactionsPage() {
                 <Input
                   placeholder="Search transactions..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value)
+                    setCurrentPage(1)
+                  }}
                   className="pl-8"
                 />
               </div>
@@ -237,7 +287,10 @@ export default function TransactionsPage() {
             {/* Account Filter */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Account</label>
-              <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+              <Select value={selectedAccount} onValueChange={(value) => {
+                setSelectedAccount(value)
+                setCurrentPage(1)
+              }}>
                 <SelectTrigger>
                   <SelectValue placeholder="All accounts" />
                 </SelectTrigger>
@@ -255,7 +308,10 @@ export default function TransactionsPage() {
             {/* Source Filter */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Source</label>
-              <Select value={selectedSource} onValueChange={setSelectedSource}>
+              <Select value={selectedSource} onValueChange={(value) => {
+                setSelectedSource(value)
+                setCurrentPage(1)
+              }}>
                 <SelectTrigger>
                   <SelectValue placeholder="All sources" />
                 </SelectTrigger>
@@ -269,15 +325,37 @@ export default function TransactionsPage() {
               </Select>
             </div>
 
+            {/* Start Date */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Start Date</label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value)
+                  setCurrentPage(1)
+                }}
+              />
+            </div>
+
+            {/* End Date */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">End Date</label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value)
+                  setCurrentPage(1)
+                }}
+              />
+            </div>
+
             {/* Clear Filters */}
             <div className="flex items-end">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setSelectedAccount("all")
-                  setSelectedSource("all")
-                  setSearchQuery("")
-                }}
+                onClick={clearFilters}
                 className="w-full"
               >
                 Clear Filters
@@ -290,10 +368,27 @@ export default function TransactionsPage() {
       {/* Transactions Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Transactions</CardTitle>
-          <CardDescription>
-            A list of all original transactions
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>All Transactions</CardTitle>
+              <CardDescription>
+                Showing {transactions.length} of {pagination.total} transactions
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Show:</span>
+              <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                <SelectTrigger className="w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="200">200</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -305,121 +400,181 @@ export default function TransactionsPage() {
               <DollarSign className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">No transactions found</p>
               <p className="text-sm text-muted-foreground">
-                Get started by adding your first transaction
+                Try adjusting your filters or add your first transaction
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Account</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="text-right">Debit</TableHead>
-                    <TableHead className="text-right">Credit</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactions.map((transaction) => {
-                    const sourceBadge = getSourceBadge(transaction.transaction_source)
-                    const account = transaction.account
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Account</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead className="text-right">Debit</TableHead>
+                      <TableHead className="text-right">Credit</TableHead>
+                      <TableHead className="text-right">Balance</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {transactions.map((transaction) => {
+                      const sourceBadge = getSourceBadge(transaction.transaction_source)
+                      const account = transaction.account
 
-                    return (
-                      <TableRow key={transaction.raw_transaction_id}>
-                        <TableCell className="text-sm">
-                          {formatDate(transaction.transaction_date)}
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium text-sm">{account?.account_name || '—'}</p>
-                            {account?.bank_name && (
-                              <p className="text-xs text-muted-foreground">{account.bank_name}</p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="max-w-xs">
-                            <p className="text-sm truncate">{transaction.description || '—'}</p>
-                            {transaction.bank_reference && (
-                              <p className="text-xs text-muted-foreground">Ref: {transaction.bank_reference}</p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {transaction.debit_amount ? (
-                            <span className="font-medium text-red-600">
-                              {formatCurrency(transaction.debit_amount)}
-                            </span>
-                          ) : '—'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {transaction.credit_amount ? (
-                            <span className="font-medium text-green-600">
-                              {formatCurrency(transaction.credit_amount)}
-                            </span>
-                          ) : '—'}
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          {formatCurrency(transaction.balance)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={sourceBadge.color}>
-                            {sourceBadge.label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            {transaction.is_balance_adjustment ? (
-                              // Balance adjustment: Show "View Checkpoint" button only
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedTransaction(transaction)
-                                  setIsCheckpointDialogOpen(true)
-                                }}
-                                className="text-blue-600 hover:text-blue-700"
-                              >
-                                <Eye className="h-4 w-4 mr-1" />
-                                View Checkpoint
-                              </Button>
-                            ) : (
-                              // Regular transaction: Show edit/delete buttons
-                              <>
+                      return (
+                        <TableRow key={transaction.raw_transaction_id}>
+                          <TableCell className="text-sm">
+                            {formatDate(transaction.transaction_date)}
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-sm">{account?.account_name || '—'}</p>
+                              {account?.bank_name && (
+                                <p className="text-xs text-muted-foreground">{account.bank_name}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-xs">
+                              <p className="text-sm truncate">{transaction.description || '—'}</p>
+                              {transaction.bank_reference && (
+                                <p className="text-xs text-muted-foreground">Ref: {transaction.bank_reference}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {transaction.debit_amount ? (
+                              <span className="font-medium text-red-600">
+                                {formatCurrency(transaction.debit_amount)}
+                              </span>
+                            ) : '—'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {transaction.credit_amount ? (
+                              <span className="font-medium text-green-600">
+                                {formatCurrency(transaction.credit_amount)}
+                              </span>
+                            ) : '—'}
+                          </TableCell>
+                          <TableCell className="text-right text-sm">
+                            {formatCurrency(transaction.balance)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={sourceBadge.color}>
+                              {sourceBadge.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              {transaction.is_balance_adjustment ? (
+                                // Balance adjustment: Show "View Checkpoint" button only
                                 <Button
-                                  variant="ghost"
-                                  size="icon"
+                                  variant="outline"
+                                  size="sm"
                                   onClick={() => {
                                     setSelectedTransaction(transaction)
-                                    setIsFormDialogOpen(true)
+                                    setIsCheckpointDialogOpen(true)
                                   }}
+                                  className="text-blue-600 hover:text-blue-700"
                                 >
-                                  <Pencil className="h-4 w-4" />
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  View Checkpoint
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => {
-                                    setSelectedTransaction(transaction)
-                                    setIsDeleteDialogOpen(true)
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                              ) : (
+                                // Regular transaction: Show edit/delete buttons
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setSelectedTransaction(transaction)
+                                      setIsFormDialogOpen(true)
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setSelectedTransaction(transaction)
+                                      setIsDeleteDialogOpen(true)
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Pagination Controls */}
+              {pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between border-t pt-4 mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Page {pagination.page} of {pagination.totalPages}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+
+                    {/* Page numbers */}
+                    <div className="flex gap-1">
+                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                        let pageNum: number
+                        if (pagination.totalPages <= 5) {
+                          pageNum = i + 1
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1
+                        } else if (currentPage >= pagination.totalPages - 2) {
+                          pageNum = pagination.totalPages - 4 + i
+                        } else {
+                          pageNum = currentPage - 2 + i
+                        }
+
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handlePageChange(pageNum)}
+                            className="w-10"
+                          >
+                            {pageNum}
+                          </Button>
+                        )
+                      })}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === pagination.totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

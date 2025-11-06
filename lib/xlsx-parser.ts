@@ -49,7 +49,7 @@ export async function parseXLSXFile(file: File): Promise<ParsedCSVData> {
         // Convert sheet to array of arrays
         const rawData = XLSX.utils.sheet_to_json(worksheet, {
           header: 1,  // Return array of arrays instead of objects
-          raw: false, // Use formatted values for better compatibility
+          raw: false, // Use formatted text values to preserve thousand separators
           defval: null, // Use null for empty cells
         }) as (string | number | null)[][]
 
@@ -144,12 +144,15 @@ function findHeaderRow(rows: (string | number | null)[][]): number {
   const headerKeywords = [
     'date', 'ngày', 'ngay', 'transaction date', 'giao dich',
     'description', 'chi tiết', 'mô tả', 'particulars', 'details', 'dien giai', 'diễn giải',
-    'debit', 'credit', 'chi', 'thu', 'amount', 'số tiền',
+    'debit', 'credit', 'chi', 'thu', 'amount', 'số tiền', 'ghi nợ', 'ghi có',
     'balance', 'số dư', 'sodu', 'running balance',
-    'reference', 'but toan', 'số but toan',
+    'reference', 'but toan', 'số but toan', 'giao dịch', 'séc',
     'account', 'tai khoan', 'tài khoản',
     'bank', 'ngan hang', 'ngân hàng',
   ]
+
+  // Strong indicators that this is a header row (Vietnamese "STT" = row number)
+  const strongHeaderIndicators = ['stt', 'no.', '#', 'row']
 
   let bestMatchIndex = 0
   let bestMatchScore = 0
@@ -168,16 +171,46 @@ function findHeaderRow(rows: (string | number | null)[][]): number {
 
     // Count header keyword matches (HEAVILY WEIGHTED - 3 points each)
     let keywordMatches = 0
+    let hasStrongIndicator = false
+    let hasVeryLongCell = false
+
     for (const cell of nonEmptyCells) {
-      const cellStr = String(cell).toLowerCase()
+      // Normalize cell: remove newlines, convert to lowercase
+      const cellStr = String(cell).replace(/[\r\n]+/g, ' ').toLowerCase().trim()
+
+      // Check for strong header indicators (like "STT No.")
+      for (const indicator of strongHeaderIndicators) {
+        if (cellStr.includes(indicator)) {
+          hasStrongIndicator = true
+          break
+        }
+      }
+
+      // Check for header keywords
       for (const keyword of headerKeywords) {
         if (cellStr.includes(keyword)) {
           keywordMatches++
           break // Only count once per cell
         }
       }
+
+      // Check for very long cells (likely metadata like "Một triệu sáu trăm...")
+      if (cellStr.length > 50) {
+        hasVeryLongCell = true
+      }
     }
+
     score += keywordMatches * 3
+
+    // HUGE bonus for strong header indicators (like "STT")
+    if (hasStrongIndicator) {
+      score += 10
+    }
+
+    // Require minimum keyword matches to be considered a header
+    if (keywordMatches < 3) {
+      score -= 10
+    }
 
     // Bonus: More columns = more likely to be header
     if (nonEmptyCells.length >= 5) {
@@ -197,6 +230,11 @@ function findHeaderRow(rows: (string | number | null)[][]): number {
       score -= 5
     }
 
+    // Heavy penalty: Row has very long cell content (likely metadata)
+    if (hasVeryLongCell) {
+      score -= 15
+    }
+
     if (score > bestMatchScore) {
       bestMatchScore = score
       bestMatchIndex = i
@@ -207,14 +245,15 @@ function findHeaderRow(rows: (string | number | null)[][]): number {
 }
 
 /**
- * Clean header values (convert to strings, trim whitespace)
+ * Clean header values (convert to strings, trim whitespace, remove newlines)
  */
 function cleanHeaders(headerRow: (string | number | null)[]): string[] {
   return headerRow.map((cell, index) => {
     if (cell === null || cell === undefined || String(cell).trim() === '') {
       return `Column ${index + 1}` // Generate name for empty headers
     }
-    return String(cell).trim()
+    // Remove newlines and extra spaces, then trim
+    return String(cell).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim()
   })
 }
 
@@ -234,16 +273,29 @@ function extractStatementMetadata(
     return { startDate: null, endDate: null, endingBalance: null }
   }
 
-  // Find date column
-  const dateColumn = headers.find(h => {
-    const normalized = h.toLowerCase()
+  // Find date column - prioritize "effective date" over other date columns
+  // First, look for "effective date" or "ngày hiệu lực"
+  let dateColumn = headers.find(h => {
+    const normalized = h.toLowerCase().replace(/\s+/g, ' ')
     return (
-      normalized.includes('date') ||
-      normalized.includes('ngày') ||
-      normalized.includes('ngay') ||
-      normalized.includes('giao dich')
+      normalized.includes('effective') ||
+      normalized.includes('hiệu lực') ||
+      normalized.includes('hieu luc')
     )
   })
+
+  // Fallback: Find any date column
+  if (!dateColumn) {
+    dateColumn = headers.find(h => {
+      const normalized = h.toLowerCase()
+      return (
+        normalized.includes('date') ||
+        normalized.includes('ngày') ||
+        normalized.includes('ngay') ||
+        normalized.includes('giao dich')
+      )
+    })
+  }
 
   if (!dateColumn) {
     return { startDate: null, endDate: null, endingBalance: null }
@@ -272,8 +324,16 @@ function extractStatementMetadata(
   const earliestDateEntry = datesWithRows[0]
   const latestDateEntry = datesWithRows[datesWithRows.length - 1]
 
-  const startDate = earliestDateEntry.date.toISOString().split('T')[0]
-  const endDate = latestDateEntry.date.toISOString().split('T')[0]
+  // Format dates in local timezone to avoid UTC conversion shifting dates
+  const formatLocalDate = (date: Date): string => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const startDate = formatLocalDate(earliestDateEntry.date)
+  const endDate = formatLocalDate(latestDateEntry.date)
 
   // Find balance column
   const balanceColumn = headers.find(h => {
@@ -293,7 +353,10 @@ function extractStatementMetadata(
     const balanceValue = lastTransactionRow[balanceColumn]
 
     if (balanceValue) {
+      console.log('🔍 [XLSX Debug] Raw balance value from Excel:', balanceValue)
+      console.log('🔍 [XLSX Debug] Type:', typeof balanceValue)
       endingBalance = parseAmount(balanceValue)
+      console.log('🔍 [XLSX Debug] Parsed balance:', endingBalance)
     }
   }
 
@@ -324,6 +387,10 @@ function tryParseDate(value: string): Date | null {
     'dd.mm.yyyy',
     'yyyy/mm/dd',
     'dd MMM yyyy',
+    'mm/dd/yy',
+    'dd/mm/yy',
+    'm/d/yy',
+    'd/m/yy',
   ]
 
   for (const format of formats) {
@@ -395,7 +462,7 @@ export async function parseXLSXSheet(file: File, sheetName: string): Promise<Par
         const worksheet = workbook.Sheets[sheetName]
         const rawData = XLSX.utils.sheet_to_json(worksheet, {
           header: 1,
-          raw: false,
+          raw: false, // Use formatted text values to preserve thousand separators
           defval: null,
         }) as (string | number | null)[][]
 

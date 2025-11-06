@@ -47,9 +47,33 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * limit
     const to = from + limit - 1
 
+    // Get total count of FILTERED results (not all transactions)
+    // Build the same query for counting
+    let countQuery = supabase
+      .from('original_transaction')
+      .select('*', { count: 'exact', head: true })
+
+    if (accountId) {
+      countQuery = countQuery.eq('account_id', accountId)
+    }
+    if (transactionSource) {
+      countQuery = countQuery.eq('transaction_source', transactionSource)
+    }
+    if (startDate) {
+      countQuery = countQuery.gte('transaction_date', startDate)
+    }
+    if (endDate) {
+      countQuery = countQuery.lte('transaction_date', endDate)
+    }
+    if (search) {
+      countQuery = countQuery.or(`description.ilike.%${search}%,bank_reference.ilike.%${search}%`)
+    }
+
+    const { count: totalCount } = await countQuery
+
     // Execute query with pagination
     // Sort by transaction_date first, then created_at for consistent ordering of same-day transactions
-    const { data, error, count } = await query
+    const { data, error } = await query
       .order('transaction_date', { ascending: false })
       .order('created_at', { ascending: false })
       .range(from, to)
@@ -58,11 +82,6 @@ export async function GET(request: NextRequest) {
       console.error('Error fetching transactions:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-
-    // Get total count
-    const { count: totalCount } = await supabase
-      .from('original_transaction')
-      .select('*', { count: 'exact', head: true })
 
     return NextResponse.json({
       data: data || [],
