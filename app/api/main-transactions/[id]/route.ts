@@ -1,0 +1,226 @@
+/**
+ * API Route: /api/main-transactions/[id]
+ * Purpose: Get, update, or delete a single main_transaction
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
+
+// ==============================================================================
+// GET - Get single main transaction with full details
+// ==============================================================================
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const mainTransactionId = parseInt(params.id, 10)
+
+    if (isNaN(mainTransactionId)) {
+      return NextResponse.json(
+        { error: 'Invalid main transaction ID' },
+        { status: 400 }
+      )
+    }
+
+    // Get from view for full details
+    const { data, error } = await supabase
+      .from('main_transaction_details')
+      .select('*')
+      .eq('main_transaction_id', mainTransactionId)
+      .single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return NextResponse.json(
+          { error: 'Main transaction not found' },
+          { status: 404 }
+        )
+      }
+      console.error('Error fetching main transaction:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ data })
+  } catch (error) {
+    console.error('Unexpected error:', error)
+    return NextResponse.json(
+      { error: 'An unexpected error occurred' },
+      { status: 500 }
+    )
+  }
+}
+
+// ==============================================================================
+// PATCH - Update main transaction (type, category, branch, description, notes)
+// ==============================================================================
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const mainTransactionId = parseInt(params.id, 10)
+
+    if (isNaN(mainTransactionId)) {
+      return NextResponse.json(
+        { error: 'Invalid main transaction ID' },
+        { status: 400 }
+      )
+    }
+
+    const body = await request.json()
+
+    // Only allow updating specific fields
+    const allowedFields = [
+      'transaction_type_id',
+      'category_id',
+      'branch_id',
+      'description',
+      'notes',
+    ]
+
+    const updates: any = {}
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        updates[field] = body[field]
+      }
+    }
+
+    // Add updated timestamp and user
+    updates.updated_at = new Date().toISOString()
+    if (body.updated_by_user_id) {
+      updates.updated_by_user_id = body.updated_by_user_id
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json(
+        { error: 'No valid fields to update' },
+        { status: 400 }
+      )
+    }
+
+    // Update the transaction
+    const { data, error } = await supabase
+      .from('main_transaction')
+      .update(updates)
+      .eq('main_transaction_id', mainTransactionId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error updating main transaction:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // Get full details after update
+    const { data: fullData, error: fullError } = await supabase
+      .from('main_transaction_details')
+      .select('*')
+      .eq('main_transaction_id', mainTransactionId)
+      .single()
+
+    if (fullError) {
+      console.error('Error fetching updated transaction:', fullError)
+      // Still return the basic data
+      return NextResponse.json({ data })
+    }
+
+    return NextResponse.json({
+      data: fullData,
+      message: 'Main transaction updated successfully',
+    })
+  } catch (error) {
+    console.error('Unexpected error:', error)
+    return NextResponse.json(
+      { error: 'An unexpected error occurred' },
+      { status: 500 }
+    )
+  }
+}
+
+// ==============================================================================
+// DELETE - Delete main transaction (with split protection)
+// ==============================================================================
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const mainTransactionId = parseInt(params.id, 10)
+
+    if (isNaN(mainTransactionId)) {
+      return NextResponse.json(
+        { error: 'Invalid main transaction ID' },
+        { status: 400 }
+      )
+    }
+
+    // Check if this transaction is part of a split
+    const { data: transaction, error: fetchError } = await supabase
+      .from('main_transaction')
+      .select('raw_transaction_id, is_split')
+      .eq('main_transaction_id', mainTransactionId)
+      .single()
+
+    if (fetchError) {
+      console.error('Error fetching transaction:', fetchError)
+      return NextResponse.json({ error: fetchError.message }, { status: 500 })
+    }
+
+    if (!transaction) {
+      return NextResponse.json(
+        { error: 'Main transaction not found' },
+        { status: 404 }
+      )
+    }
+
+    // If part of a split, check if there are other splits
+    if (transaction.is_split) {
+      const { data: splits, error: splitsError } = await supabase
+        .from('main_transaction')
+        .select('main_transaction_id')
+        .eq('raw_transaction_id', transaction.raw_transaction_id)
+
+      if (splitsError) {
+        console.error('Error checking splits:', splitsError)
+        return NextResponse.json({ error: splitsError.message }, { status: 500 })
+      }
+
+      if (splits && splits.length > 1) {
+        return NextResponse.json(
+          {
+            error: 'Cannot delete individual split. Delete entire split group or edit splits.',
+            splitCount: splits.length,
+            raw_transaction_id: transaction.raw_transaction_id,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Delete the transaction
+    const { error: deleteError } = await supabase
+      .from('main_transaction')
+      .delete()
+      .eq('main_transaction_id', mainTransactionId)
+
+    if (deleteError) {
+      console.error('Error deleting main transaction:', deleteError)
+      return NextResponse.json({ error: deleteError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Main transaction deleted successfully',
+    })
+  } catch (error) {
+    console.error('Unexpected error:', error)
+    return NextResponse.json(
+      { error: 'An unexpected error occurred' },
+      { status: 500 }
+    )
+  }
+}
