@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Plus, Pencil, Trash2, Loader2, Search, Filter, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText } from "lucide-react"
+import { Plus, Pencil, Trash2, Loader2, Search, Filter, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -345,8 +345,18 @@ export default function AccountsPage() {
                       <TableCell className="text-muted-foreground">
                         {maskAccountNumber(account.account_number)}
                       </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(balance, account.currency)}
+                      <TableCell className="text-right">
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="font-medium">
+                            {formatCurrency(balance, account.currency)}
+                          </span>
+                          {(account as any).unresolved_checkpoints_count > 0 && (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              {(account as any).unresolved_checkpoints_count} unresolved
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge className={`${status.bg} ${status.text}`}>

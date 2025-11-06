@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Pencil, Trash2, Loader2, Search, DollarSign, ArrowUpCircle, ArrowDownCircle } from "lucide-react"
+import { Plus, Pencil, Trash2, Loader2, Search, DollarSign, ArrowUpCircle, ArrowDownCircle, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select"
 import { TransactionFormDialog } from "@/components/transaction-form-dialog"
 import { TransactionDeleteDialog } from "@/components/transaction-delete-dialog"
+import { ViewCheckpointDialog } from "@/components/view-checkpoint-dialog"
 
 interface Account {
   account_id: number
@@ -53,6 +54,8 @@ interface Transaction {
   created_by_user_id: number | null
   updated_at: string | null
   updated_by_user_id: number | null
+  is_balance_adjustment: boolean
+  checkpoint_id: number | null
   account?: Account
 }
 
@@ -67,6 +70,7 @@ export default function TransactionsPage() {
   // Dialog states
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isCheckpointDialogOpen, setIsCheckpointDialogOpen] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
 
   useEffect(() => {
@@ -369,26 +373,45 @@ export default function TransactionsPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => {
-                                setSelectedTransaction(transaction)
-                                setIsFormDialogOpen(true)
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => {
-                                setSelectedTransaction(transaction)
-                                setIsDeleteDialogOpen(true)
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                            {transaction.is_balance_adjustment ? (
+                              // Balance adjustment: Show "View Checkpoint" button only
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedTransaction(transaction)
+                                  setIsCheckpointDialogOpen(true)
+                                }}
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                View Checkpoint
+                              </Button>
+                            ) : (
+                              // Regular transaction: Show edit/delete buttons
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setSelectedTransaction(transaction)
+                                    setIsFormDialogOpen(true)
+                                  }}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setSelectedTransaction(transaction)
+                                    setIsDeleteDialogOpen(true)
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -415,6 +438,13 @@ export default function TransactionsPage() {
         onOpenChange={setIsDeleteDialogOpen}
         transaction={selectedTransaction}
         onSuccess={fetchTransactions}
+      />
+
+      <ViewCheckpointDialog
+        open={isCheckpointDialogOpen}
+        onOpenChange={setIsCheckpointDialogOpen}
+        checkpointId={selectedTransaction?.checkpoint_id || null}
+        accountId={selectedTransaction?.account_id || null}
       />
     </div>
   )

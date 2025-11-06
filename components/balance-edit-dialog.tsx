@@ -187,9 +187,14 @@ export function BalanceEditDialog({
             onChange={setBalanceDate}
             max={new Date().toISOString().split('T')[0]}
           />
-          <p className="text-xs text-muted-foreground -mt-2">
-            The date you know this balance (e.g., bank statement date)
-          </p>
+          <div className="space-y-1 -mt-2">
+            <p className="text-xs text-muted-foreground">
+              The date you know this balance (e.g., bank statement date)
+            </p>
+            <p className="text-xs text-amber-600 font-medium">
+              ⓘ Checkpoints are always set to end of day. If you meant to create a checkpoint at the start of a day, use the previous date instead.
+            </p>
+          </div>
 
           {/* Notes field */}
           <div className="space-y-2">

@@ -112,6 +112,11 @@ export async function POST(
       )
     }
 
+    // Set checkpoint to END of day to ensure all same-day transactions are included in calculation
+    // This prevents race conditions where imported transactions at 00:00:00 might be calculated
+    // before the checkpoint adjustment at 00:00:00
+    checkpointDate.setHours(23, 59, 59, 999)
+
     // Validate declared balance is a number
     if (typeof body.declared_balance !== 'number') {
       return NextResponse.json(

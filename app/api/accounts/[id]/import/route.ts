@@ -74,9 +74,56 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid column mappings format' }, { status: 400 })
     }
 
-    // Read CSV file
-    const csvText = await file.text()
-    const parsedCSV = parseCSVText(csvText)
+    // Parse file based on type (CSV or XLSX)
+    const fileExt = file.name.split('.').pop()?.toLowerCase()
+    let parsedCSV
+
+    if (fileExt === 'xlsx' || fileExt === 'xls') {
+      // Parse Excel file on server (use ArrayBuffer, not FileReader)
+      const XLSX = await import('xlsx')
+      const buffer = await file.arrayBuffer()
+
+      const workbook = XLSX.read(buffer, {
+        type: 'buffer',
+        cellDates: true,
+        cellNF: false,
+        cellText: false,
+      })
+
+      // Get first sheet
+      const firstSheetName = workbook.SheetNames[0]
+      if (!firstSheetName) {
+        throw new Error('Excel file has no sheets')
+      }
+
+      const worksheet = workbook.Sheets[firstSheetName]
+      const rawData = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        raw: false,
+        defval: null,
+      }) as (string | number | null)[][]
+
+      // Convert to CSV text format for existing parser
+      const csvText = rawData
+        .map(row =>
+          row.map(cell => {
+            if (cell === null || cell === undefined) return ''
+            const str = String(cell)
+            // Escape quotes and wrap in quotes if contains comma
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return `"${str.replace(/"/g, '""')}"`
+            }
+            return str
+          }).join(',')
+        )
+        .join('\n')
+
+      parsedCSV = parseCSVText(csvText)
+    } else {
+      // Parse CSV file (default)
+      const csvText = await file.text()
+      parsedCSV = parseCSVText(csvText)
+    }
 
     // Create import batch record
     const { data: importBatch, error: batchError } = await supabase
@@ -170,7 +217,9 @@ export async function POST(
       .eq('import_batch_id', importBatch.import_batch_id)
 
     // Create checkpoint with statement ending balance
+    // Set checkpoint to END of day to ensure all same-day transactions are included in calculation
     const checkpointDate = new Date(statementEndDate)
+    checkpointDate.setHours(23, 59, 59, 999)  // End of day (23:59:59.999)
     const endingBalance = parseFloat(statementEndingBalance)
 
     // Count existing checkpoints BEFORE creating new one

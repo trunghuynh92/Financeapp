@@ -88,13 +88,21 @@ export async function GET(request: NextRequest) {
 
         const calculatedBalance = totalCredits - totalDebits
 
-        // Return account with calculated balance in same format as before
+        // Fetch unresolved checkpoint count (where is_reconciled = false)
+        const { count: unresolvedCount } = await supabase
+          .from('balance_checkpoints')
+          .select('*', { count: 'exact', head: true })
+          .eq('account_id', account.account_id)
+          .eq('is_reconciled', false)
+
+        // Return account with calculated balance and checkpoint count
         return {
           ...account,
           balance: {
             current_balance: calculatedBalance,
             last_updated: new Date().toISOString(),
           },
+          unresolved_checkpoints_count: unresolvedCount || 0,
         }
       })
     )

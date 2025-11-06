@@ -35,6 +35,7 @@ import {
   detectDateFormat,
   generateColumnMappings,
 } from "@/lib/csv-parser"
+import { parseXLSXFile } from "@/lib/xlsx-parser"
 import {
   ParsedCSVData,
   ColumnDetectionResult,
@@ -117,18 +118,28 @@ export function BankImportDialog({
     if (!selectedFile) return
 
     // Validate file type
-    if (!selectedFile.name.match(/\.(csv|CSV)$/)) {
-      setError("Please upload a CSV file")
+    if (!selectedFile.name.match(/\.(csv|CSV|xlsx|xls|XLSX|XLS)$/)) {
+      setError("Please upload a CSV or Excel file (.csv, .xlsx, .xls)")
       return
     }
 
     setFile(selectedFile)
     setError(null)
 
-    // Auto-parse CSV for preview
+    // Auto-parse file for preview (CSV or XLSX)
     try {
       setLoading(true)
-      const parsed = await parseCSVFile(selectedFile)
+      const fileExt = selectedFile.name.split('.').pop()?.toLowerCase()
+
+      let parsed
+      if (fileExt === 'xlsx' || fileExt === 'xls') {
+        // Parse Excel file
+        parsed = await parseXLSXFile(selectedFile)
+      } else {
+        // Parse CSV file (default)
+        parsed = await parseCSVFile(selectedFile)
+      }
+
       setParsedData(parsed)
 
       // Auto-detect columns
@@ -336,7 +347,7 @@ export function BankImportDialog({
             <div className="space-y-2 text-sm">
               <p className="font-medium text-blue-900">Bank Statement Import</p>
               <ul className="list-disc list-inside space-y-1 text-blue-700">
-                <li>Upload CSV file from your bank statement</li>
+                <li>Upload CSV or Excel (.xlsx) file from your bank statement</li>
                 <li>System will auto-detect columns and date format</li>
                 <li>Checkpoint created to verify against statement ending balance</li>
                 <li>Flags duplicates and discrepancies automatically</li>
@@ -347,12 +358,12 @@ export function BankImportDialog({
 
         {/* File Upload */}
         <div className="space-y-2">
-          <Label htmlFor="file">Bank Statement File (CSV) *</Label>
+          <Label htmlFor="file">Bank Statement File (CSV or Excel) *</Label>
           <div className="flex items-center gap-4">
             <Input
               id="file"
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               onChange={handleFileSelect}
               className="flex-1"
             />

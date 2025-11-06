@@ -48,8 +48,10 @@ export async function GET(request: NextRequest) {
     const to = from + limit - 1
 
     // Execute query with pagination
+    // Sort by transaction_date first, then created_at for consistent ordering of same-day transactions
     const { data, error, count } = await query
       .order('transaction_date', { ascending: false })
+      .order('created_at', { ascending: false })
       .range(from, to)
 
     if (error) {
