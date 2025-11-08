@@ -30,6 +30,7 @@ import { BalanceEditDialog } from "@/components/balance-edit-dialog"
 import { BankImportDialog } from "@/components/bank-import-dialog"
 import { CheckpointHistoryCard } from "@/components/checkpoint-history-card"
 import { BalanceCheckpoint } from "@/types/checkpoint"
+import { DrawdownListCard } from "@/components/drawdown-list-card"
 
 const AccountTypeIcon = ({ type, className }: { type: AccountType; className?: string }) => {
   const icons = {
@@ -383,6 +384,20 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
           fetchTransactionDates()
         }}
       />
+
+      {/* Debt Drawdowns (for credit_line and term_loan only) */}
+      {(account.account_type === 'credit_line' || account.account_type === 'term_loan') && (
+        <DrawdownListCard
+          accountId={account.account_id}
+          accountName={account.account_name}
+          currency={account.currency}
+          creditLimit={account.credit_limit}
+          onRefresh={() => {
+            fetchAccount()
+            fetchCalculatedBalance()
+          }}
+        />
+      )}
 
       {/* Transactions Preview (Placeholder for Week 3) */}
       <Card>
