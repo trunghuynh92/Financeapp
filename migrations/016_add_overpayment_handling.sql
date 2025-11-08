@@ -81,6 +81,9 @@ COMMENT ON FUNCTION process_debt_payment IS
 -- Purpose: Include overpayment information
 -- ----------------------------------------------------------------------------
 
+-- Drop existing function first (required when changing return type)
+DROP FUNCTION IF EXISTS get_active_drawdowns(INTEGER);
+
 CREATE OR REPLACE FUNCTION get_active_drawdowns(p_account_id INTEGER)
 RETURNS TABLE (
   drawdown_id INTEGER,
