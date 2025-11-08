@@ -1,6 +1,6 @@
 # Finance SaaS v2.2.0
 
-A comprehensive financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase.
+A comprehensive financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features advanced transaction processing, debt management, balance checkpointing, and detailed financial reporting.
 
 ## Version 2.2.0 - Debt Payback System & UI Enhancements
 
@@ -33,294 +33,868 @@ A comprehensive financial management system for businesses and individuals, buil
 - Updated `main_transaction_details` view with drawdown matching information
 - Refactored drawdowns API to support status filtering
 
-## Features
+---
 
-### 🏢 Entity & Account Management
-- Multi-entity support (Business and Personal)
-- Bank account tracking with balance checkpoints
-- Import bank statements from CSV and XLSX files
-- Automatic balance calculation and reconciliation
-- Balance checkpoint system for accurate historical tracking
-- **Credit Line & Term Loan accounts** with drawdown tracking
+## Core Features
 
-### 💰 Transaction Management
-- **Original Transactions**: Raw imported bank transactions
-- **Main Transactions**: Categorized and analyzed transactions layer
-  - Inline spreadsheet-style editing for fast data entry
-  - Searchable dropdown filters (type to search)
-  - Split transaction support with visual indicators
-  - Transfer matching between accounts
-  - Branch/store assignment
-  - **Debt transaction matching** (DEBT_DRAW ↔ DEBT_ACQ, DEBT_PAY ↔ DEBT_SETTLE)
+### 🏢 Multi-Entity Management
+- **Business & Personal Entities**: Separate financial tracking for companies and personal finances
+- **Entity Switching**: Quick switching between different entities
+- **Entity-Specific Views**: Filtered accounts, transactions, and reports per entity
+- **Hierarchical Organization**: Manage multiple businesses and personal entities in one system
 
-### 💳 Debt Drawdown System
-- **Credit Line Management**: Track drawdowns from credit lines with available credit monitoring
-- **Term Loan Tracking**: Manage term loans with payment schedules
-- **Drawdown Features**:
-  - Create drawdowns with reference numbers, dates, and amounts
-  - Optional due dates with quick selection (1, 3, 6, 12 months)
-  - Interest rate tracking
-  - Payment recording with principal, interest, and fee breakdown
-  - **Debt payback matching**: Match DEBT_PAY transactions with drawdowns
-  - Overpayment handling with automatic credit memos
-  - Assign receiving accounts for debt acquisition tracking
-  - **Status tracking**: Active, Overdue, Settled, Written Off
-  - **Status filtering**: Filter drawdowns by any status (All/Active/Overdue/Settled)
-- **Debt Analytics**:
-  - Total outstanding balance (includes overdue)
-  - Available credit calculations
-  - Average interest rates (weighted by balance)
-  - Payment progress indicators
-  - Next due date alerts
+### 💼 Comprehensive Account Types
 
-### 📊 Categorization System
-- Transaction type classification (Income, Expense, Transfer, Investment, Debt)
-- Hierarchical category system
-- Entity-type filtering (Business, Personal, Both)
-- Branch/store location tracking
-- Customizable categories and branches
+#### 1. **Bank Accounts**
+- Track checking and savings accounts
+- Multi-currency support (VND, USD, EUR)
+- Account number and bank name tracking
+- Automatic balance calculations
+
+#### 2. **Cash Accounts**
+- Physical cash tracking
+- Multi-location cash management
+- Simple balance tracking without bank details
+
+#### 3. **Credit Cards**
+- Credit card balance monitoring
+- Payment tracking and matching
+- Credit limit management
+
+#### 4. **Investment Accounts**
+- Investment portfolio tracking
+- Capital gains/losses recording
+- Asset value monitoring
+
+#### 5. **Credit Lines**
+- Revolving credit facilities
+- Available credit calculations
+- Drawdown and repayment tracking
+- Multiple concurrent drawdowns
+- Interest and fee management
+
+#### 6. **Term Loans**
+- Fixed-term loan management
+- Loan reference tracking
+- Payment schedules
+- Principal and interest breakdown
+
+### 💰 Dual-Layer Transaction System
+
+#### **Original Transactions Layer**
+The raw transaction layer that maintains the source of truth:
+- **Bank Statement Imports**: CSV and XLSX file support
+- **Manual Entry**: Direct transaction creation
+- **System Transactions**: Auto-generated opening balances and adjustments
+- **Import Batching**: Track which file each transaction came from
+- **Rollback Support**: Undo entire import batches
+- **Balance Reconciliation**: Automatic balance adjustment system
+- **Checkpoint Integration**: Historical balance snapshots
+
+Features:
+- Pagination (50/100/200 items per page)
+- Filter by account, source type, and date range
+- Search across descriptions and references
+- Grouped view by import batch
+- View checkpoint details for balance adjustments
+
+#### **Main Transactions Layer**
+The processed and categorized transaction layer:
+
+**Core Features:**
+- **Inline Editing**: Spreadsheet-style cell editing with auto-save
+- **Type-Ahead Search**: Searchable dropdowns for all categorization fields
+- **Split Transactions**: Divide single transactions across multiple categories
+  - Visual indicators (blue split icon)
+  - Maintain original amount integrity
+  - Track split sequence
+- **Bulk Operations**: Multi-select and bulk edit functionality
+  - Shift-click range selection
+  - Ctrl/Cmd-click individual selection
+  - Bulk category assignment
+  - Bulk branch assignment
+
+**Transaction Categorization:**
+- **Transaction Types**: Income, Expense, Transfer, Debt, Investment, Other
+- **Categories**: Hierarchical category system filtered by transaction type
+- **Branches**: Store/location assignment
+- **Direction**: Debit or Credit
+- **Notes**: Additional context and documentation
+
+**Transaction Matching:**
+- **Transfer Matching**: TRF_OUT ↔ TRF_IN
+  - Match outgoing and incoming transfers between accounts
+  - Bidirectional validation
+  - Amount verification
+  - Quick match dialog with smart filtering
+- **Debt Acquisition Matching**: DEBT_DRAW ↔ DEBT_ACQ
+  - Match debt drawdowns with acquisitions
+  - Automatic validation
+- **Debt Payback Matching**: DEBT_PAY ↔ DEBT_SETTLE
+  - Match payments with specific drawdowns
+  - Auto-create settlement transactions
+  - Overpayment handling
+  - Balance updates via triggers
+
+**Advanced Features:**
+- Real-time filters (account, type, category, branch, direction, date)
+- Unmatched transaction highlighting
+- Balance adjustment indicators
+- Drawdown linkage
+- Import batch tracking
+
+### 💳 Advanced Debt Management System
+
+#### Drawdown Management
+- **Create Drawdowns**: Reference number, date, amount, interest rate
+- **Due Date Management**:
+  - Optional due dates
+  - Quick selection buttons (1, 3, 6, 12 months)
+  - Overdue tracking with status updates
+- **Payment Recording**:
+  - Principal, interest, and fee breakdown
+  - Multiple payments per drawdown
+  - Overpayment detection and handling
+  - Automatic credit memo generation
+- **Status Tracking**: Active, Overdue, Settled, Written Off
+- **Receiving Account Assignment**: Link drawdowns to specific accounts for debt acquisition tracking
+
+#### Debt Analytics & Reporting
+- **Total Outstanding**: Includes all active and overdue drawdowns
+- **Available Credit**: Real-time calculation accounting for all drawdowns
+- **Payment Progress**: Visual progress indicators per drawdown
+- **Average Interest Rate**: Weighted by balance
+- **Next Due Date Alerts**: 7-day warning system
+- **Overpayment Tracking**: Automatic credit memo creation and tracking
+- **Status Filtering**: View drawdowns by any status
+
+#### Debt Transaction Workflow
+1. **Debt Acquisition**:
+   - Create drawdown on credit line/term loan → Creates DEBT_DRAW transaction
+   - Record corresponding acquisition → Creates DEBT_ACQ transaction
+   - Match DEBT_DRAW ↔ DEBT_ACQ
+
+2. **Debt Repayment**:
+   - Record payment from bank account → Creates DEBT_PAY transaction
+   - Match DEBT_PAY with specific drawdown → Auto-creates DEBT_SETTLE on credit line
+   - System automatically:
+     - Creates DEBT_SETTLE transaction
+     - Updates drawdown balance
+     - Changes status (active → settled if fully paid)
+     - Creates credit memo if overpaid
+     - Links both transactions bidirectionally
+
+3. **Unmatch Handling**:
+   - Unmatching DEBT_PAY deletes auto-created DEBT_SETTLE
+   - Removes credit memos
+   - Recalculates drawdown balance
+   - Reverts status changes
+
+### 📊 Balance Checkpoint System
+A sophisticated system for maintaining accurate historical balances:
+
+#### Features
+- **Automatic Checkpoints**: Created on every import
+- **Manual Checkpoints**: Set balance at any point in time
+- **Historical Recalculation**: Auto-recalculates future balances when historical transactions change
+- **Balance Adjustments**: Auto-generated balancing transactions
+- **Checkpoint Editing**: Modify checkpoint balances and notes
+- **Checkpoint History**: Complete audit trail with timestamps
+- **Orphaned Adjustment Cleanup**: Automatic removal of obsolete adjustments
+- **Balance Validation**: Ensures consistency across the system
+
+#### How It Works
+1. Import creates checkpoint at import date
+2. System calculates running balance forward
+3. Next checkpoint validates the calculation
+4. If mismatch, creates balance adjustment transaction
+5. All future balances recalculated
+6. Old adjustments automatically cleaned up
+
+### 📈 Reports & Analytics
+
+#### Balance Reports
+- **Current Balances**: Real-time balance for all accounts
+- **Balance Change Tracking**: Period-over-period comparisons
+- **Percentage Changes**: Growth/decline indicators
+- **Entity Grouping**: Balances organized by entity
+
+#### Balance History Charts
+- **Time Series Visualization**: Interactive line charts using Recharts
+- **Multi-Account Overlay**: Compare multiple accounts on one chart
+- **Flexible Granularity**:
+  - Daily aggregation
+  - Weekly aggregation
+  - Monthly aggregation
+  - Yearly aggregation
+- **Date Range Selection**: 1M, 3M, 6M, 1Y, All Time
+- **Color-Coded Lines**: Up to 8 accounts with distinct colors
+- **Interactive Tooltips**: Hover for exact values
+
+### 🔄 Transfer Management Page
+Dedicated interface for managing inter-account transfers:
+
+- **Unmatched Transfers View**:
+  - Separate columns for Transfer Out and Transfer In
+  - Quick identification of unmatched transfers
+  - Amount and account filtering
+- **Matching Interface**:
+  - Select from both columns to match
+  - Amount validation
+  - Account verification
+  - One-click matching
+- **Matched Transfers View**:
+  - Toggle to view all matched transfers
+  - Unmatch capability
+  - Full transaction details
+- **Account Filtering**: Filter by specific accounts
+- **Real-time Updates**: Automatic refresh after operations
+
+### ⚙️ Settings & Configuration
+
+#### Categories Manager
+- **Inline Editing**: Click any field to edit directly
+- **Quick Add Dialog**: Add categories without leaving the page
+- **Transaction Type Filtering**: Categories filtered by applicable type
+- **Entity Type Support**: Business-only, Personal-only, or Both
+- **Hierarchical Support**: Parent-child category relationships
+- **Bulk Management**: Edit multiple categories efficiently
+
+#### Branches Manager
+- **Store/Location Tracking**: Manage all business locations
+- **Branch Codes**: Unique identifiers for each location
+- **Inline Editing**: Direct field editing
+- **Quick Add**: Fast branch creation
+- **Transaction Assignment**: Link transactions to specific branches
+
+#### Transaction Types Manager
+- **Core Types**: Income, Expense, Transfer, Debt, Investment, Other
+- **Display Customization**: Control how types appear in UI
+- **Cashflow Impact**: Define whether type affects cashflow
+- **Display Order**: Control sort order in dropdowns
+- **Affects Cashflow Flag**: Mark types that impact cashflow calculations
 
 ### 🔍 Advanced Filtering & Search
-- Filter by: Account, Transaction Type, Category, Branch, Direction, Date Range
-- Real-time search across descriptions and notes
-- Pagination with configurable page sizes (50/100/200)
-- Smart category filtering based on transaction type
 
-### ⚙️ Settings Management
-- **Categories Manager**: Create and edit transaction categories
-- **Branches Manager**: Manage store/branch locations
-- **Transaction Types Manager**: Configure core transaction types
-- All with inline editing and quick add dialogs
+#### Global Search
+- **Description Search**: Fuzzy matching across transaction descriptions
+- **Reference Search**: Bank references and transaction IDs
+- **Real-time Results**: Instant search as you type
+
+#### Filter Combinations
+- **Account Filter**: Single or multiple accounts
+- **Transaction Type**: Filter by any type
+- **Category Filter**: Filtered by selected transaction type
+- **Branch Filter**: Location-based filtering
+- **Direction**: Debit or Credit
+- **Date Range**: Custom start and end dates
+- **Status**: Matched/Unmatched, Active/Settled
+- **Source**: Imported, Manual, System, Adjustment
+
+#### Smart Filtering
+- **Dependent Filters**: Categories auto-filter based on transaction type
+- **Preserved State**: Filters persist across page refreshes
+- **Clear All**: One-click filter reset
+- **URL State**: Filters encoded in URL for sharing
 
 ### 🎨 Modern UI/UX
-- Clean, responsive design with shadcn/ui components
-- Dark mode support
-- Inline editing with auto-save
-- Type-ahead search in dropdowns
-- Real-time updates without page refresh
-- **Quick action buttons** for common tasks
+
+#### Design System
+- **shadcn/ui Components**: Modern, accessible component library
+- **Tailwind CSS**: Utility-first styling
+- **Lucide Icons**: Consistent iconography
+- **Dark Mode Support**: System-preference aware
+- **Responsive Design**: Mobile, tablet, and desktop optimized
+
+#### User Experience
+- **Inline Editing**: Edit without opening dialogs
+- **Auto-Save**: Changes saved automatically
+- **Loading States**: Clear feedback during operations
+- **Error Handling**: User-friendly error messages
+- **Optimistic Updates**: Instant UI updates
+- **Toast Notifications**: Non-intrusive success/error messages
+
+#### Keyboard Shortcuts
+- **Enter**: Save inline edit
+- **Escape**: Cancel inline edit
+- **Shift+Click**: Range selection
+- **Ctrl/Cmd+Click**: Multi-selection
+- **Tab**: Navigate between editable cells
+
+---
 
 ## Tech Stack
 
-- **Frontend**: Next.js 14 (App Router), React, TypeScript
-- **Backend**: Next.js API Routes, Supabase
-- **Database**: PostgreSQL (via Supabase)
-- **UI Components**: shadcn/ui, Tailwind CSS
+### Frontend
+- **Framework**: Next.js 14 with App Router
+- **Language**: TypeScript
+- **UI Library**: React 18
+- **Styling**: Tailwind CSS
+- **Components**: shadcn/ui
 - **Icons**: Lucide React
-- **File Processing**: XLSX import support
+- **Charts**: Recharts
+- **Forms**: React Hook Form (planned)
+- **State**: React Hooks (useState, useEffect)
+
+### Backend
+- **API**: Next.js API Routes
+- **Database**: PostgreSQL via Supabase
+- **ORM**: Supabase Client
+- **Authentication**: Supabase Auth (planned)
+- **File Storage**: Supabase Storage (planned)
+
+### Database Features
+- **PostgreSQL 15+**: Advanced SQL features
+- **Triggers**: Auto-calculations and validations
+- **Views**: Complex query optimization
+- **RPC Functions**: Custom business logic
+- **Row Level Security**: Data isolation (planned)
+- **Materialized Views**: Performance optimization (planned)
+
+### File Processing
+- **CSV Import**: Papa Parse
+- **XLSX Import**: XLSX library
+- **Column Mapping**: Dynamic field matching
+- **Batch Processing**: Large file handling
+
+---
 
 ## Database Schema
 
 ### Core Tables
-- `entities`: Business and personal entities
-- `accounts`: Bank accounts linked to entities
-- `balance_checkpoints`: Historical balance snapshots
-- `original_transaction`: Raw imported transactions
-- `main_transaction`: Categorized transaction layer
-- `transaction_types`: Transaction type definitions
-- `categories`: Hierarchical transaction categories
-- `branches`: Store/branch locations
-- **`debt_drawdown`**: Debt drawdown tracking
-- **`drawdown_payment`**: Payment records for drawdowns
 
-### Key Features
-- Automatic trigger-based balance calculations
-- Checkpoint recalculation on historical imports
-- Orphaned adjustment cleanup
-- Transaction type and category validation
-- **Debt drawdown lifecycle management**
-- **Available credit calculation with overdue handling**
+#### entities
+Multi-entity support table
+- `id`: UUID primary key
+- `name`: Entity name
+- `type`: 'company' or 'personal'
+- `description`: Optional notes
+- `created_at`, `updated_at`: Timestamps
+
+#### accounts
+Financial accounts table
+- `account_id`: Serial primary key
+- `entity_id`: Foreign key to entities
+- `account_name`: Display name
+- `account_type`: 'bank', 'cash', 'credit_card', 'investment', 'credit_line', 'term_loan'
+- `account_number`: Optional account number
+- `bank_name`: Bank institution name
+- `currency`: 'VND', 'USD', 'EUR'
+- `credit_limit`: For credit accounts
+- `loan_reference`: For loan accounts
+- `is_active`: Soft delete flag
+- `created_at`, `updated_at`: Timestamps
+
+#### balance_checkpoints
+Historical balance snapshots
+- `checkpoint_id`: Serial primary key
+- `account_id`: Foreign key to accounts
+- `checkpoint_date`: Date of snapshot
+- `balance`: Balance amount
+- `notes`: Optional description
+- `import_batch_id`: Link to import batch
+- `created_at`, `created_by_user_id`: Audit fields
+
+#### original_transaction
+Raw transaction layer (source of truth)
+- `raw_transaction_id`: Text primary key
+- `account_id`: Foreign key to accounts
+- `transaction_date`: Transaction date
+- `description`: Transaction description
+- `debit_amount`, `credit_amount`: Transaction amounts
+- `balance`: Running balance
+- `bank_reference`: Bank reference number
+- `transaction_source`: 'imported_bank', 'user_manual', 'system_opening', 'auto_adjustment'
+- `import_batch_id`: Import batch tracking
+- `imported_at`: Import timestamp
+- `import_file_name`: Source file name
+- `is_balance_adjustment`: Flag for adjustment transactions
+- `checkpoint_id`: Link to checkpoint
+- `created_by_user_id`, `updated_by_user_id`: Audit fields
+
+#### main_transaction
+Processed transaction layer with categorization
+- `main_transaction_id`: Serial primary key
+- `raw_transaction_id`: Foreign key to original_transaction
+- `account_id`: Foreign key to accounts
+- `transaction_type_id`: Foreign key to transaction_types
+- `category_id`: Foreign key to categories
+- `branch_id`: Foreign key to branches
+- `amount`: Transaction amount
+- `transaction_direction`: 'debit' or 'credit'
+- `transaction_date`: Transaction date
+- `description`: Transaction description
+- `notes`: Additional notes
+- `is_split`: Split transaction flag
+- `split_sequence`: Order in split group
+- `transaction_subtype`: Additional classification
+- `drawdown_id`: Link to debt drawdown
+- `transfer_matched_transaction_id`: Bidirectional transfer/debt matching
+- `created_at`, `updated_at`: Timestamps
+
+#### transaction_types
+Transaction type definitions
+- `transaction_type_id`: Serial primary key
+- `type_code`: Unique code (INC, EXP, TRF_OUT, TRF_IN, DEBT_DRAW, etc.)
+- `type_name`: Internal name
+- `type_display_name`: User-facing name
+- `affects_cashflow`: Boolean flag
+- `display_order`: Sort order
+- `description`: Type description
+
+#### categories
+Hierarchical transaction categories
+- `category_id`: Serial primary key
+- `category_name`: Display name
+- `category_code`: Unique code
+- `transaction_type_id`: Applicable type
+- `entity_type`: 'business', 'personal', 'both'
+- `parent_category_id`: Parent category (hierarchical)
+- `description`: Category description
+- `created_at`, `updated_at`: Timestamps
+
+#### branches
+Store/location tracking
+- `branch_id`: Serial primary key
+- `branch_name`: Display name
+- `branch_code`: Unique code
+- `address`, `phone`, `email`: Contact info
+- `is_active`: Active flag
+- `created_at`, `updated_at`: Timestamps
+
+#### debt_drawdown
+Debt drawdown tracking
+- `drawdown_id`: Serial primary key
+- `account_id`: Foreign key to credit_line/term_loan account
+- `drawdown_reference`: Reference number
+- `drawdown_date`: Drawdown date
+- `original_amount`: Initial amount
+- `remaining_balance`: Current balance (updated by triggers)
+- `due_date`: Optional payment due date
+- `interest_rate`: Annual percentage rate
+- `status`: 'active', 'overdue', 'settled', 'written_off'
+- `notes`: Additional information
+- `overpayment_amount`: Overpaid amount
+- `is_overpaid`: Overpayment flag
+- `created_at`, `updated_at`: Timestamps
+
+#### drawdown_payment
+Payment records for drawdowns
+- `payment_id`: Serial primary key
+- `drawdown_id`: Foreign key to debt_drawdown
+- `payment_date`: Payment date
+- `principal_amount`: Principal portion
+- `interest_amount`: Interest portion
+- `fee_amount`: Fee portion
+- `total_amount`: Total payment
+- `notes`: Payment notes
+- `created_at`: Timestamp
+
+### Key Views
+
+#### main_transaction_details
+Comprehensive transaction view joining all related tables
+- All main_transaction fields
+- Account details (name, bank, type)
+- Entity information
+- Transaction type details
+- Category information
+- Branch details
+- Drawdown information
+- Calculated flags: `needs_drawdown_match`, `is_unmatched`
+
+#### debt_summary
+Aggregated debt statistics per account
+- Account information
+- Total/active/overdue/settled drawdown counts
+- Total outstanding amounts
+- Available credit calculations
+- Average interest rates
+
+### Database Functions & Triggers
+
+#### Auto-Create Main Transactions
+- Trigger: `auto_create_main_transaction`
+- Fires on: INSERT to original_transaction
+- Action: Automatically creates corresponding main_transaction
+
+#### Balance Checkpoint Management
+- `recalculate_balances_after_checkpoint()`: Recalculates future balances
+- `cleanup_orphaned_adjustments()`: Removes obsolete adjustment transactions
+
+#### Debt Management
+- `get_active_drawdowns()`: Returns active and overdue drawdowns with details
+- `get_available_credit()`: Calculates available credit considering all drawdowns
+- `get_drawdown_settled_amount()`: Sums settled amount from matched DEBT_SETTLE transactions
+- `update_drawdown_after_settlement()`: Trigger to update drawdown balance on DEBT_SETTLE INSERT/UPDATE/DELETE
+
+#### Transfer & Debt Matching
+- `validate_transfer_match()`: Validates transaction pair matching (TRF_OUT↔TRF_IN, DEBT_DRAW↔DEBT_ACQ, DEBT_PAY↔DEBT_SETTLE)
+
+---
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 18 or higher
 - npm or yarn
-- Supabase account
+- Supabase account (free tier works)
+- PostgreSQL database via Supabase
 
 ### Installation
 
-1. Clone the repository
+1. **Clone the repository**
 ```bash
 git clone <repository-url>
 cd Financeapp
 ```
 
-2. Install dependencies
+2. **Install dependencies**
 ```bash
 npm install
 ```
 
-3. Set up environment variables
+3. **Set up environment variables**
 ```bash
 cp .env.example .env.local
 ```
 
-Add your Supabase credentials to `.env.local`:
-```
-NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+Edit `.env.local` and add your Supabase credentials:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-4. Run database migrations
-- Execute migration files in the `/migrations` folder in order
-- Latest migration: `021_add_debt_payback_system.sql`
-- Or import them via Supabase SQL Editor
+4. **Run database migrations**
 
-5. Start the development server
+Execute migration files in `/migrations` folder in numerical order via Supabase SQL Editor:
+- Migrations 001-013: Core system and main transactions
+- Migrations 014-021: Debt management system
+- **Latest migration: 021_add_debt_payback_system.sql**
+
+Or run all at once (ensure order is preserved):
+```sql
+-- In Supabase SQL Editor
+-- Copy and paste each migration file content in order
+```
+
+5. **Start the development server**
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to view the app.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-## Usage
+6. **Build for production**
+```bash
+npm run build
+npm start
+```
+
+---
+
+## Usage Guide
+
+### Setting Up Your First Account
+
+1. **Create an Entity**
+   - Navigate to **Entities** page
+   - Click **Add Entity**
+   - Choose type (Company or Personal)
+   - Enter name and description
+   - Save
+
+2. **Add a Bank Account**
+   - Navigate to **Accounts** page
+   - Click **Add Account**
+   - Select your entity
+   - Choose account type (Bank, Cash, Credit Card, etc.)
+   - Enter account details
+   - Set initial balance and date
+   - Save (system creates opening checkpoint)
 
 ### Importing Bank Statements
-1. Navigate to **Transactions** page
-2. Click **Import CSV** or **Import XLSX**
-3. Select your bank account
-4. Map columns (date, description, debit, credit)
-5. Review and import transactions
-6. System automatically creates balance checkpoint
+
+1. **Prepare Your File**
+   - CSV or XLSX format
+   - Required columns: Date, Description, Amount (or Debit/Credit)
+   - Optional: Balance, Reference
+
+2. **Import Process**
+   - Navigate to **Transactions** page
+   - Click **Import CSV** or **Import XLSX**
+   - Select account
+   - Map columns to required fields
+   - Preview first 5 rows
+   - Click **Import**
+   - System creates checkpoint and processes all transactions
+
+3. **What Happens Behind the Scenes**
+   - Creates balance checkpoint at first transaction date
+   - Imports all original_transaction records
+   - Auto-creates main_transaction records via trigger
+   - Calculates running balance
+   - Creates balance adjustment if needed
+   - Cleans up old adjustments
 
 ### Categorizing Transactions
-1. Navigate to **Main Transactions** page
-2. Use filters to find transactions
-3. Click on any dropdown to categorize:
-   - Type to search for categories
-   - Select transaction type, category, and branch
+
+1. **Navigate to Main Transactions**
+   - Go to **Main Transactions** page
+   - Use filters to find uncategorized transactions
+
+2. **Inline Editing**
+   - Click any cell to edit
+   - Type to search in dropdowns
+   - Press Enter to save, Escape to cancel
    - Changes save automatically
-4. Or use the Edit dialog for bulk edits
 
-### Managing Debt Drawdowns
-1. Navigate to **Accounts** page
-2. View a Credit Line or Term Loan account
-3. Click **New Drawdown** to create a drawdown:
-   - Enter reference number and amount
-   - Select drawdown date
-   - Optionally set due date (use quick buttons for common terms)
-   - Add interest rate and notes if needed
-4. Track drawdowns in the Debt Drawdowns card
-5. Click **Pay** to record payments
-6. Click the link icon to assign receiving accounts
+3. **Bulk Editing**
+   - Select multiple transactions (Shift+Click or Ctrl+Click)
+   - Click **Bulk Edit**
+   - Set transaction type, category, branch
+   - Apply to all selected
 
-### Matching Debt Transactions
+4. **Splitting Transactions**
+   - Click split icon (turns blue if already split)
+   - Add split rows
+   - Allocate amounts (must sum to original)
+   - Set category for each split
+   - Save
 
-#### Matching Debt Acquisition (DEBT_DRAW ↔ DEBT_ACQ)
-1. Navigate to **Main Transactions** page
-2. Find unmatched DEBT_DRAW and DEBT_ACQ transactions
-3. Click the **Unmatched** badge on either transaction
-4. Select the corresponding transaction to match
-5. System validates amounts and creates the match
+### Managing Debt
 
-#### Matching Debt Payback (DEBT_PAY ↔ DEBT_SETTLE)
-1. Navigate to **Main Transactions** page
-2. Find DEBT_PAY transactions that need drawdown matching
-3. Click the badge or use the matching dialog
-4. Select the drawdown to match with
-5. System automatically:
-   - Creates DEBT_SETTLE transaction on credit line
-   - Updates drawdown balance and status
-   - Creates credit memo if overpayment occurs
-6. To unmatch: Click the matched badge - system will delete auto-created settlements and recalculate
+#### Creating a Drawdown
 
-### Managing Categories
+1. Navigate to account detail page (Credit Line or Term Loan)
+2. Click **New Drawdown** in Debt Drawdowns card
+3. Enter:
+   - Reference number
+   - Drawdown date
+   - Amount
+   - Due date (optional, use quick buttons for common terms)
+   - Interest rate (optional)
+   - Notes (optional)
+4. Save
+5. System creates DEBT_DRAW transaction
+
+#### Recording a Payment
+
+**Method 1: Direct Payment Recording**
+1. In Debt Drawdowns card, click **Pay** button
+2. Enter:
+   - Payment date
+   - Principal amount
+   - Interest amount (optional)
+   - Fee amount (optional)
+3. Save
+4. Creates payment record
+5. Updates remaining balance
+6. Changes status to settled if fully paid
+
+**Method 2: Match Existing DEBT_PAY Transaction**
+1. Record payment in bank account (creates DEBT_PAY transaction)
+2. Navigate to **Main Transactions**
+3. Find the DEBT_PAY transaction
+4. Click the matching badge/button
+5. Select target drawdown from list
+6. System automatically:
+   - Creates DEBT_SETTLE on credit line account
+   - Links both transactions
+   - Updates drawdown balance
+   - Changes status if fully paid
+   - Creates credit memo if overpaid
+
+#### Assigning Receiving Account
+
+1. Click link icon on drawdown
+2. Select the account that received the funds
+3. System tracks where drawdown funds went
+
+### Matching Transfers
+
+#### Automatic Matching (Recommended)
+1. Navigate to **Main Transactions**
+2. Find unmatched transfer badges (yellow)
+3. Click badge on either TRF_OUT or TRF_IN
+4. System shows matching candidates
+5. Select correct match
+6. Confirm
+
+#### Manual Matching (Dedicated Page)
+1. Navigate to **Transfers** page
+2. View unmatched Transfer Out (left) and Transfer In (right)
+3. Select one from each column
+4. Click **Match**
+5. System validates amounts and creates bidirectional link
+
+### Viewing Reports
+
+1. **Balance Reports**
+   - Navigate to **Reports** page
+   - View current balances for all accounts
+   - See balance changes and percentages
+   - Filter by entity
+
+2. **Balance History Chart**
+   - Select granularity (Day/Week/Month/Year)
+   - Choose date range (1M/3M/6M/1Y/All)
+   - Click accounts to toggle on chart
+   - Hover for exact values
+   - Multiple accounts shown with different colors
+
+### Managing Settings
+
+#### Categories
 1. Navigate to **Settings** > **Categories** tab
-2. Click **Add Category** to create new categories
+2. Click **Add Category** for new entry
 3. Click any field to edit inline
-4. Categories are automatically filtered by transaction type
+4. Categories auto-filter by transaction type
+5. Set entity type (Business/Personal/Both)
 
-### Managing Branches
+#### Branches
 1. Navigate to **Settings** > **Branches** tab
-2. Click **Add Branch** to create new locations
-3. Edit branch details inline
-4. Assign branches to transactions for location tracking
+2. Add branches for different locations
+3. Edit inline (name, code, contact info)
+4. Assign to transactions for location tracking
+
+#### Transaction Types
+1. Navigate to **Settings** > **Transaction Types** tab
+2. Configure core types (read-only codes)
+3. Edit display names and descriptions
+4. Set display order
+5. Configure cashflow impact
+
+---
 
 ## Project Structure
 
 ```
 /app
-  /api                 # API routes
-    /accounts         # Account management
-      /[id]/drawdowns # Drawdown management
-      /[id]/available-credit # Credit calculations
-    /branches         # Branch CRUD
-    /categories       # Category CRUD
-    /main-transactions # Main transaction operations
-    /transaction-types # Transaction type management
-    /transfers        # Transfer and debt matching
-  /dashboard          # Main application pages
-    /accounts         # Account management UI
-      /[id]          # Individual account with drawdowns
-    /entities         # Entity management UI
-    /main-transactions # Categorized transactions UI
-    /settings         # Settings with tabs
-    /transactions     # Raw transactions & import
+  /api                          # API Routes
+    /accounts                   # Account CRUD
+      /[id]                     # Individual account operations
+        /drawdowns              # Drawdown management
+        /available-credit       # Credit calculations
+        /payments               # Payment recording
+    /branches                   # Branch CRUD
+    /categories                 # Category CRUD
+    /debt                       # Debt operations
+      /match-payback            # DEBT_PAY ↔ DEBT_SETTLE matching
+    /main-transactions          # Main transaction operations
+      /bulk-update              # Bulk edit endpoint
+    /transaction-types          # Transaction type management
+    /transactions               # Original transaction operations
+      /grouped                  # Grouped view
+      /import                   # CSV/XLSX import
+      /rollback                 # Batch rollback
+    /transfers                  # Transfer and debt matching
+      /match                    # Create matches
+      /unmatch/[id]             # Remove matches
+      /matched                  # List matched
+      /unmatched                # List unmatched
+    /reports                    # Reporting endpoints
+      /balance-history          # Historical balance data
+  /dashboard                    # Main application pages
+    /accounts                   # Account management UI
+      /[id]                     # Individual account detail
+    /entities                   # Entity management UI
+    /main-transactions          # Categorized transactions UI
+    /reports                    # Financial reports UI
+    /settings                   # Settings with tabs
+    /transactions               # Raw transactions & import
+    /transfers                  # Transfer matching UI
+    /page.tsx                   # Dashboard home
+
 /components
-  /main-transactions  # Transaction components
-    /QuickMatchDebtDialog.tsx # Debt matching UI
-  /settings          # Settings page components
-  /ui               # Reusable UI components
-  create-drawdown-dialog.tsx # Drawdown creation
-  drawdown-list-card.tsx     # Drawdown display
-  record-payment-dialog.tsx  # Payment recording
+  /main-transactions            # Main transaction components
+    /EditTransactionDialog.tsx  # Edit dialog
+    /SplitTransactionDialog.tsx # Split interface
+    /BulkEditDialog.tsx         # Bulk edit dialog
+    /QuickMatchTransferDialog.tsx # Transfer matching UI
+    /QuickMatchDebtDialog.tsx   # Debt acquisition matching UI
+    /SelectDrawdownDialog.tsx   # Debt payback matching UI
+    /InlineCombobox.tsx         # Searchable dropdown
+  /settings                     # Settings page components
+    /CategoriesManager.tsx      # Category management
+    /BranchesManager.tsx        # Branch management
+    /TransactionTypesManager.tsx # Type management
+  /ui                          # Reusable shadcn/ui components
+  account-form-dialog.tsx      # Account creation/editing
+  bank-import-dialog.tsx       # CSV/XLSX import UI
+  create-drawdown-dialog.tsx   # Drawdown creation
+  drawdown-list-card.tsx       # Drawdown display with filtering
+  record-payment-dialog.tsx    # Payment recording
   assign-receiving-account-dialog.tsx # Account assignment
-/lib                # Utilities and helpers
-/migrations         # Database migration files
-/types              # TypeScript type definitions
-  debt.ts           # Debt system types
-  main-transaction.ts # Transaction types
+  balance-edit-dialog.tsx      # Balance editing
+  checkpoint-history-card.tsx  # Checkpoint history display
+  edit-checkpoint-dialog.tsx   # Checkpoint editing
+  view-checkpoint-dialog.tsx   # Checkpoint details
+  sidebar.tsx                  # Navigation sidebar
+
+/lib
+  supabase.ts                  # Supabase client configuration
+  account-utils.ts             # Account helper functions
+  currency-utils.ts            # Currency formatting
+  date-utils.ts                # Date formatting
+
+/migrations                    # Database migration files
+  001-013_*.sql                # Core system migrations
+  014-021_*.sql                # Debt management migrations
+
+/types                         # TypeScript type definitions
+  account.ts                   # Account types and configs
+  debt.ts                      # Debt system types
+  main-transaction.ts          # Transaction types
+  balance.ts                   # Balance and checkpoint types
 ```
+
+---
 
 ## Key Migrations
 
 ### Balance & Checkpoint System
-- `001`: Add missing transaction features
-- `002`: Migrate account balances (optional)
-- `003`: Add balance checkpoint system
-- `004-005`: Fix checkpoint recalculation
+- **001**: Add missing transaction features
+- **002**: Migrate account balances (optional)
+- **003**: Add balance checkpoint system
+- **004-005**: Fix checkpoint recalculation and orphaned adjustments
 
 ### Main Transaction System
-- `006`: Main transaction system
-- `007-009`: Auto-create main transactions
-- `010`: Fix main_transaction_details view
-- `011-013`: Transaction import and rollback
+- **006**: Main transaction system foundation
+- **007-009**: Auto-create main transactions from original
+- **010**: Fix main_transaction_details view
+- **011-013**: Transaction import enhancements and rollback
 
 ### Debt Management System
-- `014`: Debt drawdown system foundation
-- `015`: Drawdown payment tracking
-- `016`: Fix debt type filtering
-- `017`: Overpayment handling
-- `018`: Debt transaction matching support
-- `019`: Fix checkpoint logic for credit accounts
-- `020`: Fix overdue drawdowns visibility and calculations
-- **`021`: Add debt payback system (DEBT_PAY ↔ DEBT_SETTLE)** ⭐ NEW
+- **014**: Debt drawdown system foundation
+- **015**: Drawdown payment tracking
+- **016**: Fix debt type filtering
+- **017**: Overpayment handling with credit memos
+- **018**: Debt transaction matching support (DEBT_DRAW ↔ DEBT_ACQ)
+- **019**: Fix checkpoint logic for credit accounts
+- **020**: Fix overdue drawdowns visibility and calculations
+- **021**: Add debt payback system (DEBT_PAY ↔ DEBT_SETTLE) ⭐ **LATEST**
 
-## Migration 021 Details
+### Migration 021 Details
 
-This migration adds the complete debt payback system:
+**Purpose**: Complete debt payback system with auto-settlement
 
-1. **New Transaction Type**:
-   - Added `DEBT_SETTLE` type for settlement transactions auto-created when matching debt payments
+**Changes**:
+1. **New Transaction Type**: DEBT_SETTLE for auto-created settlement transactions
+2. **Schema Updates**:
+   - Added `is_overpaid` boolean to `debt_drawdown` table
+   - Enhanced `main_transaction_details` view
+3. **Functions**:
+   - `get_drawdown_settled_amount()`: Calculate total settled from matched transactions
+   - `update_drawdown_after_settlement()`: Auto-update drawdown on settlement INSERT/UPDATE/DELETE
+   - Updated `validate_transfer_match()`: Allow DEBT_PAY ↔ DEBT_SETTLE pairs
+4. **Triggers**:
+   - `trigger_update_drawdown_on_settlement`: Fires on DEBT_SETTLE changes
+   - Handles DELETE to recalculate on unmatch
 
-2. **Database Schema Updates**:
-   - Added `is_overpaid` boolean flag to `debt_drawdown` table
-   - Enhanced `main_transaction_details` view with drawdown matching information
+**To Apply**: Run `migrations/021_add_debt_payback_system.sql` in Supabase SQL Editor
 
-3. **Functions & Triggers**:
-   - `get_drawdown_settled_amount()`: Calculate total settled amount for a drawdown
-   - `update_drawdown_after_settlement()`: Automatically update drawdown balance on INSERT/UPDATE/DELETE
-   - Updated `validate_transfer_match()`: Allow DEBT_PAY ↔ DEBT_SETTLE matching
-   - Trigger on DELETE: Properly recalculates drawdown when settlements are deleted
-
-4. **Matching Logic**:
-   - DEBT_PAY (from paying account) ↔ DEBT_SETTLE (on credit line account)
-   - Auto-creates DEBT_SETTLE when matching DEBT_PAY with drawdown
-   - Bidirectional matching with validation
-   - Overpayment detection and credit memo creation
-
-**To apply**: Run `migrations/021_add_debt_payback_system.sql` in Supabase SQL Editor
+---
 
 ## Version History
 
@@ -329,10 +903,62 @@ This migration adds the complete debt payback system:
 - **v2.0.0** - Main transaction system with inline editing
 - **v1.0.0** - Initial release with basic account and transaction management
 
+---
+
+## Roadmap
+
+### Planned Features
+- [ ] User authentication and multi-user support
+- [ ] Role-based access control
+- [ ] Budgeting and forecasting
+- [ ] Recurring transactions
+- [ ] Advanced reporting (P&L, Balance Sheet, Cash Flow Statement)
+- [ ] Export to Excel/PDF
+- [ ] API documentation
+- [ ] Mobile responsive improvements
+- [ ] Real-time collaboration
+- [ ] Automated bank feeds
+- [ ] AI-powered categorization suggestions
+
+### Under Consideration
+- [ ] Multi-currency exchange rate handling
+- [ ] Invoice management
+- [ ] Expense claims
+- [ ] Payroll integration
+- [ ] Tax calculation and reporting
+- [ ] Audit log
+- [ ] Data backup and restore
+
+---
+
 ## Contributing
 
 This is a private project. For issues or feature requests, please contact the development team.
 
+---
+
 ## License
 
 Proprietary - All rights reserved
+
+---
+
+## Support
+
+For questions, issues, or feature requests:
+- Create an issue in the repository
+- Contact the development team
+- Refer to inline code documentation
+
+---
+
+## Acknowledgments
+
+Built with:
+- [Next.js](https://nextjs.org/) - React framework
+- [Supabase](https://supabase.com/) - Backend platform
+- [shadcn/ui](https://ui.shadcn.com/) - UI components
+- [Tailwind CSS](https://tailwindcss.com/) - Styling
+- [Lucide](https://lucide.dev/) - Icons
+- [Recharts](https://recharts.org/) - Charts
+- [XLSX](https://www.npmjs.com/package/xlsx) - Excel file processing
