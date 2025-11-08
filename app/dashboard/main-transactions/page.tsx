@@ -6,9 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { ChevronLeft, ChevronRight, Edit, Search, Filter, X } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ChevronLeft, ChevronRight, Edit, Search, Filter, X, Split, Check, Link2 } from "lucide-react"
 import { MainTransactionDetails, TransactionType, Category, Branch } from "@/types/main-transaction"
 import { EditTransactionDialog } from "@/components/main-transactions/EditTransactionDialog"
+import { SplitTransactionDialog } from "@/components/main-transactions/SplitTransactionDialog"
+import { BulkEditDialog } from "@/components/main-transactions/BulkEditDialog"
+import { QuickMatchTransferDialog } from "@/components/main-transactions/QuickMatchTransferDialog"
 import { InlineCombobox } from "@/components/main-transactions/InlineCombobox"
 
 interface PaginationInfo {
@@ -51,9 +55,21 @@ export default function MainTransactionsPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState<MainTransactionDetails | null>(null)
 
+  // Split dialog state
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false)
+  const [splitTransaction, setSplitTransaction] = useState<MainTransactionDetails | null>(null)
+
   // Inline editing state
   const [editingCell, setEditingCell] = useState<{row: number, field: string} | null>(null)
   const [savingCell, setSavingCell] = useState<{row: number, field: string} | null>(null)
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null)
+  const [bulkEditDialogOpen, setBulkEditDialogOpen] = useState(false)
+
+  // Quick match dialog state
+  const [quickMatchDialogOpen, setQuickMatchDialogOpen] = useState(false)
 
   // Fetch transaction types, categories, branches, accounts on mount
   useEffect(() => {
@@ -161,6 +177,15 @@ export default function MainTransactionsPage() {
     fetchTransactions() // Refresh the list
   }
 
+  const handleSplitTransaction = (transaction: MainTransactionDetails) => {
+    setSplitTransaction(transaction)
+    setSplitDialogOpen(true)
+  }
+
+  const handleSplitSuccess = () => {
+    fetchTransactions() // Refresh the list
+  }
+
   const handleInlineUpdate = async (
     transactionId: number,
     field: string,
@@ -256,6 +281,83 @@ export default function MainTransactionsPage() {
 
   const getDirectionColor = (direction: string) => {
     return direction === "debit" ? "text-red-600" : "text-green-600"
+  }
+
+  // Bulk selection handlers
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allIds = new Set(transactions.map(tx => tx.main_transaction_id))
+      setSelectedIds(allIds)
+    } else {
+      setSelectedIds(new Set())
+    }
+    setLastSelectedIndex(null)
+  }
+
+  const handleSelectRow = (id: number, index: number, event: React.MouseEvent) => {
+    const newSelected = new Set(selectedIds)
+
+    if (event.shiftKey && lastSelectedIndex !== null) {
+      // Shift-select: select range
+      const start = Math.min(lastSelectedIndex, index)
+      const end = Math.max(lastSelectedIndex, index)
+
+      for (let i = start; i <= end; i++) {
+        if (transactions[i]) {
+          newSelected.add(transactions[i].main_transaction_id)
+        }
+      }
+    } else {
+      // Regular click: toggle selection
+      if (newSelected.has(id)) {
+        newSelected.delete(id)
+      } else {
+        newSelected.add(id)
+      }
+    }
+
+    setSelectedIds(newSelected)
+    setLastSelectedIndex(index)
+  }
+
+  const handleBulkEdit = () => {
+    if (selectedIds.size > 0) {
+      setBulkEditDialogOpen(true)
+    }
+  }
+
+  const handleBulkEditSuccess = () => {
+    setSelectedIds(new Set())
+    setLastSelectedIndex(null)
+    fetchTransactions()
+  }
+
+  const handleQuickMatchSuccess = () => {
+    fetchTransactions()
+  }
+
+  const handleUnmatchTransfer = async (transaction: MainTransactionDetails) => {
+    if (!confirm("Are you sure you want to unmatch this transfer? Both transactions will become unmatched.")) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/transfers/unmatch/${transaction.main_transaction_id}`, {
+        method: "DELETE",
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to unmatch transfer")
+      }
+
+      alert("Transfer unmatched successfully!")
+      fetchTransactions()
+    } catch (error: any) {
+      console.error("Error unmatching transfer:", error)
+      alert(error.message || "Failed to unmatch transfer. Please try again.")
+    }
   }
 
   return (
@@ -420,12 +522,42 @@ export default function MainTransactionsPage() {
       {/* Transactions Table */}
       <Card>
         <CardHeader>
-          <CardTitle>
-            Transactions ({pagination.total})
-          </CardTitle>
-          <CardDescription>
-            Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} transactions
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>
+                Transactions ({pagination.total})
+              </CardTitle>
+              <CardDescription>
+                Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} transactions
+              </CardDescription>
+            </div>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="text-sm">
+                  {selectedIds.size} selected
+                </Badge>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleBulkEdit}
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Selected
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedIds(new Set())
+                    setLastSelectedIndex(null)
+                  }}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Clear Selection
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -442,6 +574,13 @@ export default function MainTransactionsPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b">
+                      <th className="text-center py-3 px-4 w-12">
+                        <Checkbox
+                          checked={selectedIds.size === transactions.length && transactions.length > 0}
+                          onCheckedChange={handleSelectAll}
+                          aria-label="Select all"
+                        />
+                      </th>
                       <th className="text-left py-3 px-4">Date</th>
                       <th className="text-left py-3 px-4">Description</th>
                       <th className="text-left py-3 px-4">Type</th>
@@ -460,8 +599,27 @@ export default function MainTransactionsPage() {
                         branch.entity_id === tx.entity_id
                       )
 
+                      const isBalanceAdjustment = tx.is_balance_adjustment === true
+
                       return (
-                        <tr key={tx.main_transaction_id} className="border-b hover:bg-muted/50">
+                        <tr
+                          key={tx.main_transaction_id}
+                          className={`border-b hover:bg-muted/50 ${isBalanceAdjustment ? 'opacity-50 bg-muted/30' : ''}`}
+                        >
+                          <td className="text-center py-3 px-4">
+                            <Checkbox
+                              checked={selectedIds.has(tx.main_transaction_id)}
+                              onCheckedChange={(checked) => {
+                                const event = window.event as MouseEvent
+                                handleSelectRow(tx.main_transaction_id, txIndex, event as any)
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                              }}
+                              disabled={isBalanceAdjustment}
+                              aria-label={`Select transaction ${tx.main_transaction_id}`}
+                            />
+                          </td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             {new Date(tx.transaction_date).toLocaleDateString()}
                           </td>
@@ -485,14 +643,48 @@ export default function MainTransactionsPage() {
                                 )}
                                 className="h-8 text-sm"
                                 placeholder="Description..."
-                                disabled={savingCell?.row === txIndex && savingCell?.field === 'description'}
+                                disabled={isBalanceAdjustment || (savingCell?.row === txIndex && savingCell?.field === 'description')}
                               />
                               {tx.notes && (
                                 <div className="text-xs text-muted-foreground mt-1">{tx.notes}</div>
                               )}
-                              {tx.is_split && (
-                                <Badge variant="outline" className="mt-1">Split</Badge>
-                              )}
+                              <div className="flex gap-1 mt-1">
+                                {tx.is_split && (
+                                  <Badge variant="outline">Split</Badge>
+                                )}
+                                {isBalanceAdjustment && (
+                                  <Badge variant="secondary" className="bg-orange-100 text-orange-800 border-orange-200">
+                                    Balance Adjustment
+                                  </Badge>
+                                )}
+                                {/* Matched transfer */}
+                                {tx.transfer_matched_transaction_id && (tx.transaction_type_code === 'TRF_OUT' || tx.transaction_type_code === 'TRF_IN') && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200"
+                                    onClick={() => handleUnmatchTransfer(tx)}
+                                    title="Click to unmatch this transfer"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Matched Transfer
+                                  </Badge>
+                                )}
+                                {/* Unmatched transfer */}
+                                {!tx.transfer_matched_transaction_id && (tx.transaction_type_code === 'TRF_OUT' || tx.transaction_type_code === 'TRF_IN') && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-yellow-100 text-yellow-800 border-yellow-200 cursor-pointer hover:bg-yellow-200"
+                                    onClick={() => {
+                                      setSelectedTransaction(tx)
+                                      setQuickMatchDialogOpen(true)
+                                    }}
+                                    title="Click to match with another transfer"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Unmatched
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </td>
 
@@ -511,7 +703,7 @@ export default function MainTransactionsPage() {
                                 txIndex
                               )}
                               placeholder="Select type"
-                              disabled={savingCell?.row === txIndex && savingCell?.field === 'transaction_type_id'}
+                              disabled={isBalanceAdjustment || (savingCell?.row === txIndex && savingCell?.field === 'transaction_type_id')}
                             />
                           </td>
 
@@ -533,7 +725,7 @@ export default function MainTransactionsPage() {
                                 txIndex
                               )}
                               placeholder="Select category"
-                              disabled={savingCell?.row === txIndex && savingCell?.field === 'category_id'}
+                              disabled={isBalanceAdjustment || (savingCell?.row === txIndex && savingCell?.field === 'category_id')}
                             />
                           </td>
 
@@ -555,7 +747,7 @@ export default function MainTransactionsPage() {
                                 txIndex
                               )}
                               placeholder="Select branch"
-                              disabled={savingCell?.row === txIndex && savingCell?.field === 'branch_id'}
+                              disabled={isBalanceAdjustment || (savingCell?.row === txIndex && savingCell?.field === 'branch_id')}
                             />
                           </td>
 
@@ -564,14 +756,36 @@ export default function MainTransactionsPage() {
                           </td>
 
                           <td className="py-3 px-4 text-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditTransaction(tx)}
-                              title="Edit notes and other details"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleSplitTransaction(tx)}
+                                disabled={isBalanceAdjustment}
+                                title={
+                                  isBalanceAdjustment
+                                    ? "Balance adjustment transactions cannot be split. Edit the checkpoint instead."
+                                    : tx.is_split
+                                    ? "Edit split"
+                                    : "Split transaction"
+                                }
+                              >
+                                <Split className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditTransaction(tx)}
+                                disabled={isBalanceAdjustment}
+                                title={
+                                  isBalanceAdjustment
+                                    ? "Balance adjustment transactions cannot be edited. Edit the checkpoint instead."
+                                    : "Edit notes and other details"
+                                }
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       )
@@ -665,6 +879,36 @@ export default function MainTransactionsPage() {
         transactionTypes={transactionTypes}
         categories={categories}
         branches={branches}
+      />
+
+      {/* Split Transaction Dialog */}
+      <SplitTransactionDialog
+        transaction={splitTransaction}
+        open={splitDialogOpen}
+        onOpenChange={setSplitDialogOpen}
+        onSuccess={handleSplitSuccess}
+        transactionTypes={transactionTypes}
+        categories={categories}
+        branches={branches}
+      />
+
+      {/* Bulk Edit Dialog */}
+      <BulkEditDialog
+        open={bulkEditDialogOpen}
+        onOpenChange={setBulkEditDialogOpen}
+        selectedIds={selectedIds}
+        onSuccess={handleBulkEditSuccess}
+        transactionTypes={transactionTypes}
+        categories={categories}
+        branches={branches}
+      />
+
+      {/* Quick Match Transfer Dialog */}
+      <QuickMatchTransferDialog
+        open={quickMatchDialogOpen}
+        onOpenChange={setQuickMatchDialogOpen}
+        sourceTransaction={selectedTransaction}
+        onSuccess={handleQuickMatchSuccess}
       />
     </div>
   )

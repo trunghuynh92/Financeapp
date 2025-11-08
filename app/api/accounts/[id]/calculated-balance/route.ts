@@ -19,33 +19,61 @@ export async function GET(
       )
     }
 
-    // Calculate balance from ALL transactions INCLUDING adjustments
-    // Adjustments represent real money (opening balances, untracked income/expenses)
-    const { data: transactions, error: transactionsError } = await supabase
-      .from('original_transaction')
-      .select('credit_amount, debit_amount')
-      .eq('account_id', accountId)
+    // Try using the RPC function first (if migration was run)
+    let calculatedBalance = 0
 
-    if (transactionsError) {
-      throw new Error(`Failed to fetch transactions: ${transactionsError.message}`)
-    }
+    const { data: rpcData, error: rpcError } = await supabase.rpc('calculate_account_balance', {
+      p_account_id: accountId
+    })
 
-    let totalCredits = 0
-    let totalDebits = 0
+    if (!rpcError && rpcData !== null) {
+      // RPC function exists and worked
+      calculatedBalance = rpcData
+      console.log(`Balance for account ${accountId} (via RPC): ${calculatedBalance}`)
+    } else {
+      // Fallback: Fetch all transactions and calculate in JavaScript
+      // This will work even without the migration
+      console.log('RPC not available, using fallback calculation')
 
-    if (transactions && transactions.length > 0) {
-      for (const tx of transactions) {
-        if (tx.credit_amount) {
-          totalCredits += tx.credit_amount
+      let allTransactions: any[] = []
+      let page = 0
+      const pageSize = 1000
+
+      while (true) {
+        const { data: transactions, error: fetchError } = await supabase
+          .from('original_transaction')
+          .select('credit_amount, debit_amount')
+          .eq('account_id', accountId)
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+
+        if (fetchError) {
+          throw new Error(`Failed to fetch transactions: ${fetchError.message}`)
         }
-        if (tx.debit_amount) {
-          totalDebits += tx.debit_amount
+
+        if (!transactions || transactions.length === 0) {
+          break
         }
+
+        allTransactions = allTransactions.concat(transactions)
+
+        if (transactions.length < pageSize) {
+          break
+        }
+
+        page++
       }
-    }
 
-    // Balance = Credits - Debits (includes ALL transactions including adjustments)
-    const calculatedBalance = totalCredits - totalDebits
+      let totalCredits = 0
+      let totalDebits = 0
+
+      for (const tx of allTransactions) {
+        if (tx.credit_amount) totalCredits += tx.credit_amount
+        if (tx.debit_amount) totalDebits += tx.debit_amount
+      }
+
+      calculatedBalance = totalCredits - totalDebits
+      console.log(`Balance for account ${accountId} (via fallback): Credits=${totalCredits}, Debits=${totalDebits}, Balance=${calculatedBalance}`)
+    }
 
     return NextResponse.json({
       success: true,

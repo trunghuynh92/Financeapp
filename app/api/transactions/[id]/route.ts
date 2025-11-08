@@ -80,19 +80,78 @@ export async function PATCH(
       )
     }
 
+    // Check if editing amount and splits exist
+    if (hasDebit || hasCredit) {
+      const { data: splits, error: splitsError } = await supabase
+        .from('main_transaction')
+        .select('main_transaction_id')
+        .eq('raw_transaction_id', transactionId)
+        .eq('is_split', true)
+
+      if (splitsError) {
+        console.error('Error checking splits:', splitsError)
+        return NextResponse.json({ error: splitsError.message }, { status: 500 })
+      }
+
+      if (splits && splits.length > 0) {
+        // Splits exist - check if force delete is requested
+        if (body.force_delete_splits === true) {
+          // User confirmed - delete all splits first
+          const { error: deleteSplitsError } = await supabase
+            .from('main_transaction')
+            .delete()
+            .eq('raw_transaction_id', transactionId)
+
+          if (deleteSplitsError) {
+            console.error('Error deleting splits:', deleteSplitsError)
+            return NextResponse.json(
+              { error: 'Failed to delete splits' },
+              { status: 500 }
+            )
+          }
+
+          // Splits deleted, proceed with update
+          // The trigger will create a new single main_transaction after update
+        } else {
+          // Splits exist but user hasn't confirmed deletion
+          return NextResponse.json(
+            {
+              error: 'Cannot edit amount when transaction is split',
+              message: 'This transaction has been split into multiple parts. To edit the amount, the splits must be deleted first.',
+              split_count: splits.length,
+              requires_confirmation: true,
+              raw_transaction_id: transactionId,
+            },
+            { status: 409 } // Conflict status
+          )
+        }
+      }
+    }
+
     // Build update data
     const updateData: any = {}
     if (body.account_id !== undefined) updateData.account_id = body.account_id
     if (body.transaction_date !== undefined) updateData.transaction_date = body.transaction_date
     if (body.description !== undefined) updateData.description = body.description
-    if (body.debit_amount !== undefined) {
-      updateData.debit_amount = body.debit_amount
-      updateData.credit_amount = null
+
+    // Only update amounts if they are actually provided and valid
+    if (body.debit_amount !== undefined && body.debit_amount !== null) {
+      // Ensure it's a valid number
+      const debitValue = typeof body.debit_amount === 'number' ? body.debit_amount : parseFloat(body.debit_amount)
+      if (!isNaN(debitValue)) {
+        updateData.debit_amount = debitValue
+        updateData.credit_amount = null
+      }
     }
-    if (body.credit_amount !== undefined) {
-      updateData.credit_amount = body.credit_amount
-      updateData.debit_amount = null
+    if (body.credit_amount !== undefined && body.credit_amount !== null) {
+      // Ensure it's a valid number
+      const creditValue = typeof body.credit_amount === 'number' ? body.credit_amount : parseFloat(body.credit_amount)
+      if (!isNaN(creditValue)) {
+        updateData.credit_amount = creditValue
+        updateData.debit_amount = null
+      }
     }
+
     if (body.balance !== undefined) updateData.balance = body.balance
     if (body.bank_reference !== undefined) updateData.bank_reference = body.bank_reference
     if (body.updated_by_user_id !== undefined) updateData.updated_by_user_id = body.updated_by_user_id

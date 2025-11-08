@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')
     const isSplit = searchParams.get('is_split')
     const isUnmatchedTransfer = searchParams.get('is_unmatched_transfer')
+    const rawTransactionId = searchParams.get('raw_transaction_id')
 
     // Pagination
     const page = parseInt(searchParams.get('page') || '1')
@@ -79,6 +80,10 @@ export async function GET(request: NextRequest) {
         .is('transfer_matched_transaction_id', null)
     }
 
+    if (rawTransactionId) {
+      query = query.eq('raw_transaction_id', rawTransactionId)
+    }
+
     // Get total count of FILTERED results
     let countQuery = supabase
       .from('main_transaction_details')
@@ -88,7 +93,7 @@ export async function GET(request: NextRequest) {
     if (accountId) countQuery = countQuery.eq('account_id', accountId)
     if (transactionTypeId) countQuery = countQuery.eq('transaction_type_id', transactionTypeId)
     if (categoryId) countQuery = countQuery.eq('category_id', categoryId)
-    if (branchId) countQuery = branchId.eq('branch_id', branchId)
+    if (branchId) countQuery = countQuery.eq('branch_id', branchId)
     if (transactionDirection) countQuery = countQuery.eq('transaction_direction', transactionDirection)
     if (startDate) countQuery = countQuery.gte('transaction_date', startDate)
     if (endDate) countQuery = countQuery.lte('transaction_date', endDate)
@@ -99,6 +104,7 @@ export async function GET(request: NextRequest) {
         .in('transaction_type_code', ['TRF_OUT', 'TRF_IN'])
         .is('transfer_matched_transaction_id', null)
     }
+    if (rawTransactionId) countQuery = countQuery.eq('raw_transaction_id', rawTransactionId)
 
     const { count: totalCount } = await countQuery
 
@@ -106,8 +112,9 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * limit
     const to = from + limit - 1
 
-    const { data, error } = await query
+    const { data, error} = await query
       .order('transaction_date', { ascending: false })
+      .order('transaction_sequence', { ascending: false, nullsFirst: false }) // NULLs last, preserve CSV order
       .order('main_transaction_id', { ascending: false })
       .range(from, to)
 

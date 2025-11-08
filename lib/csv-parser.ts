@@ -112,7 +112,7 @@ function findHeaderRow(lines: string[]): number {
   let bestMatchIndex = 0
   let bestMatchScore = 0
 
-  for (let i = 0; i < Math.min(15, lines.length); i++) {
+  for (let i = 0; i < Math.min(30, lines.length); i++) {
     const parsed = parseCSVLine(lines[i])
 
     // Skip rows with too few columns

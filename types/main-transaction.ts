@@ -92,6 +92,13 @@ export interface MainTransactionDetails extends MainTransaction {
   // Branch details
   branch_name?: string
   branch_code?: string
+
+  // Original transaction fields
+  is_balance_adjustment?: boolean
+  checkpoint_id?: number
+  transaction_sequence?: number // CSV row order for same-date transactions
+  import_batch_id?: number
+  is_flagged?: boolean
 }
 
 export interface UnmatchedTransfer {

@@ -316,24 +316,46 @@ export async function syncAccountBalance(accountId: number): Promise<void> {
       })
     } else {
       // No checkpoint - calculate from all transactions
-      const { data: transactions, error: txError } = await supabase
-        .from('original_transaction')
-        .select('credit_amount, debit_amount')
-        .eq('account_id', accountId)
-        .eq('is_balance_adjustment', false)
+      // Use pagination to avoid 1000 row limit
+      let totalCredit = 0
+      let totalDebit = 0
+      let page = 0
+      const pageSize = 1000
+      let transactionCount = 0
 
-      if (txError) {
-        throw new Error(`Failed to fetch transactions: ${txError.message}`)
+      while (true) {
+        const { data: transactions, error: txError } = await supabase
+          .from('original_transaction')
+          .select('credit_amount, debit_amount')
+          .eq('account_id', accountId)
+          .eq('is_balance_adjustment', false)
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+
+        if (txError) {
+          throw new Error(`Failed to fetch transactions: ${txError.message}`)
+        }
+
+        if (!transactions || transactions.length === 0) {
+          break
+        }
+
+        // Calculate balance: sum(credits) - sum(debits)
+        for (const tx of transactions) {
+          if (tx.credit_amount) totalCredit += tx.credit_amount
+          if (tx.debit_amount) totalDebit += tx.debit_amount
+        }
+
+        transactionCount += transactions.length
+
+        if (transactions.length < pageSize) {
+          break
+        }
+
+        page++
       }
 
-      // Calculate balance: sum(credits) - sum(debits)
-      if (transactions && transactions.length > 0) {
-        const totalCredit = transactions.reduce((sum, tx) => sum + (tx.credit_amount || 0), 0)
-        const totalDebit = transactions.reduce((sum, tx) => sum + (tx.debit_amount || 0), 0)
-        calculatedBalance = totalCredit - totalDebit
-      }
-
-      console.log(`No checkpoint found, calculated from ${transactions?.length || 0} transactions: ${calculatedBalance}`)
+      calculatedBalance = totalCredit - totalDebit
+      console.log(`No checkpoint found, calculated from ${transactionCount} transactions: ${calculatedBalance}`)
     }
 
     // Update account_balances table
@@ -415,26 +437,40 @@ export async function recalculateAllCheckpoints(
 
       // Calculate balance from:
       // 1. Non-adjustment transactions up to checkpoint date
-      const { data: nonAdjustmentTxs, error: txError } = await supabase
-        .from('original_transaction')
-        .select('credit_amount, debit_amount')
-        .eq('account_id', account_id)
-        .eq('is_balance_adjustment', false)
-        .lte('transaction_date', checkpointDate.toISOString())
-
-      if (txError) {
-        throw new Error(`Failed to fetch transactions: ${txError.message}`)
-      }
-
+      // Fetch ALL transactions using pagination to avoid 1000 row limit
       let totalCredits = 0
       let totalDebits = 0
+      let page = 0
+      const pageSize = 1000
 
-      // Sum non-adjustment transactions
-      if (nonAdjustmentTxs && nonAdjustmentTxs.length > 0) {
+      while (true) {
+        const { data: nonAdjustmentTxs, error: txError } = await supabase
+          .from('original_transaction')
+          .select('credit_amount, debit_amount')
+          .eq('account_id', account_id)
+          .eq('is_balance_adjustment', false)
+          .lte('transaction_date', checkpointDate.toISOString())
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+
+        if (txError) {
+          throw new Error(`Failed to fetch transactions: ${txError.message}`)
+        }
+
+        if (!nonAdjustmentTxs || nonAdjustmentTxs.length === 0) {
+          break
+        }
+
+        // Sum this page of transactions
         for (const tx of nonAdjustmentTxs) {
           if (tx.credit_amount) totalCredits += tx.credit_amount
           if (tx.debit_amount) totalDebits += tx.debit_amount
         }
+
+        if (nonAdjustmentTxs.length < pageSize) {
+          break
+        }
+
+        page++
       }
 
       // 2. Adjustment transactions from PREVIOUS checkpoints only (by date)

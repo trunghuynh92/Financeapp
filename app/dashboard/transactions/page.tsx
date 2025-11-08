@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Pencil, Trash2, Loader2, Search, DollarSign, ArrowUpCircle, ArrowDownCircle, Eye, ChevronLeft, ChevronRight } from "lucide-react"
+import { Plus, Pencil, Trash2, Loader2, Search, DollarSign, ArrowUpCircle, ArrowDownCircle, Eye, ChevronLeft, ChevronRight, List, ListCollapse } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -66,8 +66,17 @@ interface PaginationInfo {
   totalPages: number
 }
 
+interface GroupedTransaction {
+  transaction_source: string
+  import_batch_id: number | null
+  transaction_count: number
+  total_debit: number
+  total_credit: number
+}
+
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [groupedTransactions, setGroupedTransactions] = useState<GroupedTransaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedAccount, setSelectedAccount] = useState<string>("all")
@@ -75,6 +84,7 @@ export default function TransactionsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
+  const [isGroupedView, setIsGroupedView] = useState(false)
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1)
@@ -97,8 +107,12 @@ export default function TransactionsPage() {
   }, [])
 
   useEffect(() => {
-    fetchTransactions()
-  }, [currentPage, itemsPerPage, selectedAccount, selectedSource, searchQuery, startDate, endDate])
+    if (isGroupedView) {
+      fetchGroupedTransactions()
+    } else {
+      fetchTransactions()
+    }
+  }, [currentPage, itemsPerPage, selectedAccount, selectedSource, searchQuery, startDate, endDate, isGroupedView])
 
   async function fetchAccounts() {
     try {
@@ -148,9 +162,56 @@ export default function TransactionsPage() {
     }
   }
 
-  // Calculate totals from current page
-  const totalDebit = transactions.reduce((sum, t) => sum + (t.debit_amount || 0), 0)
-  const totalCredit = transactions.reduce((sum, t) => sum + (t.credit_amount || 0), 0)
+  async function fetchGroupedTransactions() {
+    try {
+      setLoading(true)
+
+      const params = new URLSearchParams()
+
+      if (selectedAccount !== "all") {
+        params.append('account_id', selectedAccount)
+      }
+      if (selectedSource !== "all") {
+        params.append('transaction_source', selectedSource)
+      }
+      if (searchQuery) {
+        params.append('search', searchQuery)
+      }
+      if (startDate) {
+        params.append('start_date', startDate)
+      }
+      if (endDate) {
+        params.append('end_date', endDate)
+      }
+
+      const response = await fetch(`/api/transactions/grouped?${params.toString()}`)
+      if (!response.ok) throw new Error('Failed to fetch grouped transactions')
+
+      const result = await response.json()
+      setGroupedTransactions(result.data || [])
+
+      // Update pagination for grouped view
+      setPagination({
+        page: 1,
+        limit: result.count,
+        total: result.count,
+        totalPages: 1,
+      })
+    } catch (error) {
+      console.error("Error fetching grouped transactions:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Calculate totals from current page or grouped data
+  const totalDebit = isGroupedView
+    ? groupedTransactions.reduce((sum, g) => sum + g.total_debit, 0)
+    : transactions.reduce((sum, t) => sum + (t.debit_amount || 0), 0)
+
+  const totalCredit = isGroupedView
+    ? groupedTransactions.reduce((sum, g) => sum + g.total_credit, 0)
+    : transactions.reduce((sum, t) => sum + (t.credit_amount || 0), 0)
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return "—"
@@ -235,25 +296,25 @@ export default function TransactionsPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Debit (Page)</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Debit {isGroupedView ? '(All)' : '(Page)'}</CardTitle>
             <ArrowUpCircle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{formatCurrency(totalDebit)}</div>
             <p className="text-xs text-muted-foreground">
-              Current page
+              {isGroupedView ? 'All filtered results' : 'Current page'}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Credit (Page)</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Credit {isGroupedView ? '(All)' : '(Page)'}</CardTitle>
             <ArrowDownCircle className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{formatCurrency(totalCredit)}</div>
             <p className="text-xs text-muted-foreground">
-              Current page
+              {isGroupedView ? 'All filtered results' : 'Current page'}
             </p>
           </CardContent>
         </Card>
@@ -372,21 +433,51 @@ export default function TransactionsPage() {
             <div>
               <CardTitle>All Transactions</CardTitle>
               <CardDescription>
-                Showing {transactions.length} of {pagination.total} transactions
+                {isGroupedView
+                  ? `Showing ${groupedTransactions.length} source groups`
+                  : `Showing ${transactions.length} of ${pagination.total} transactions`}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Show:</span>
-              <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
-                <SelectTrigger className="w-24">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                  <SelectItem value="200">200</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex items-center gap-4">
+              {/* View Toggle */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">View:</span>
+                <Button
+                  variant={isGroupedView ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIsGroupedView(!isGroupedView)}
+                  className="gap-2"
+                >
+                  {isGroupedView ? (
+                    <>
+                      <ListCollapse className="h-4 w-4" />
+                      Grouped
+                    </>
+                  ) : (
+                    <>
+                      <List className="h-4 w-4" />
+                      Normal
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Items per page - only show in normal view */}
+              {!isGroupedView && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Show:</span>
+                  <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                      <SelectItem value="200">200</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -395,7 +486,7 @@ export default function TransactionsPage() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : transactions.length === 0 ? (
+          ) : (isGroupedView ? groupedTransactions.length === 0 : transactions.length === 0) ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <DollarSign className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">No transactions found</p>
@@ -409,18 +500,52 @@ export default function TransactionsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Account</TableHead>
-                      <TableHead>Description</TableHead>
+                      {!isGroupedView && <TableHead>Date</TableHead>}
+                      {!isGroupedView && <TableHead>Account</TableHead>}
+                      {!isGroupedView && <TableHead>Description</TableHead>}
                       <TableHead className="text-right">Debit</TableHead>
                       <TableHead className="text-right">Credit</TableHead>
-                      <TableHead className="text-right">Balance</TableHead>
+                      {!isGroupedView && <TableHead className="text-right">Balance</TableHead>}
                       <TableHead>Source</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      {isGroupedView && <TableHead className="text-right">Count</TableHead>}
+                      {!isGroupedView && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {transactions.map((transaction) => {
+                    {isGroupedView ? (
+                      // Grouped view - show one row per source
+                      groupedTransactions.map((group, index) => {
+                        const sourceBadge = getSourceBadge(group.transaction_source)
+                        const sourceLabel = group.import_batch_id
+                          ? `Import #${group.import_batch_id}`
+                          : sourceBadge.label
+
+                        return (
+                          <TableRow key={`${group.transaction_source}_${group.import_batch_id || 'null'}_${index}`}>
+                            <TableCell className="text-right">
+                              <span className="font-medium text-red-600">
+                                {formatCurrency(group.total_debit)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="font-medium text-green-600">
+                                {formatCurrency(group.total_credit)}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={sourceBadge.color}>
+                                {sourceLabel}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right text-sm text-muted-foreground">
+                              {group.transaction_count.toLocaleString()} transaction{group.transaction_count !== 1 ? 's' : ''}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    ) : (
+                      // Normal view - show individual transactions
+                      transactions.map((transaction) => {
                       const sourceBadge = getSourceBadge(transaction.transaction_source)
                       const account = transaction.account
 
@@ -512,13 +637,14 @@ export default function TransactionsPage() {
                           </TableCell>
                         </TableRow>
                       )
-                    })}
+                    })
+                    )}
                   </TableBody>
                 </Table>
               </div>
 
-              {/* Pagination Controls */}
-              {pagination.totalPages > 1 && (
+              {/* Pagination Controls - only show in normal view */}
+              {!isGroupedView && pagination.totalPages > 1 && (
                 <div className="flex items-center justify-between border-t pt-4 mt-4">
                   <div className="text-sm text-muted-foreground">
                     Page {pagination.page} of {pagination.totalPages}
@@ -585,14 +711,26 @@ export default function TransactionsPage() {
         onOpenChange={setIsFormDialogOpen}
         transaction={selectedTransaction}
         accounts={accounts}
-        onSuccess={fetchTransactions}
+        onSuccess={() => {
+          if (isGroupedView) {
+            fetchGroupedTransactions()
+          } else {
+            fetchTransactions()
+          }
+        }}
       />
 
       <TransactionDeleteDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}
         transaction={selectedTransaction}
-        onSuccess={fetchTransactions}
+        onSuccess={() => {
+          if (isGroupedView) {
+            fetchGroupedTransactions()
+          } else {
+            fetchTransactions()
+          }
+        }}
       />
 
       <ViewCheckpointDialog

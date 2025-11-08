@@ -53,30 +53,42 @@ export async function GET(request: NextRequest) {
       accounts.map(async (account) => {
         const history = await Promise.all(
           datePoints.map(async (date) => {
-            // Calculate balance up to this date
-            const { data: transactions, error: txError } = await supabase
-              .from('original_transaction')
-              .select('credit_amount, debit_amount')
-              .eq('account_id', account.account_id)
-              .lte('transaction_date', date.toISOString())
+            // Calculate balance up to this date using SQL aggregation
+            const { data, error: rpcError } = await supabase.rpc('calculate_account_balance_up_to_date', {
+              p_account_id: account.account_id,
+              p_date: date.toISOString()
+            })
 
-            if (txError) {
-              console.error(`Error fetching transactions for account ${account.account_id}:`, txError)
-              return { date: date.toISOString(), balance: 0 }
-            }
+            if (rpcError) {
+              console.error(`RPC error for account ${account.account_id}:`, rpcError.message)
 
-            // Calculate balance
-            let balance = 0
-            if (transactions && transactions.length > 0) {
-              for (const tx of transactions) {
-                if (tx.credit_amount) balance += tx.credit_amount
-                if (tx.debit_amount) balance -= tx.debit_amount
+              // Fallback to manual query
+              const query = `
+                SELECT
+                  COALESCE(SUM(credit_amount), 0) - COALESCE(SUM(debit_amount), 0) as balance
+                FROM original_transaction
+                WHERE account_id = ${account.account_id}
+                  AND transaction_date <= '${date.toISOString()}'
+              `
+
+              const { data: queryData, error: queryError } = await supabase.rpc('exec_sql', {
+                sql_query: query
+              })
+
+              if (queryError) {
+                console.error(`Error fetching balance for account ${account.account_id}:`, queryError)
+                return { date: date.toISOString(), balance: 0 }
+              }
+
+              return {
+                date: date.toISOString(),
+                balance: queryData?.[0]?.balance || 0,
               }
             }
 
             return {
               date: date.toISOString(),
-              balance,
+              balance: data || 0,
             }
           })
         )

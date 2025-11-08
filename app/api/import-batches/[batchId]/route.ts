@@ -68,6 +68,12 @@ export async function GET(
 // ==============================================================================
 // DELETE /api/import-batches/[batchId]
 // Rollback (undo) an import batch
+//
+// SAFETY CHECKS:
+// 1. Prevents rollback if transactions are matched with transfers from OTHER imports
+//    (would orphan the external matched transactions)
+// 2. Splits within the same import are OK - they cascade delete together
+// 3. Categorizations are OK - they belong to the transactions being deleted
 // ==============================================================================
 
 export async function DELETE(
@@ -117,6 +123,81 @@ export async function DELETE(
         { error: 'No transactions found for this import batch' },
         { status: 404 }
       )
+    }
+
+    // Check for external transfer matches
+    // Get all raw_transaction_ids from this import batch
+    const { data: batchTransactions, error: batchTxError } = await supabase
+      .from('original_transaction')
+      .select('raw_transaction_id')
+      .eq('import_batch_id', batchId)
+
+    if (batchTxError) {
+      throw new Error(`Failed to fetch batch transactions: ${batchTxError.message}`)
+    }
+
+    const rawTxIds = batchTransactions?.map(t => t.raw_transaction_id) || []
+
+    if (rawTxIds.length > 0) {
+      // Find main_transactions from this batch that have transfer matches
+      const { data: matchedTransactions, error: matchedError } = await supabase
+        .from('main_transaction')
+        .select('main_transaction_id, transfer_matched_transaction_id, raw_transaction_id')
+        .in('raw_transaction_id', rawTxIds)
+        .not('transfer_matched_transaction_id', 'is', null)
+
+      if (matchedError) {
+        throw new Error(`Failed to check transfer matches: ${matchedError.message}`)
+      }
+
+      if (matchedTransactions && matchedTransactions.length > 0) {
+        // Get the matched transaction IDs
+        const matchedIds = matchedTransactions.map(m => m.transfer_matched_transaction_id).filter(Boolean) as number[]
+
+        if (matchedIds.length > 0) {
+          // Check if these matched transactions are from different import batches
+          const { data: matchedDetails, error: detailsError } = await supabase
+            .from('main_transaction')
+            .select('main_transaction_id, raw_transaction_id')
+            .in('main_transaction_id', matchedIds)
+
+          if (detailsError) {
+            throw new Error(`Failed to fetch matched transaction details: ${detailsError.message}`)
+          }
+
+          if (matchedDetails && matchedDetails.length > 0) {
+            // Get the raw_transaction_ids of matched transactions
+            const matchedRawIds = matchedDetails.map(m => m.raw_transaction_id)
+
+            // Check if any of these are from different import batches
+            const { data: matchedOriginals, error: originalsError } = await supabase
+              .from('original_transaction')
+              .select('raw_transaction_id, import_batch_id')
+              .in('raw_transaction_id', matchedRawIds)
+
+            if (originalsError) {
+              throw new Error(`Failed to check import batch origins: ${originalsError.message}`)
+            }
+
+            // Check if any matched transactions are from different batches
+            const externalMatches = matchedOriginals?.filter(o => o.import_batch_id !== batchId) || []
+
+            if (externalMatches.length > 0) {
+              return NextResponse.json(
+                {
+                  error: 'Cannot rollback: This import contains transfers matched with transactions from other imports',
+                  details: {
+                    matched_count: externalMatches.length,
+                    message: 'Please unmatch these transfers before rolling back this import. Rollback would orphan the matched transactions from other imports.',
+                    affected_transactions: matchedTransactions.length
+                  }
+                },
+                { status: 409 }
+              )
+            }
+          }
+        }
+      }
     }
 
     // Delete checkpoint created by this import (if any)

@@ -143,11 +143,18 @@ export function TransactionFormDialog({
       }
 
       // Set debit or credit based on transaction type
+      const amountValue = parseFloat(formData.amount)
+
+      // Validate amount is a valid number
+      if (isNaN(amountValue) || amountValue <= 0) {
+        throw new Error("Please enter a valid amount greater than 0")
+      }
+
       if (transactionType === 'debit') {
-        requestData.debit_amount = parseFloat(formData.amount)
+        requestData.debit_amount = amountValue
         requestData.credit_amount = null
       } else {
-        requestData.credit_amount = parseFloat(formData.amount)
+        requestData.credit_amount = amountValue
         requestData.debit_amount = null
       }
 
@@ -161,7 +168,37 @@ export function TransactionFormDialog({
 
         if (!response.ok) {
           const error = await response.json()
-          throw new Error(error.error || "Failed to update transaction")
+
+          // Check if this is a split conflict (status 409)
+          if (response.status === 409 && error.requires_confirmation) {
+            // Ask user to confirm deletion of splits
+            const confirmMessage = `${error.message}\n\nThis transaction has ${error.split_count} split(s). To edit the amount, all splits will be deleted and you can re-split afterward.\n\nDo you want to proceed?`
+
+            if (confirm(confirmMessage)) {
+              // User confirmed - retry with force_delete_splits
+              const retryResponse = await fetch(`/api/transactions/${transaction!.raw_transaction_id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  ...requestData,
+                  force_delete_splits: true
+                }),
+              })
+
+              if (!retryResponse.ok) {
+                const retryError = await retryResponse.json()
+                throw new Error(retryError.error || "Failed to update transaction after deleting splits")
+              }
+
+              // Success - notify user
+              alert("Transaction updated successfully. The splits have been removed.")
+            } else {
+              // User cancelled
+              throw new Error("Edit cancelled. Transaction was not modified.")
+            }
+          } else {
+            throw new Error(error.error || "Failed to update transaction")
+          }
         }
       } else {
         // Create new transaction

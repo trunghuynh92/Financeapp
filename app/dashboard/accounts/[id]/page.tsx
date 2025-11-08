@@ -49,6 +49,11 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
   const [account, setAccount] = useState<AccountWithEntity | null>(null)
   const [checkpoints, setCheckpoints] = useState<BalanceCheckpoint[]>([])
   const [calculatedBalance, setCalculatedBalance] = useState<number | null>(null)
+  const [transactionDates, setTransactionDates] = useState<{
+    earliest_date: string | null
+    latest_date: string | null
+    transaction_count: number
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -59,6 +64,7 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
     fetchAccount()
     fetchCheckpoints()
     fetchCalculatedBalance()
+    fetchTransactionDates()
   }, [params.id])
 
   async function fetchAccount() {
@@ -110,6 +116,22 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
     } catch (error) {
       console.error("Error fetching calculated balance:", error)
       setCalculatedBalance(0) // Default to 0 if calculation fails
+    }
+  }
+
+  async function fetchTransactionDates() {
+    try {
+      const response = await fetch(`/api/accounts/${params.id}/transaction-dates`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch transaction dates")
+      }
+
+      const data = await response.json()
+      setTransactionDates(data.data)
+    } catch (error) {
+      console.error("Error fetching transaction dates:", error)
+      setTransactionDates(null)
     }
   }
 
@@ -197,34 +219,71 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
                 </Badge>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <div>
-                  <p className="text-sm text-muted-foreground">Entity</p>
-                  <p className="text-lg font-medium">{entity?.name || '—'}</p>
-                </div>
-                {account.bank_name && (
+              <div className="space-y-6">
+                {/* Account Details */}
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   <div>
-                    <p className="text-sm text-muted-foreground">Bank</p>
-                    <p className="text-lg font-medium">{account.bank_name}</p>
+                    <p className="text-sm text-muted-foreground">Entity</p>
+                    <p className="text-lg font-medium">{entity?.name || '—'}</p>
+                  </div>
+                  {account.bank_name && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Bank</p>
+                      <p className="text-lg font-medium">{account.bank_name}</p>
+                    </div>
+                  )}
+                  {account.account_number && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Account Number</p>
+                      <p className="text-lg font-medium">{maskAccountNumber(account.account_number)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm text-muted-foreground">Currency</p>
+                    <p className="text-lg font-medium">{account.currency}</p>
+                  </div>
+                </div>
+
+                {/* Transaction Date Range */}
+                {transactionDates && transactionDates.earliest_date && (
+                  <div className="pt-4 border-t">
+                    <p className="text-sm font-semibold text-muted-foreground mb-3">Transaction Period</p>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      <div>
+                        <p className="text-sm text-muted-foreground">From</p>
+                        <p className="text-lg font-medium">
+                          {formatDate(transactionDates.earliest_date)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">To</p>
+                        <p className="text-lg font-medium">
+                          {formatDate(transactionDates.latest_date)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Total Transactions</p>
+                        <p className="text-lg font-medium">
+                          {transactionDates.transaction_count.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
-                {account.account_number && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Account Number</p>
-                    <p className="text-lg font-medium">{maskAccountNumber(account.account_number)}</p>
+
+                {/* Account Metadata */}
+                <div className="pt-4 border-t">
+                  <p className="text-sm font-semibold text-muted-foreground mb-3">Account Information</p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Created</p>
+                      <p className="text-lg font-medium">{formatDate(account.created_at)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Last Updated</p>
+                      <p className="text-lg font-medium">{formatDate(account.updated_at)}</p>
+                    </div>
                   </div>
-                )}
-                <div>
-                  <p className="text-sm text-muted-foreground">Currency</p>
-                  <p className="text-lg font-medium">{account.currency}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Created</p>
-                  <p className="text-lg font-medium">{formatDate(account.created_at)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Last Updated</p>
-                  <p className="text-lg font-medium">{formatDate(account.updated_at)}</p>
                 </div>
               </div>
             </div>
@@ -321,6 +380,7 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
         onRefresh={() => {
           fetchCheckpoints()
           fetchCalculatedBalance()
+          fetchTransactionDates()
         }}
       />
 
@@ -365,6 +425,7 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
           fetchAccount()
           fetchCheckpoints()
           fetchCalculatedBalance()
+          fetchTransactionDates()
         }}
       />
 
@@ -377,6 +438,7 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
           fetchAccount()
           fetchCheckpoints()
           fetchCalculatedBalance()
+          fetchTransactionDates()
         }}
       />
     </div>

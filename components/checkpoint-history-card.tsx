@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { format } from "date-fns"
-import { Calendar, CheckCircle, AlertCircle, Upload, Edit2, Trash2, Filter, RotateCcw } from "lucide-react"
+import { Calendar, CheckCircle, AlertCircle, Upload, Edit2, Trash2, Filter, RotateCcw, Info } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -27,6 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -242,19 +248,69 @@ export function CheckpointHistoryCard({
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Declared Balance</TableHead>
-                  <TableHead className="text-right">Calculated Balance</TableHead>
-                  <TableHead className="text-right">Adjustment</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-start gap-3">
+              <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-blue-900">
+                <p className="font-semibold mb-2">Understanding Balance Calculations</p>
+                <p className="mb-2">
+                  <span className="font-mono bg-white px-2 py-0.5 rounded">
+                    Declared Balance = Calculated Balance + Adjustment
+                  </span>
+                </p>
+                <ul className="space-y-1 text-blue-800">
+                  <li>• <strong>Calculated Balance:</strong> Net change from your imported transactions (Credits - Debits)</li>
+                  <li>• <strong>Adjustment:</strong> Usually represents your opening balance before the import period</li>
+                  <li>• <strong>Tip:</strong> Large adjustments? Create a checkpoint on your first import date with the opening balance.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <TooltipProvider>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">
+                      <Tooltip>
+                        <TooltipTrigger className="cursor-help">
+                          Declared Balance
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="font-semibold mb-1">From Bank Statement</p>
+                          <p className="text-sm">The actual balance shown on your bank statement for this date.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <Tooltip>
+                        <TooltipTrigger className="cursor-help">
+                          Calculated Balance
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="font-semibold mb-1">Net change from all transactions</p>
+                          <p className="text-sm">Net change from all transactions up to this checkpoint (Credits - Debits), including any previous balance adjustments.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <Tooltip>
+                        <TooltipTrigger className="cursor-help">
+                          Adjustment
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="font-semibold mb-1">Unexplained Difference</p>
+                          <p className="text-sm mb-2">Difference = Declared - Calculated</p>
+                          <p className="text-sm">Large adjustments often represent opening balances from before your import period. Create a checkpoint on your first import date to eliminate this.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {sortedCheckpoints.map((checkpoint) => (
                   <TableRow key={checkpoint.checkpoint_id}>
@@ -321,6 +377,7 @@ export function CheckpointHistoryCard({
               </TableBody>
             </Table>
           </div>
+          </TooltipProvider>
         </CardContent>
       </Card>
 

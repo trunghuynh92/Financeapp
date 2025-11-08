@@ -72,6 +72,44 @@ export async function PATCH(
 
     const body = await request.json()
 
+    // Check if transaction exists and if it's a balance adjustment
+    const { data: existingTransaction, error: fetchError } = await supabase
+      .from('main_transaction')
+      .select('main_transaction_id, raw_transaction_id')
+      .eq('main_transaction_id', mainTransactionId)
+      .single()
+
+    if (fetchError || !existingTransaction) {
+      return NextResponse.json(
+        { error: 'Main transaction not found' },
+        { status: 404 }
+      )
+    }
+
+    // Check if it's a balance adjustment by querying the original transaction
+    const { data: originalTx, error: originalError } = await supabase
+      .from('original_transaction')
+      .select('is_balance_adjustment, checkpoint_id')
+      .eq('raw_transaction_id', existingTransaction.raw_transaction_id)
+      .single()
+
+    if (originalError) {
+      console.error('Error fetching original transaction:', originalError)
+      return NextResponse.json({ error: originalError.message }, { status: 500 })
+    }
+
+    // Prevent editing balance adjustment transactions
+    if (originalTx && originalTx.is_balance_adjustment) {
+      return NextResponse.json(
+        {
+          error: 'Cannot edit balance adjustment transaction',
+          message: 'This is a system-generated balance adjustment transaction. To modify it, edit the associated checkpoint instead.',
+          checkpoint_id: originalTx.checkpoint_id,
+        },
+        { status: 403 }
+      )
+    }
+
     // Only allow updating specific fields
     const allowedFields = [
       'transaction_type_id',

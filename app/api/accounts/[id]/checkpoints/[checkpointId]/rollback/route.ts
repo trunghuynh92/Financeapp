@@ -25,6 +25,13 @@ export async function POST(
     // Get the checkpoint
     const checkpoint = await getCheckpointById(checkpointId)
 
+    if (!checkpoint) {
+      return NextResponse.json(
+        { error: 'Checkpoint not found' },
+        { status: 404 }
+      )
+    }
+
     // Verify checkpoint belongs to this account
     if (checkpoint.account_id !== accountId) {
       return NextResponse.json(
@@ -45,21 +52,21 @@ export async function POST(
 
     console.log(`🔄 Starting rollback for checkpoint ${checkpointId}, import batch ${importBatchId}...`)
 
-    // Step 1: Delete all transactions from this import batch
-    const { data: transactionsToDelete, error: fetchError } = await supabase
+    // Step 1: Count and delete all transactions from this import batch
+    // Use count to avoid 1000 row limit
+    const { count: transactionCount, error: countError } = await supabase
       .from('original_transaction')
-      .select('raw_transaction_id')
+      .select('*', { count: 'exact', head: true })
       .eq('import_batch_id', importBatchId)
-      .eq('is_balance_adjustment', false) // Don't delete adjustment transactions yet
+      .eq('is_balance_adjustment', false)
 
-    if (fetchError) {
-      throw new Error(`Failed to fetch import transactions: ${fetchError.message}`)
+    if (countError) {
+      throw new Error(`Failed to count import transactions: ${countError.message}`)
     }
 
-    const transactionCount = transactionsToDelete?.length || 0
-    console.log(`📋 Found ${transactionCount} transactions to delete`)
+    console.log(`📋 Found ${transactionCount || 0} transactions to delete`)
 
-    if (transactionCount > 0) {
+    if (transactionCount && transactionCount > 0) {
       const { error: deleteError } = await supabase
         .from('original_transaction')
         .delete()
