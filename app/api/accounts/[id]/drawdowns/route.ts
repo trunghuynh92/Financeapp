@@ -34,15 +34,12 @@ export async function GET(
     })
 
     if (error) {
-      console.error('Error fetching drawdowns:', error)
+      console.error('Error fetching drawdowns via RPC:', error)
 
-      // Fallback: fetch directly from table
+      // Fallback: fetch directly from table (simplified without embedded relationships)
       let query = supabase
         .from('debt_drawdown')
-        .select(`
-          *,
-          account:accounts(account_name, bank_name, account_type, entity:entities(name))
-        `)
+        .select('*')
         .eq('account_id', accountId)
 
       if (status && status !== 'all') {
@@ -53,12 +50,22 @@ export async function GET(
         .order('drawdown_date', { ascending: false })
 
       if (fallbackError) {
+        console.error('Fallback query error:', fallbackError)
         throw new Error(`Failed to fetch drawdowns: ${fallbackError.message}`)
       }
 
+      // Map to include calculated fields that the RPC would normally provide
+      const mappedData = fallbackData?.map(dd => ({
+        ...dd,
+        paid_amount: Number(dd.original_amount) - Number(dd.remaining_balance),
+        days_until_due: dd.due_date ? Math.ceil((new Date(dd.due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : null,
+        total_interest_paid: 0, // Would need separate query
+        total_fees_paid: 0, // Would need separate query
+      })) || []
+
       return NextResponse.json({
-        data: fallbackData || [],
-        count: fallbackData?.length || 0,
+        data: mappedData,
+        count: mappedData.length,
       })
     }
 
@@ -213,6 +220,95 @@ export async function POST(
         { status: 500 }
       )
     }
+
+    // Create transaction for the drawdown (increases debt balance)
+    // For debt accounts: Debits increase the balance (debt owed becomes more negative)
+    // Generate unique raw_transaction_id (PRIMARY KEY)
+    const rawTxId = `DRAWDOWN-${drawdown.drawdown_id}-${Date.now()}`
+
+    const { data: originalTx, error: txError } = await supabase
+      .from('original_transaction')
+      .insert([{
+        raw_transaction_id: rawTxId,
+        account_id: accountId,
+        transaction_date: body.drawdown_date,
+        description: `Drawdown: ${body.drawdown_reference}`,
+        debit_amount: body.original_amount,
+        credit_amount: null,
+      }])
+      .select()
+      .single()
+
+    if (txError || !originalTx) {
+      console.error('Error creating transaction:', txError)
+      // Rollback: delete the drawdown
+      await supabase
+        .from('debt_drawdown')
+        .delete()
+        .eq('drawdown_id', drawdown.drawdown_id)
+
+      return NextResponse.json(
+        { error: `Failed to create transaction: ${txError?.message}` },
+        { status: 500 }
+      )
+    }
+
+    // Get DEBT_DRAW transaction type ID
+    const { data: debtDrawType, error: typeError } = await supabase
+      .from('transaction_types')
+      .select('transaction_type_id')
+      .eq('type_code', 'DEBT_DRAW')
+      .single()
+
+    if (typeError || !debtDrawType) {
+      console.error('DEBT_DRAW transaction type not found. Please run migration 017.')
+      return NextResponse.json(
+        { error: 'DEBT_DRAW transaction type not found. Please run migration 017.' },
+        { status: 500 }
+      )
+    }
+
+    // Wait for trigger to create main_transaction
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // Verify main_transaction was created
+    const { data: mainTx, error: mainTxError } = await supabase
+      .from('main_transaction')
+      .select('main_transaction_id, transaction_type_id, raw_transaction_id')
+      .eq('raw_transaction_id', rawTxId)
+      .single()
+
+    if (mainTxError || !mainTx) {
+      console.error('Main transaction not found after creation!')
+      console.error('Error code:', mainTxError?.code)
+      console.error('Error message:', mainTxError?.message)
+      console.error('Looking for raw_transaction_id:', rawTxId)
+    } else {
+      console.log('✅ Found main_transaction:', mainTx.main_transaction_id, 'with type:', mainTx.transaction_type_id)
+    }
+
+    // Update the main_transaction to add debt-specific fields
+    const { error: updateError } = await supabase
+      .from('main_transaction')
+      .update({
+        transaction_type_id: debtDrawType.transaction_type_id,
+        transaction_subtype: 'principal',
+        drawdown_id: drawdown.drawdown_id,
+      })
+      .eq('raw_transaction_id', rawTxId)
+
+    if (updateError) {
+      console.error('Error updating main_transaction with drawdown info:')
+      console.error('Error code:', updateError.code)
+      console.error('Error message:', updateError.message)
+      console.error('Error details:', updateError.details)
+      console.error('Error hint:', updateError.hint)
+      console.error('Trying to set drawdown_id:', drawdown.drawdown_id)
+      console.error('On raw_transaction_id:', rawTxId)
+      // Note: Don't rollback here as the transaction is created, just log the error
+    }
+
+    console.log(`✅ Created drawdown ${body.drawdown_reference} with transaction (Debit: ${body.original_amount})`)
 
     return NextResponse.json(
       {

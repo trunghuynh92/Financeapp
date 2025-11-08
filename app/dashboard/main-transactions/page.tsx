@@ -13,6 +13,7 @@ import { EditTransactionDialog } from "@/components/main-transactions/EditTransa
 import { SplitTransactionDialog } from "@/components/main-transactions/SplitTransactionDialog"
 import { BulkEditDialog } from "@/components/main-transactions/BulkEditDialog"
 import { QuickMatchTransferDialog } from "@/components/main-transactions/QuickMatchTransferDialog"
+import { QuickMatchDebtDialog } from "@/components/main-transactions/QuickMatchDebtDialog"
 import { InlineCombobox } from "@/components/main-transactions/InlineCombobox"
 
 interface PaginationInfo {
@@ -70,6 +71,7 @@ export default function MainTransactionsPage() {
 
   // Quick match dialog state
   const [quickMatchDialogOpen, setQuickMatchDialogOpen] = useState(false)
+  const [quickMatchDebtDialogOpen, setQuickMatchDebtDialogOpen] = useState(false)
 
   // Fetch transaction types, categories, branches, accounts on mount
   useEffect(() => {
@@ -684,6 +686,33 @@ export default function MainTransactionsPage() {
                                     Unmatched
                                   </Badge>
                                 )}
+                                {/* Matched debt transaction */}
+                                {tx.transfer_matched_transaction_id && (tx.transaction_type_code === 'DEBT_DRAW' || tx.transaction_type_code === 'DEBT_ACQ') && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200"
+                                    onClick={() => handleUnmatchTransfer(tx)}
+                                    title="Click to unmatch this debt transaction"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Matched {tx.transaction_type_code === 'DEBT_DRAW' ? 'Drawdown' : 'Debt Acquired'}
+                                  </Badge>
+                                )}
+                                {/* Unmatched debt transaction */}
+                                {!tx.transfer_matched_transaction_id && (tx.transaction_type_code === 'DEBT_DRAW' || tx.transaction_type_code === 'DEBT_ACQ') && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-yellow-100 text-yellow-800 border-yellow-200 cursor-pointer hover:bg-yellow-200"
+                                    onClick={() => {
+                                      setSelectedTransaction(tx)
+                                      setQuickMatchDebtDialogOpen(true)
+                                    }}
+                                    title="Click to match with corresponding debt transaction"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Unmatched {tx.transaction_type_code === 'DEBT_DRAW' ? 'Drawdown' : 'Debt Acquired'}
+                                  </Badge>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -907,6 +936,14 @@ export default function MainTransactionsPage() {
       <QuickMatchTransferDialog
         open={quickMatchDialogOpen}
         onOpenChange={setQuickMatchDialogOpen}
+        sourceTransaction={selectedTransaction}
+        onSuccess={handleQuickMatchSuccess}
+      />
+
+      {/* Quick Match Debt Dialog */}
+      <QuickMatchDebtDialog
+        open={quickMatchDebtDialogOpen}
+        onOpenChange={setQuickMatchDebtDialogOpen}
         sourceTransaction={selectedTransaction}
         onSuccess={handleQuickMatchSuccess}
       />

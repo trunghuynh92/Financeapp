@@ -117,6 +117,7 @@ export interface DrawdownListItem {
   original_amount: number
   remaining_balance: number
   paid_amount: number
+  overpayment_amount: number
   status: DrawdownStatus
   due_date: string | null
   days_until_due: number | null

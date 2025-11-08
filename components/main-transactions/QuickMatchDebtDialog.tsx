@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, Link2, ArrowUp, ArrowDown, Link2Off, AlertTriangle } from "lucide-react"
+import { Loader2, Link2, CreditCard, Wallet, Link2Off, AlertTriangle, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -13,32 +13,34 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { MainTransactionDetails } from "@/types/main-transaction"
+import { CreateDrawdownDialog } from "@/components/create-drawdown-dialog"
 
-interface QuickMatchTransferDialogProps {
+interface QuickMatchDebtDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   sourceTransaction: MainTransactionDetails | null
   onSuccess: () => void
 }
 
-export function QuickMatchTransferDialog({
+export function QuickMatchDebtDialog({
   open,
   onOpenChange,
   sourceTransaction,
   onSuccess,
-}: QuickMatchTransferDialogProps) {
+}: QuickMatchDebtDialogProps) {
   const [loading, setLoading] = useState(false)
   const [matching, setMatching] = useState(false)
   const [unmatching, setUnmatching] = useState(false)
-  const [availableTransfers, setAvailableTransfers] = useState<MainTransactionDetails[]>([])
-  const [selectedTransfer, setSelectedTransfer] = useState<number | null>(null)
+  const [availableDebts, setAvailableDebts] = useState<MainTransactionDetails[]>([])
+  const [selectedDebt, setSelectedDebt] = useState<number | null>(null)
   const [currentMatch, setCurrentMatch] = useState<MainTransactionDetails | null>(null)
   const [showUnmatchConfirm, setShowUnmatchConfirm] = useState(false)
+  const [createDrawdownDialogOpen, setCreateDrawdownDialogOpen] = useState(false)
 
   useEffect(() => {
     if (open && sourceTransaction) {
       fetchCurrentMatch()
-      fetchAvailableTransfers()
+      fetchAvailableDebts()
     }
   }, [open, sourceTransaction])
 
@@ -61,28 +63,24 @@ export function QuickMatchTransferDialog({
     }
   }
 
-  const fetchAvailableTransfers = async () => {
+  const fetchAvailableDebts = async () => {
     if (!sourceTransaction) return
 
     setLoading(true)
     try {
-      // Fetch unmatched transfers
+      // Fetch unmatched debt transactions
       const response = await fetch("/api/transfers/unmatched")
 
       if (!response.ok) {
-        throw new Error("Failed to fetch transfers")
+        throw new Error("Failed to fetch debt transactions")
       }
 
       const data = await response.json()
 
       // Filter to opposite type and exclude the source transaction
-      // Support both TRF_OUT/TRF_IN and DEBT_DRAW/DEBT_ACQ pairs
+      // DEBT_DRAW ↔ DEBT_ACQ pairs
       let oppositeType: string
-      if (sourceTransaction.transaction_type_code === 'TRF_OUT') {
-        oppositeType = 'TRF_IN'
-      } else if (sourceTransaction.transaction_type_code === 'TRF_IN') {
-        oppositeType = 'TRF_OUT'
-      } else if (sourceTransaction.transaction_type_code === 'DEBT_DRAW') {
+      if (sourceTransaction.transaction_type_code === 'DEBT_DRAW') {
         oppositeType = 'DEBT_ACQ'
       } else if (sourceTransaction.transaction_type_code === 'DEBT_ACQ') {
         oppositeType = 'DEBT_DRAW'
@@ -125,10 +123,10 @@ export function QuickMatchTransferDialog({
         }
       })
 
-      setAvailableTransfers(filtered)
+      setAvailableDebts(filtered)
     } catch (error) {
-      console.error("Error fetching available transfers:", error)
-      alert("Failed to load available transfers")
+      console.error("Error fetching available debt transactions:", error)
+      alert("Failed to load available debt transactions")
     } finally {
       setLoading(false)
     }
@@ -146,54 +144,54 @@ export function QuickMatchTransferDialog({
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to unmatch transfer")
+        throw new Error(data.error || "Failed to unmatch debt transaction")
       }
 
       // Clear current match and reset to allow new selection
       setCurrentMatch(null)
       setShowUnmatchConfirm(false)
-      setSelectedTransfer(null)
+      setSelectedDebt(null)
 
-      // Refresh available transfers
-      await fetchAvailableTransfers()
+      // Refresh available debts
+      await fetchAvailableDebts()
 
-      alert("Transfer unmatched successfully! You can now select a new match.")
+      alert("Debt transaction unmatched successfully! You can now select a new match.")
     } catch (error: any) {
-      console.error("Error unmatching transfer:", error)
-      alert(error.message || "Failed to unmatch transfer. Please try again.")
+      console.error("Error unmatching debt transaction:", error)
+      alert(error.message || "Failed to unmatch debt transaction. Please try again.")
     } finally {
       setUnmatching(false)
     }
   }
 
   const handleMatch = async () => {
-    if (!selectedTransfer || !sourceTransaction) return
+    if (!selectedDebt || !sourceTransaction) return
 
     setMatching(true)
     try {
-      const isSourceOut = sourceTransaction.transaction_type_code === 'TRF_OUT'
+      const isSourceDrawdown = sourceTransaction.transaction_type_code === 'DEBT_DRAW'
 
       const response = await fetch("/api/transfers/match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          transfer_out_id: isSourceOut ? sourceTransaction.main_transaction_id : selectedTransfer,
-          transfer_in_id: isSourceOut ? selectedTransfer : sourceTransaction.main_transaction_id,
+          transfer_out_id: isSourceDrawdown ? sourceTransaction.main_transaction_id : selectedDebt,
+          transfer_in_id: isSourceDrawdown ? selectedDebt : sourceTransaction.main_transaction_id,
         }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to match transfers")
+        throw new Error(data.error || "Failed to match debt transactions")
       }
 
-      alert("Transfers matched successfully!")
+      alert("Debt transactions matched successfully!")
       onSuccess()
       onOpenChange(false)
     } catch (error: any) {
-      console.error("Error matching transfers:", error)
-      alert(error.message || "Failed to match transfers. Please try again.")
+      console.error("Error matching debt transactions:", error)
+      alert(error.message || "Failed to match debt transactions. Please try again.")
     } finally {
       setMatching(false)
     }
@@ -209,19 +207,19 @@ export function QuickMatchTransferDialog({
 
   if (!sourceTransaction) return null
 
-  const isSourceOut = sourceTransaction.transaction_type_code === 'TRF_OUT'
+  const isSourceDrawdown = sourceTransaction.transaction_type_code === 'DEBT_DRAW'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{currentMatch ? 'Change Transfer Match' : 'Match Transfer'}</DialogTitle>
+          <DialogTitle>{currentMatch ? 'Change Debt Match' : 'Match Debt Transaction'}</DialogTitle>
           <DialogDescription>
             {currentMatch && !showUnmatchConfirm ? (
-              <>This transfer is currently matched. Click &quot;Change Match&quot; to unmatch and select a different transfer.</>
+              <>This debt transaction is currently matched. Click &quot;Change Match&quot; to unmatch and select a different transaction.</>
             ) : (
               <>
-                Select a {isSourceOut ? 'Transfer In' : 'Transfer Out'} transaction to match with this transfer.
+                Select a {isSourceDrawdown ? 'Debt Acquired' : 'Debt Drawdown'} transaction to match with this {isSourceDrawdown ? 'drawdown' : 'debt acquisition'}.
                 Suggestions are sorted by best match (amount + date proximity).
               </>
             )}
@@ -243,16 +241,16 @@ export function QuickMatchTransferDialog({
               <span className="font-mono font-medium">{formatAmount(sourceTransaction.amount)}</span>
             </div>
             <div>
-              <Badge variant={isSourceOut ? 'destructive' : 'default'}>
-                {isSourceOut ? (
+              <Badge variant={isSourceDrawdown ? 'destructive' : 'default'}>
+                {isSourceDrawdown ? (
                   <>
-                    <ArrowUp className="h-3 w-3 mr-1" />
-                    Transfer Out
+                    <CreditCard className="h-3 w-3 mr-1" />
+                    Debt Drawdown
                   </>
                 ) : (
                   <>
-                    <ArrowDown className="h-3 w-3 mr-1" />
-                    Transfer In
+                    <Wallet className="h-3 w-3 mr-1" />
+                    Debt Acquired
                   </>
                 )}
               </Badge>
@@ -295,16 +293,16 @@ export function QuickMatchTransferDialog({
                 <span className="font-mono font-medium">{formatAmount(currentMatch.amount)}</span>
               </div>
               <div>
-                <Badge variant={currentMatch.transaction_type_code === 'TRF_OUT' ? 'destructive' : 'default'}>
-                  {currentMatch.transaction_type_code === 'TRF_OUT' ? (
+                <Badge variant={currentMatch.transaction_type_code === 'DEBT_DRAW' ? 'destructive' : 'default'}>
+                  {currentMatch.transaction_type_code === 'DEBT_DRAW' ? (
                     <>
-                      <ArrowUp className="h-3 w-3 mr-1" />
-                      Transfer Out
+                      <CreditCard className="h-3 w-3 mr-1" />
+                      Debt Drawdown
                     </>
                   ) : (
                     <>
-                      <ArrowDown className="h-3 w-3 mr-1" />
-                      Transfer In
+                      <Wallet className="h-3 w-3 mr-1" />
+                      Debt Acquired
                     </>
                   )}
                 </Badge>
@@ -328,7 +326,7 @@ export function QuickMatchTransferDialog({
                   Confirm Match Change
                 </div>
                 <div className="text-xs text-yellow-800">
-                  This will unmatch the current transfer so you can select a new one.
+                  This will unmatch the current debt transaction so you can select a new one.
                   Both transactions will become unmatched until you select and confirm a new match.
                 </div>
               </div>
@@ -356,7 +354,7 @@ export function QuickMatchTransferDialog({
                 ) : (
                   <>
                     <Link2Off className="mr-2 h-3 w-3" />
-                    Unmatch Current Transfer
+                    Unmatch Current Transaction
                   </>
                 )}
               </Button>
@@ -364,24 +362,35 @@ export function QuickMatchTransferDialog({
           </div>
         )}
 
-        {/* Available Transfers */}
+        {/* Available Debt Transactions */}
         {(!currentMatch || showUnmatchConfirm) && (
           <div className="space-y-2">
             <div className="text-sm font-medium">
-              Available {isSourceOut ? 'Transfers In' : 'Transfers Out'} ({availableTransfers.length})
+              Available {isSourceDrawdown ? 'Debt Acquired' : 'Debt Drawdowns'} ({availableDebts.length})
             </div>
 
             {loading ? (
               <div className="text-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Loading available transfers...</p>
+                <p className="text-sm text-muted-foreground">Loading available debt transactions...</p>
               </div>
-            ) : availableTransfers.length === 0 ? (
+            ) : availableDebts.length === 0 ? (
             <div className="text-center py-8 border rounded-lg">
-              <p className="text-muted-foreground">No matching transfers available</p>
+              <p className="text-muted-foreground">No matching debt transactions available</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Make sure there&apos;s a {isSourceOut ? 'Transfer In' : 'Transfer Out'} from a different account
+                Make sure there&apos;s a {isSourceDrawdown ? 'Debt Acquired' : 'Debt Drawdown'} transaction from a different account
               </p>
+              {!isSourceDrawdown && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => setCreateDrawdownDialogOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create New Drawdown
+                </Button>
+              )}
             </div>
           ) : (
             <div className="border rounded-lg overflow-hidden">
@@ -398,33 +407,33 @@ export function QuickMatchTransferDialog({
                     </tr>
                   </thead>
                   <tbody>
-                    {availableTransfers.map((transfer) => {
-                      const isSelected = selectedTransfer === transfer.main_transaction_id
-                      const amountMatch = Math.abs(transfer.amount - sourceTransaction.amount) < 0.01
+                    {availableDebts.map((debt) => {
+                      const isSelected = selectedDebt === debt.main_transaction_id
+                      const amountMatch = Math.abs(debt.amount - sourceTransaction.amount) < 0.01
 
                       // Calculate date difference in days
                       const sourceDateMs = new Date(sourceTransaction.transaction_date).getTime()
-                      const transferDateMs = new Date(transfer.transaction_date).getTime()
-                      const dateDiffDays = Math.abs(transferDateMs - sourceDateMs) / (1000 * 60 * 60 * 24)
+                      const debtDateMs = new Date(debt.transaction_date).getTime()
+                      const dateDiffDays = Math.abs(debtDateMs - sourceDateMs) / (1000 * 60 * 60 * 24)
                       const sameDay = dateDiffDays < 1
 
                       return (
                         <tr
-                          key={transfer.main_transaction_id}
+                          key={debt.main_transaction_id}
                           className={`border-b hover:bg-muted/50 cursor-pointer ${
                             isSelected ? 'bg-primary/10 border-primary' : ''
                           }`}
-                          onClick={() => setSelectedTransfer(transfer.main_transaction_id)}
+                          onClick={() => setSelectedDebt(debt.main_transaction_id)}
                         >
                           <td className="py-2 px-3">
                             <input
                               type="radio"
                               checked={isSelected}
-                              onChange={() => setSelectedTransfer(transfer.main_transaction_id)}
+                              onChange={() => setSelectedDebt(debt.main_transaction_id)}
                             />
                           </td>
                           <td className="py-2 px-3 text-sm whitespace-nowrap">
-                            <div>{formatDate(transfer.transaction_date)}</div>
+                            <div>{formatDate(debt.transaction_date)}</div>
                             {sameDay ? (
                               <div className="text-xs text-green-600 font-medium">Same day</div>
                             ) : dateDiffDays < 3 ? (
@@ -438,16 +447,16 @@ export function QuickMatchTransferDialog({
                             )}
                           </td>
                           <td className="py-2 px-3 text-sm">
-                            <div className="font-medium">{transfer.account_name}</div>
-                            {transfer.bank_name && (
-                              <div className="text-xs text-muted-foreground">{transfer.bank_name}</div>
+                            <div className="font-medium">{debt.account_name}</div>
+                            {debt.bank_name && (
+                              <div className="text-xs text-muted-foreground">{debt.bank_name}</div>
                             )}
                           </td>
                           <td className="py-2 px-3 text-sm">
-                            {transfer.description || <span className="text-muted-foreground italic">No description</span>}
+                            {debt.description || <span className="text-muted-foreground italic">No description</span>}
                           </td>
                           <td className="py-2 px-3 text-sm text-right font-mono font-medium">
-                            {formatAmount(transfer.amount)}
+                            {formatAmount(debt.amount)}
                           </td>
                           <td className="py-2 px-3 text-center">
                             {amountMatch ? (
@@ -456,7 +465,7 @@ export function QuickMatchTransferDialog({
                               </Badge>
                             ) : (
                               <span className="text-xs text-muted-foreground">
-                                Diff: {formatAmount(Math.abs(transfer.amount - sourceTransaction.amount))}
+                                Diff: {formatAmount(Math.abs(debt.amount - sourceTransaction.amount))}
                               </span>
                             )}
                           </td>
@@ -472,33 +481,64 @@ export function QuickMatchTransferDialog({
         )}
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={matching || unmatching}
-          >
-            {currentMatch && !showUnmatchConfirm ? 'Close' : 'Cancel'}
-          </Button>
-          {(!currentMatch || showUnmatchConfirm) && (
-            <Button
-              onClick={handleMatch}
-              disabled={!selectedTransfer || matching}
-            >
-              {matching ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Matching...
-                </>
-              ) : (
-                <>
-                  <Link2 className="mr-2 h-4 w-4" />
-                  Match Transfers
-                </>
+          <div className="flex w-full justify-between items-center">
+            {/* Left side: Create New Drawdown button (only for DEBT_ACQ source) */}
+            <div>
+              {!isSourceDrawdown && (!currentMatch || showUnmatchConfirm) && (
+                <Button
+                  variant="outline"
+                  onClick={() => setCreateDrawdownDialogOpen(true)}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create New Drawdown
+                </Button>
               )}
-            </Button>
-          )}
+            </div>
+
+            {/* Right side: Cancel/Close and Match buttons */}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={matching || unmatching}
+              >
+                {currentMatch && !showUnmatchConfirm ? 'Close' : 'Cancel'}
+              </Button>
+              {(!currentMatch || showUnmatchConfirm) && (
+                <Button
+                  onClick={handleMatch}
+                  disabled={!selectedDebt || matching}
+                >
+                  {matching ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Matching...
+                    </>
+                  ) : (
+                    <>
+                      <Link2 className="mr-2 h-4 w-4" />
+                      Match Debt Transactions
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
         </DialogFooter>
       </DialogContent>
+
+      {/* Create Drawdown Dialog */}
+      <CreateDrawdownDialog
+        open={createDrawdownDialogOpen}
+        onOpenChange={setCreateDrawdownDialogOpen}
+        prefilledAmount={sourceTransaction?.amount}
+        prefilledDate={sourceTransaction?.transaction_date ? new Date(sourceTransaction.transaction_date).toISOString().split('T')[0] : undefined}
+        onSuccess={() => {
+          setCreateDrawdownDialogOpen(false)
+          fetchAvailableDebts() // Refresh the list
+          onSuccess() // Refresh parent
+        }}
+      />
     </Dialog>
   )
 }

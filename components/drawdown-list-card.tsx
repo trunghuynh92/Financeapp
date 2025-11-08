@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, DollarSign, Calendar, AlertCircle, TrendingDown } from "lucide-react"
+import { Plus, DollarSign, Calendar, AlertCircle, TrendingDown, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -33,6 +33,7 @@ import {
 } from "@/types/debt"
 import { CreateDrawdownDialog } from "@/components/create-drawdown-dialog"
 import { RecordPaymentDialog } from "@/components/record-payment-dialog"
+import { AssignReceivingAccountDialog } from "@/components/assign-receiving-account-dialog"
 
 interface DrawdownListCardProps {
   accountId: number
@@ -55,7 +56,9 @@ export function DrawdownListCard({
   const [loading, setLoading] = useState(true)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
   const [selectedDrawdownId, setSelectedDrawdownId] = useState<number | null>(null)
+  const [selectedDrawdownRef, setSelectedDrawdownRef] = useState<string>("")
 
   useEffect(() => {
     fetchDrawdowns()
@@ -65,7 +68,8 @@ export function DrawdownListCard({
   async function fetchDrawdowns() {
     try {
       setLoading(true)
-      const response = await fetch(`/api/accounts/${accountId}/drawdowns?status=active`)
+      // Fetch both active and overdue drawdowns
+      const response = await fetch(`/api/accounts/${accountId}/drawdowns`)
 
       if (!response.ok) {
         throw new Error("Failed to fetch drawdowns")
@@ -76,13 +80,16 @@ export function DrawdownListCard({
 
       // Calculate stats
       if (data.data && data.data.length > 0) {
-        const activeDrawdowns = data.data.filter((d: DrawdownListItem) => d.status === 'active')
-        const totalOutstanding = activeDrawdowns.reduce((sum: number, d: DrawdownListItem) => sum + Number(d.remaining_balance), 0)
-        const totalInterest = activeDrawdowns.reduce((sum: number, d: DrawdownListItem) => sum + Number(d.total_interest_paid), 0)
-        const totalFees = activeDrawdowns.reduce((sum: number, d: DrawdownListItem) => sum + Number(d.total_fees_paid), 0)
+        // Include both active and overdue drawdowns in calculations
+        const outstandingDrawdowns = data.data.filter((d: DrawdownListItem) =>
+          d.status === 'active' || d.status === 'overdue'
+        )
+        const totalOutstanding = outstandingDrawdowns.reduce((sum: number, d: DrawdownListItem) => sum + Number(d.remaining_balance), 0)
+        const totalInterest = outstandingDrawdowns.reduce((sum: number, d: DrawdownListItem) => sum + Number(d.total_interest_paid), 0)
+        const totalFees = outstandingDrawdowns.reduce((sum: number, d: DrawdownListItem) => sum + Number(d.total_fees_paid), 0)
 
         // Calculate average interest rate (weighted by balance)
-        const totalWeightedRate = activeDrawdowns.reduce((sum: number, d: DrawdownListItem) => {
+        const totalWeightedRate = outstandingDrawdowns.reduce((sum: number, d: DrawdownListItem) => {
           const rate = d.interest_rate || 0
           const balance = Number(d.remaining_balance)
           return sum + (rate * balance)
@@ -90,7 +97,7 @@ export function DrawdownListCard({
         const avgInterestRate = totalOutstanding > 0 ? totalWeightedRate / totalOutstanding : null
 
         // Find next due date
-        const dueDates = activeDrawdowns
+        const dueDates = outstandingDrawdowns
           .filter((d: DrawdownListItem) => d.due_date && !isOverdue(d.due_date))
           .map((d: DrawdownListItem) => d.due_date)
           .sort()
@@ -98,7 +105,7 @@ export function DrawdownListCard({
 
         setStats({
           total_drawdowns: data.data.length,
-          active_drawdowns: activeDrawdowns.length,
+          active_drawdowns: data.data.filter((d: DrawdownListItem) => d.status === 'active').length,
           total_outstanding: totalOutstanding,
           total_interest_paid: totalInterest,
           total_fees_paid: totalFees,
@@ -145,6 +152,17 @@ export function DrawdownListCard({
   function openPaymentDialog(drawdownId: number) {
     setSelectedDrawdownId(drawdownId)
     setIsPaymentDialogOpen(true)
+  }
+
+  function openAssignDialog(drawdownId: number, drawdownRef: string) {
+    setSelectedDrawdownId(drawdownId)
+    setSelectedDrawdownRef(drawdownRef)
+    setIsAssignDialogOpen(true)
+  }
+
+  function handleAssignSuccess() {
+    fetchDrawdowns()
+    onRefresh?.()
   }
 
   return (
@@ -282,14 +300,24 @@ export function DrawdownListCard({
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openPaymentDialog(drawdown.drawdown_id)}
-                          >
-                            <DollarSign className="mr-1 h-3 w-3" />
-                            Pay
-                          </Button>
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openAssignDialog(drawdown.drawdown_id, drawdown.drawdown_reference)}
+                              title="Assign receiving account"
+                            >
+                              <Link2 className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openPaymentDialog(drawdown.drawdown_id)}
+                            >
+                              <DollarSign className="mr-1 h-3 w-3" />
+                              Pay
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -318,6 +346,17 @@ export function DrawdownListCard({
           drawdownId={selectedDrawdownId}
           accountId={accountId}
           onSuccess={handlePaymentSuccess}
+        />
+      )}
+
+      {selectedDrawdownId && (
+        <AssignReceivingAccountDialog
+          open={isAssignDialogOpen}
+          onOpenChange={setIsAssignDialogOpen}
+          drawdownId={selectedDrawdownId}
+          drawdownReference={selectedDrawdownRef}
+          creditLineAccountId={accountId}
+          onSuccess={handleAssignSuccess}
         />
       )}
     </>

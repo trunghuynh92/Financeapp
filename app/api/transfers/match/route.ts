@@ -1,6 +1,6 @@
 /**
  * API Route: /api/transfers/match
- * Purpose: Match two transfer transactions (TRF_OUT with TRF_IN)
+ * Purpose: Match two transfer transactions (TRF_OUT ↔ TRF_IN) or debt transactions (DEBT_DRAW ↔ DEBT_ACQ)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate that one is TRF_OUT and the other is TRF_IN
+    // Validate that transactions are valid pairs: TRF_OUT ↔ TRF_IN or DEBT_DRAW ↔ DEBT_ACQ
     const { data: types } = await supabase
       .from('transaction_types')
       .select('transaction_type_id, type_code')
@@ -64,9 +64,13 @@ export async function POST(request: NextRequest) {
     const outType = typeMap.get(transferOut.transaction_type_id)
     const inType = typeMap.get(transferIn.transaction_type_id)
 
-    if (outType !== 'TRF_OUT' || inType !== 'TRF_IN') {
+    // Check for valid pairs
+    const isTransferPair = (outType === 'TRF_OUT' && inType === 'TRF_IN')
+    const isDebtPair = (outType === 'DEBT_DRAW' && inType === 'DEBT_ACQ')
+
+    if (!isTransferPair && !isDebtPair) {
       return NextResponse.json(
-        { error: 'One transaction must be Transfer Out and the other Transfer In' },
+        { error: 'Transactions must be matching pairs: TRF_OUT ↔ TRF_IN or DEBT_DRAW ↔ DEBT_ACQ' },
         { status: 400 }
       )
     }

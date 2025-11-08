@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error} = await query
       .order('transaction_date', { ascending: false })
-      .order('transaction_sequence', { ascending: false, nullsFirst: false }) // NULLs last, preserve CSV order
+      .order('split_sequence', { ascending: false, nullsFirst: false }) // NULLs last, preserve CSV order
       .order('main_transaction_id', { ascending: false })
       .range(from, to)
 

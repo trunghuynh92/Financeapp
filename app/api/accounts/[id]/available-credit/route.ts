@@ -40,6 +40,12 @@ export async function GET(
       )
     }
 
+    console.log(`💳 Available credit for account ${accountId}:`, {
+      credit_limit: data[0].credit_limit,
+      total_drawn: data[0].total_drawn,
+      available_credit: data[0].available_credit
+    })
+
     return NextResponse.json({
       data: data[0]
     })
