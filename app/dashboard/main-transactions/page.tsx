@@ -14,6 +14,7 @@ import { SplitTransactionDialog } from "@/components/main-transactions/SplitTran
 import { BulkEditDialog } from "@/components/main-transactions/BulkEditDialog"
 import { QuickMatchTransferDialog } from "@/components/main-transactions/QuickMatchTransferDialog"
 import { QuickMatchDebtDialog } from "@/components/main-transactions/QuickMatchDebtDialog"
+import { SelectDrawdownDialog } from "@/components/main-transactions/SelectDrawdownDialog"
 import { InlineCombobox } from "@/components/main-transactions/InlineCombobox"
 
 interface PaginationInfo {
@@ -72,6 +73,7 @@ export default function MainTransactionsPage() {
   // Quick match dialog state
   const [quickMatchDialogOpen, setQuickMatchDialogOpen] = useState(false)
   const [quickMatchDebtDialogOpen, setQuickMatchDebtDialogOpen] = useState(false)
+  const [selectDrawdownDialogOpen, setSelectDrawdownDialogOpen] = useState(false)
 
   // Fetch transaction types, categories, branches, accounts on mount
   useEffect(() => {
@@ -233,6 +235,9 @@ export default function MainTransactionsPage() {
             if (type) {
               updated.transaction_type = type.type_display_name
               updated.transaction_type_code = type.type_code
+              console.log('Updated transaction_type_code to:', type.type_code) // Debug log
+            } else {
+              console.warn('Transaction type not found for ID:', updates.transaction_type_id)
             }
             // Clear category when type changes
             updated.category_name = null
@@ -713,6 +718,33 @@ export default function MainTransactionsPage() {
                                     Unmatched {tx.transaction_type_code === 'DEBT_DRAW' ? 'Drawdown' : 'Debt Acquired'}
                                   </Badge>
                                 )}
+                                {/* Matched debt payback */}
+                                {tx.transfer_matched_transaction_id && (tx.transaction_type_code === 'DEBT_PAY' || tx.transaction_type_code === 'DEBT_SETTLE') && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200"
+                                    onClick={() => handleUnmatchTransfer(tx)}
+                                    title="Click to unmatch this debt payback"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Matched {tx.transaction_type_code === 'DEBT_PAY' ? 'Payback' : 'Settlement'}
+                                  </Badge>
+                                )}
+                                {/* Unmatched debt payback - needs drawdown selection */}
+                                {!tx.transfer_matched_transaction_id && tx.transaction_type_code === 'DEBT_PAY' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-yellow-100 text-yellow-800 border-yellow-200 cursor-pointer hover:bg-yellow-200"
+                                    onClick={() => {
+                                      setSelectedTransaction(tx)
+                                      setSelectDrawdownDialogOpen(true)
+                                    }}
+                                    title="Click to select which drawdown this payment is for"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Unmatched Drawdown
+                                  </Badge>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -799,7 +831,7 @@ export default function MainTransactionsPage() {
                                     : "Split transaction"
                                 }
                               >
-                                <Split className="h-4 w-4" />
+                                <Split className={`h-4 w-4 ${tx.is_split ? 'text-blue-600' : ''}`} />
                               </Button>
                               <Button
                                 variant="ghost"
@@ -947,6 +979,17 @@ export default function MainTransactionsPage() {
         sourceTransaction={selectedTransaction}
         onSuccess={handleQuickMatchSuccess}
       />
+
+      {/* Select Drawdown Dialog for DEBT_PAYBACK */}
+      {selectedTransaction && (
+        <SelectDrawdownDialog
+          open={selectDrawdownDialogOpen}
+          onOpenChange={setSelectDrawdownDialogOpen}
+          paybackTransactionId={selectedTransaction.main_transaction_id}
+          paybackAmount={selectedTransaction.amount}
+          onSuccess={handleQuickMatchSuccess}
+        />
+      )}
     </div>
   )
 }

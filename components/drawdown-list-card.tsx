@@ -34,6 +34,13 @@ import {
 import { CreateDrawdownDialog } from "@/components/create-drawdown-dialog"
 import { RecordPaymentDialog } from "@/components/record-payment-dialog"
 import { AssignReceivingAccountDialog } from "@/components/assign-receiving-account-dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface DrawdownListCardProps {
   accountId: number
@@ -54,6 +61,7 @@ export function DrawdownListCard({
   const [stats, setStats] = useState<DrawdownStats | null>(null)
   const [availableCredit, setAvailableCredit] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState<string>("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
@@ -63,13 +71,14 @@ export function DrawdownListCard({
   useEffect(() => {
     fetchDrawdowns()
     fetchAvailableCredit()
-  }, [accountId])
+  }, [accountId, statusFilter])
 
   async function fetchDrawdowns() {
     try {
       setLoading(true)
-      // Fetch both active and overdue drawdowns
-      const response = await fetch(`/api/accounts/${accountId}/drawdowns`)
+      // Fetch drawdowns with status filter
+      const statusParam = statusFilter === 'all' ? 'all' : statusFilter
+      const response = await fetch(`/api/accounts/${accountId}/drawdowns?status=${statusParam}`)
 
       if (!response.ok) {
         throw new Error("Failed to fetch drawdowns")
@@ -176,10 +185,23 @@ export function DrawdownListCard({
                 Track individual drawdowns and payments
               </CardDescription>
             </div>
-            <Button onClick={() => setIsCreateDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Drawdown
-            </Button>
+            <div className="flex gap-2">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
+                  <SelectItem value="settled">Settled</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                New Drawdown
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -225,9 +247,14 @@ export function DrawdownListCard({
           ) : drawdowns.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <TrendingDown className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No active drawdowns</p>
+              <p className="text-muted-foreground">
+                {statusFilter === 'all' ? 'No drawdowns' : `No ${statusFilter} drawdowns`}
+              </p>
               <p className="text-sm text-muted-foreground">
-                Create a drawdown to start tracking debt payments
+                {statusFilter === 'all'
+                  ? 'Create a drawdown to start tracking debt payments'
+                  : 'Try selecting a different status filter'
+                }
               </p>
             </div>
           ) : (

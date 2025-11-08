@@ -1,28 +1,37 @@
-# Finance SaaS v2.1.0
+# Finance SaaS v2.2.0
 
 A comprehensive financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase.
 
-## Version 2.1.0 - Debt Management & UX Improvements
+## Version 2.2.0 - Debt Payback System & UI Enhancements
 
-### What's New in v2.1.0
+### What's New in v2.2.0
 
-#### 🏦 Enhanced Debt Management System
-- **Overdue Drawdown Tracking**: Overdue drawdowns now properly display in the UI and count towards outstanding debt
-- **Improved Debt Transaction Matching**: Support for matching DEBT_DRAW ↔ DEBT_ACQ transaction pairs alongside regular transfers
-- **Quick Due Date Selection**: Added convenient 1, 3, 6, and 12-month quick buttons in drawdown creation dialog
-- **Better Credit Calculations**: Available credit now correctly accounts for both active and overdue drawdowns
+#### 💸 Complete Debt Payback System
+- **DEBT_PAY ↔ DEBT_SETTLE Matching**: Match debt payments with drawdowns and auto-create settlement transactions
+- **Auto-Settlement Creation**: System automatically creates DEBT_SETTLE transactions on the credit line when matching DEBT_PAY
+- **Overpayment Handling**: Automatically creates credit memos when payments exceed remaining balance
+- **Drawdown Balance Updates**: Triggers automatically update drawdown balances and status (active/settled/overdue)
+- **Smart Unmatch Logic**: Unmatching DEBT_PAY transactions properly deletes auto-created settlements, credit memos, and recalculates drawdown balances
+- **Select Drawdown Dialog**: Intuitive UI to match DEBT_PAY transactions with specific drawdowns
+
+#### 🎨 UI/UX Improvements
+- **Status Filter for Drawdowns**: Filter drawdowns by All/Active/Overdue/Settled status
+- **Blue Split Icon**: Split transaction icons now turn blue for easy identification of split transactions
+- **Server-Side Filtering**: Optimized drawdown filtering for better performance
 
 #### 🐛 Bug Fixes
-- Fixed debt matching validation to support both transfer and debt transaction pairs
-- Fixed Total Outstanding calculation to include overdue drawdowns
-- Fixed PostgreSQL date arithmetic in drawdown queries
-- Added missing X icon import in Create Drawdown Dialog
+- Fixed drawdown list to show all statuses instead of only active
+- Fixed drawdown balance recalculation on DEBT_SETTLE deletion
+- Updated validation to allow DEBT_PAY ↔ DEBT_SETTLE matching
+- Fixed auto-create trigger interference with settlement creation
 
 #### 🔧 Technical Improvements
-- Updated `get_active_drawdowns` RPC function to include overdue status
-- Updated `get_available_credit` RPC function to count overdue drawdowns
-- Updated `debt_summary` view for comprehensive debt reporting
-- Enhanced UI components to consistently treat active and overdue drawdowns
+- Migration 021: Added DEBT_SETTLE transaction type and payback system infrastructure
+- Updated `validate_transfer_match()` to support DEBT_PAY ↔ DEBT_SETTLE pairs
+- Enhanced `update_drawdown_after_settlement()` trigger to handle INSERT/UPDATE/DELETE
+- Added `is_overpaid` flag to debt_drawdown table
+- Updated `main_transaction_details` view with drawdown matching information
+- Refactored drawdowns API to support status filtering
 
 ## Features
 
@@ -39,10 +48,10 @@ A comprehensive financial management system for businesses and individuals, buil
 - **Main Transactions**: Categorized and analyzed transactions layer
   - Inline spreadsheet-style editing for fast data entry
   - Searchable dropdown filters (type to search)
-  - Split transaction support
+  - Split transaction support with visual indicators
   - Transfer matching between accounts
   - Branch/store assignment
-  - **Debt transaction matching** (DEBT_DRAW ↔ DEBT_ACQ)
+  - **Debt transaction matching** (DEBT_DRAW ↔ DEBT_ACQ, DEBT_PAY ↔ DEBT_SETTLE)
 
 ### 💳 Debt Drawdown System
 - **Credit Line Management**: Track drawdowns from credit lines with available credit monitoring
@@ -52,9 +61,11 @@ A comprehensive financial management system for businesses and individuals, buil
   - Optional due dates with quick selection (1, 3, 6, 12 months)
   - Interest rate tracking
   - Payment recording with principal, interest, and fee breakdown
+  - **Debt payback matching**: Match DEBT_PAY transactions with drawdowns
   - Overpayment handling with automatic credit memos
   - Assign receiving accounts for debt acquisition tracking
   - **Status tracking**: Active, Overdue, Settled, Written Off
+  - **Status filtering**: Filter drawdowns by any status (All/Active/Overdue/Settled)
 - **Debt Analytics**:
   - Total outstanding balance (includes overdue)
   - Available credit calculations
@@ -153,7 +164,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 
 4. Run database migrations
 - Execute migration files in the `/migrations` folder in order
-- Latest migration: `020_fix_overdue_drawdowns.sql`
+- Latest migration: `021_add_debt_payback_system.sql`
 - Or import them via Supabase SQL Editor
 
 5. Start the development server
@@ -195,11 +206,24 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 6. Click the link icon to assign receiving accounts
 
 ### Matching Debt Transactions
+
+#### Matching Debt Acquisition (DEBT_DRAW ↔ DEBT_ACQ)
 1. Navigate to **Main Transactions** page
 2. Find unmatched DEBT_DRAW and DEBT_ACQ transactions
-3. Click **Match** on either transaction
+3. Click the **Unmatched** badge on either transaction
 4. Select the corresponding transaction to match
 5. System validates amounts and creates the match
+
+#### Matching Debt Payback (DEBT_PAY ↔ DEBT_SETTLE)
+1. Navigate to **Main Transactions** page
+2. Find DEBT_PAY transactions that need drawdown matching
+3. Click the badge or use the matching dialog
+4. Select the drawdown to match with
+5. System automatically:
+   - Creates DEBT_SETTLE transaction on credit line
+   - Updates drawdown balance and status
+   - Creates credit memo if overpayment occurs
+6. To unmatch: Click the matched badge - system will delete auto-created settlements and recalculate
 
 ### Managing Categories
 1. Navigate to **Settings** > **Categories** tab
@@ -270,30 +294,38 @@ Open [http://localhost:3000](http://localhost:3000) to view the app.
 - `017`: Overpayment handling
 - `018`: Debt transaction matching support
 - `019`: Fix checkpoint logic for credit accounts
-- **`020`: Fix overdue drawdowns visibility and calculations** ⭐ NEW
+- `020`: Fix overdue drawdowns visibility and calculations
+- **`021`: Add debt payback system (DEBT_PAY ↔ DEBT_SETTLE)** ⭐ NEW
 
-## Migration 020 Details
+## Migration 021 Details
 
-This migration fixes several issues with overdue drawdown handling:
+This migration adds the complete debt payback system:
 
-1. **Updated `get_active_drawdowns` function**:
-   - Now returns both 'active' and 'overdue' drawdowns
-   - Fixed date arithmetic for days_until_due calculation
+1. **New Transaction Type**:
+   - Added `DEBT_SETTLE` type for settlement transactions auto-created when matching debt payments
 
-2. **Updated `get_available_credit` function**:
-   - Includes overdue drawdowns in total_drawn calculation
-   - Properly reduces available credit for overdue amounts
+2. **Database Schema Updates**:
+   - Added `is_overpaid` boolean flag to `debt_drawdown` table
+   - Enhanced `main_transaction_details` view with drawdown matching information
 
-3. **Updated `debt_summary` view**:
-   - Counts overdue drawdowns separately
-   - Includes overdue in total_outstanding
-   - Deducts overdue from available_credit
+3. **Functions & Triggers**:
+   - `get_drawdown_settled_amount()`: Calculate total settled amount for a drawdown
+   - `update_drawdown_after_settlement()`: Automatically update drawdown balance on INSERT/UPDATE/DELETE
+   - Updated `validate_transfer_match()`: Allow DEBT_PAY ↔ DEBT_SETTLE matching
+   - Trigger on DELETE: Properly recalculates drawdown when settlements are deleted
 
-**To apply**: Run `migrations/020_fix_overdue_drawdowns.sql` in Supabase SQL Editor
+4. **Matching Logic**:
+   - DEBT_PAY (from paying account) ↔ DEBT_SETTLE (on credit line account)
+   - Auto-creates DEBT_SETTLE when matching DEBT_PAY with drawdown
+   - Bidirectional matching with validation
+   - Overpayment detection and credit memo creation
+
+**To apply**: Run `migrations/021_add_debt_payback_system.sql` in Supabase SQL Editor
 
 ## Version History
 
-- **v2.1.0** (Current) - Debt management enhancements and overdue handling
+- **v2.2.0** (Current) - Debt payback system and UI enhancements
+- **v2.1.0** - Debt management enhancements and overdue handling
 - **v2.0.0** - Main transaction system with inline editing
 - **v1.0.0** - Initial release with basic account and transaction management
 

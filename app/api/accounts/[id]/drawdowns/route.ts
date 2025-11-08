@@ -28,70 +28,37 @@ export async function GET(
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get('status') // 'active', 'settled', 'overdue', 'all'
 
-    // Use RPC function to get drawdowns with details
-    const { data: drawdowns, error } = await supabase.rpc('get_active_drawdowns', {
-      p_account_id: accountId
-    })
+    // Build query for direct table access
+    let query = supabase
+      .from('debt_drawdown')
+      .select('*')
+      .eq('account_id', accountId)
+
+    // Apply status filter if not 'all'
+    if (status && status !== 'all') {
+      query = query.eq('status', status)
+    }
+
+    const { data: drawdowns, error } = await query
+      .order('drawdown_date', { ascending: false })
 
     if (error) {
-      console.error('Error fetching drawdowns via RPC:', error)
-
-      // Fallback: fetch directly from table (simplified without embedded relationships)
-      let query = supabase
-        .from('debt_drawdown')
-        .select('*')
-        .eq('account_id', accountId)
-
-      if (status && status !== 'all') {
-        query = query.eq('status', status)
-      }
-
-      const { data: fallbackData, error: fallbackError } = await query
-        .order('drawdown_date', { ascending: false })
-
-      if (fallbackError) {
-        console.error('Fallback query error:', fallbackError)
-        throw new Error(`Failed to fetch drawdowns: ${fallbackError.message}`)
-      }
-
-      // Map to include calculated fields that the RPC would normally provide
-      const mappedData = fallbackData?.map(dd => ({
-        ...dd,
-        paid_amount: Number(dd.original_amount) - Number(dd.remaining_balance),
-        days_until_due: dd.due_date ? Math.ceil((new Date(dd.due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : null,
-        total_interest_paid: 0, // Would need separate query
-        total_fees_paid: 0, // Would need separate query
-      })) || []
-
-      return NextResponse.json({
-        data: mappedData,
-        count: mappedData.length,
-      })
+      console.error('Error fetching drawdowns:', error)
+      throw new Error(`Failed to fetch drawdowns: ${error.message}`)
     }
 
-    // Filter by status if needed (RPC only returns active)
-    let filteredData = drawdowns || []
-    if (status === 'active' || !status) {
-      // RPC already returns only active
-    } else {
-      // For other statuses, fetch directly
-      const { data: otherData, error: otherError } = await supabase
-        .from('debt_drawdown')
-        .select('*')
-        .eq('account_id', accountId)
-        .eq('status', status)
-        .order('drawdown_date', { ascending: false })
-
-      if (otherError) {
-        throw new Error(`Failed to fetch ${status} drawdowns: ${otherError.message}`)
-      }
-
-      filteredData = otherData || []
-    }
+    // Map to include calculated fields
+    const mappedData = drawdowns?.map(dd => ({
+      ...dd,
+      paid_amount: Number(dd.original_amount) - Number(dd.remaining_balance),
+      days_until_due: dd.due_date ? Math.ceil((new Date(dd.due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : null,
+      total_interest_paid: 0, // Would need separate query to get from payments
+      total_fees_paid: 0, // Would need separate query to get from payments
+    })) || []
 
     return NextResponse.json({
-      data: filteredData,
-      count: filteredData.length,
+      data: mappedData,
+      count: mappedData.length,
     })
   } catch (error) {
     console.error('Unexpected error:', error)
