@@ -485,6 +485,22 @@ export async function POST(
       duplicateWarnings,
     }
 
+    // Save import configuration for future imports (UX improvement)
+    // Only save if import was successful (at least 1 transaction imported)
+    if (successfulImports > 0) {
+      const importConfig = {
+        columnMappings,
+        dateFormat,
+        hasNegativeDebits,
+        lastImportDate: new Date().toISOString(),
+      }
+
+      await supabase
+        .from('accounts')
+        .update({ last_import_config: importConfig })
+        .eq('account_id', accountId)
+    }
+
     // Build success message with duplicate info
     let message = `Imported ${successfulImports} transactions and created checkpoint`
     if (duplicateWarnings.length > 0) {

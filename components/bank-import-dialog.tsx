@@ -83,11 +83,37 @@ export function BankImportDialog({
   const [dateFormat, setDateFormat] = useState<DateFormat>('dd/mm/yyyy')
   const [hasNegativeDebits, setHasNegativeDebits] = useState(false)
 
+  // Saved import config
+  const [savedConfig, setSavedConfig] = useState<any>(null)
+  const [configApplied, setConfigApplied] = useState(false)
+
   // Step 4: Results
   const [importResult, setImportResult] = useState<ImportWithCheckpointResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [rollbackConfirmOpen, setRollbackConfirmOpen] = useState(false)
   const [isRollingBack, setIsRollingBack] = useState(false)
+
+  // Fetch saved import config when dialog opens
+  useEffect(() => {
+    if (open && accountId) {
+      fetchSavedConfig()
+    }
+  }, [open, accountId])
+
+  async function fetchSavedConfig() {
+    try {
+      const response = await fetch(`/api/accounts/${accountId}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.last_import_config) {
+          setSavedConfig(data.last_import_config)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch saved import config:', err)
+      // Don't show error to user, just skip auto-fill
+    }
+  }
 
   // Reset state when dialog opens/closes
   useEffect(() => {
@@ -105,6 +131,8 @@ export function BankImportDialog({
         setHasNegativeDebits(false)
         setImportResult(null)
         setError(null)
+        setSavedConfig(null)
+        setConfigApplied(false)
       }, 200)
     }
   }, [open])
@@ -173,7 +201,48 @@ export function BankImportDialog({
       }
 
       // Generate initial mappings
-      const mappings = generateColumnMappings(detections, dateFormat)
+      let mappings = generateColumnMappings(detections, dateFormat)
+
+      // Try to apply saved config if available and headers match
+      if (savedConfig && savedConfig.columnMappings && !configApplied) {
+        const savedHeaders = savedConfig.columnMappings.map((m: any) => m.csvColumn)
+        const currentHeaders = parsed.headers
+
+        // Check if headers match (all saved headers exist in current file)
+        const headersMatch = savedHeaders.every((h: string) => currentHeaders.includes(h))
+
+        if (headersMatch) {
+          // Apply saved mappings for matching columns
+          mappings = currentHeaders.map(header => {
+            const savedMapping = savedConfig.columnMappings.find((m: any) => m.csvColumn === header)
+            if (savedMapping) {
+              return {
+                csvColumn: header,
+                mappedTo: savedMapping.mappedTo,
+                dateFormat: savedMapping.dateFormat || savedConfig.dateFormat,
+                isNegativeDebit: savedMapping.isNegativeDebit ?? savedConfig.hasNegativeDebits,
+              }
+            }
+            // For new columns not in saved config, use auto-detection
+            const detection = detections.find(d => d.columnName === header)
+            return {
+              csvColumn: header,
+              mappedTo: detection?.suggestedType || 'ignore',
+            }
+          })
+
+          // Apply saved date format and negative debit setting
+          if (savedConfig.dateFormat) {
+            setDateFormat(savedConfig.dateFormat)
+          }
+          if (savedConfig.hasNegativeDebits !== undefined) {
+            setHasNegativeDebits(savedConfig.hasNegativeDebits)
+          }
+
+          setConfigApplied(true)
+        }
+      }
+
       setColumnMappings(mappings)
     } catch (err: any) {
       setError(err.message || "Failed to parse CSV file")
@@ -445,6 +514,22 @@ export function BankImportDialog({
   function renderStep2() {
     return (
       <div className="space-y-6">
+        {/* Saved Config Applied Message */}
+        {configApplied && savedConfig && (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+            <div className="flex gap-3">
+              <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-green-700">
+                <p className="font-medium mb-1">Previous Configuration Loaded</p>
+                <p>
+                  Column mappings from your last import ({new Date(savedConfig.lastImportDate).toLocaleDateString()})
+                  have been applied. You can still adjust them if needed.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Info Message */}
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
           <div className="flex gap-3">
@@ -452,8 +537,11 @@ export function BankImportDialog({
             <div className="text-sm text-blue-700">
               <p className="font-medium mb-1">Column Mapping</p>
               <p>
-                We&apos;ve auto-detected columns from your CSV. Review and adjust mappings below.
-                At minimum, you need Transaction Date and one Amount column.
+                {configApplied
+                  ? 'Mappings loaded from your last import. Review and adjust if needed.'
+                  : "We've auto-detected columns from your CSV. Review and adjust mappings below."
+                }
+                {' '}At minimum, you need Transaction Date and one Amount column.
               </p>
             </div>
           </div>

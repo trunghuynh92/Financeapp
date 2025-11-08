@@ -56,26 +56,62 @@ export async function GET(request: NextRequest) {
     // Calculate balance for each account from ALL transactions
     const accountsWithBalances = await Promise.all(
       (accounts || []).map(async (account) => {
-        // Fetch all transactions for this account
-        const { data: transactions, error: txError } = await supabase
-          .from('original_transaction')
-          .select('credit_amount, debit_amount')
-          .eq('account_id', account.account_id)
-
-        if (txError) {
-          console.error(`Error fetching transactions for account ${account.account_id}:`, txError)
-          // Return account with 0 balance if transaction fetch fails
-          return {
-            ...account,
-            balance: { current_balance: 0, last_updated: new Date().toISOString() },
-          }
-        }
-
         // Calculate balance from ALL transactions INCLUDING adjustments
         let totalCredits = 0
         let totalDebits = 0
 
-        if (transactions && transactions.length > 0) {
+        // Try using RPC function first (if migration was run)
+        const { data: rpcData, error: rpcError } = await supabase.rpc('calculate_account_balance', {
+          p_account_id: account.account_id
+        })
+
+        if (!rpcError && rpcData !== null) {
+          // RPC function exists and worked
+          const calculatedBalance = rpcData
+
+          // Fetch unresolved checkpoint count (where is_reconciled = false)
+          const { count: unresolvedCount } = await supabase
+            .from('balance_checkpoints')
+            .select('*', { count: 'exact', head: true })
+            .eq('account_id', account.account_id)
+            .eq('is_reconciled', false)
+
+          return {
+            ...account,
+            balance: {
+              current_balance: calculatedBalance,
+              last_updated: new Date().toISOString(),
+            },
+            unresolved_checkpoints_count: unresolvedCount || 0,
+          }
+        }
+
+        // Fallback: Fetch all transactions with pagination to avoid 1000 row limit
+        let page = 0
+        const pageSize = 1000
+
+        while (true) {
+          const { data: transactions, error: txError } = await supabase
+            .from('original_transaction')
+            .select('credit_amount, debit_amount')
+            .eq('account_id', account.account_id)
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+
+          if (txError) {
+            console.error(`Error fetching transactions for account ${account.account_id}:`, txError)
+            // Return account with 0 balance if transaction fetch fails
+            return {
+              ...account,
+              balance: { current_balance: 0, last_updated: new Date().toISOString() },
+              unresolved_checkpoints_count: 0,
+            }
+          }
+
+          if (!transactions || transactions.length === 0) {
+            break
+          }
+
+          // Sum this page of transactions
           for (const tx of transactions) {
             if (tx.credit_amount) {
               totalCredits += tx.credit_amount
@@ -84,6 +120,12 @@ export async function GET(request: NextRequest) {
               totalDebits += tx.debit_amount
             }
           }
+
+          if (transactions.length < pageSize) {
+            break
+          }
+
+          page++
         }
 
         const calculatedBalance = totalCredits - totalDebits
