@@ -64,8 +64,8 @@ export async function calculateBalanceUpToDate(
 
 /**
  * Creates or updates a balance adjustment transaction for a checkpoint
- * Positive adjustment = Credit (missing income)
- * Negative adjustment = Debit (missing expense)
+ * For normal accounts: Positive adjustment = Credit (missing income), Negative = Debit (missing expense)
+ * For credit accounts: Positive adjustment = Debit (missing borrowing), Negative = Credit (excess debt/payment)
  */
 export async function createOrUpdateBalanceAdjustmentTransaction(
   checkpoint: BalanceCheckpoint
@@ -77,6 +77,19 @@ export async function createOrUpdateBalanceAdjustmentTransaction(
       checkpoint_date,
       adjustment_amount,
     } = checkpoint
+
+    // Fetch account to check type
+    const { data: account, error: accountError } = await supabase
+      .from('accounts')
+      .select('account_type')
+      .eq('account_id', account_id)
+      .single()
+
+    if (accountError) {
+      throw new Error(`Failed to fetch account: ${accountError.message}`)
+    }
+
+    const isCreditAccount = ['credit_line', 'term_loan', 'credit_card'].includes(account.account_type)
 
     // Check if adjustment transaction already exists
     const { data: existing, error: fetchError } = await supabase
@@ -106,12 +119,21 @@ export async function createOrUpdateBalanceAdjustmentTransaction(
 
     // Prepare transaction data
     // NOTE: Database constraint requires that either debit OR credit is NULL, not 0
+    // For credit accounts, invert the debit/credit logic
+    const creditAmount = isCreditAccount
+      ? (adjustment_amount < 0 ? Math.abs(adjustment_amount) : null)  // Inverted
+      : (adjustment_amount > 0 ? adjustment_amount : null)             // Normal
+
+    const debitAmount = isCreditAccount
+      ? (adjustment_amount > 0 ? adjustment_amount : null)             // Inverted
+      : (adjustment_amount < 0 ? Math.abs(adjustment_amount) : null)  // Normal
+
     const transactionData = {
       account_id,
       transaction_date: new Date(checkpoint_date),
       description: CHECKPOINT_CONFIG.BALANCE_ADJUSTMENT_DESCRIPTION,
-      credit_amount: adjustment_amount > 0 ? adjustment_amount : null,
-      debit_amount: adjustment_amount < 0 ? Math.abs(adjustment_amount) : null,
+      credit_amount: creditAmount,
+      debit_amount: debitAmount,
       checkpoint_id,
       is_balance_adjustment: true,
       is_flagged: true,
@@ -400,6 +422,20 @@ export async function recalculateAllCheckpoints(
   const { account_id, from_date, to_date, checkpoint_ids } = params
 
   try {
+    // Fetch account to check type (for credit account logic)
+    const { data: account, error: accountError } = await supabase
+      .from('accounts')
+      .select('account_type')
+      .eq('account_id', account_id)
+      .single()
+
+    if (accountError) {
+      throw new Error(`Failed to fetch account: ${accountError.message}`)
+    }
+
+    // Check if this is a credit-type account (where positive balance = debt owed)
+    const isCreditAccount = ['credit_line', 'term_loan', 'credit_card'].includes(account.account_type)
+
     // Fetch ALL checkpoints for the account in chronological order
     // We need to recalculate all, not just filtered ones, to get correct adjustment chain
     const { data: allCheckpoints, error: fetchError } = await supabase
@@ -537,6 +573,22 @@ export async function recalculateAllCheckpoints(
       if (Math.abs(newAdjustmentAmount) >= CHECKPOINT_CONFIG.RECONCILIATION_THRESHOLD) {
         const raw_transaction_id = `BAL-ADJ-${checkpoint.checkpoint_id}`
 
+        // For credit accounts (credit_line, term_loan, credit_card):
+        // - Positive balance = debt owed (increases with DEBITS, not credits)
+        // - Positive adjustment means need more debt → DEBIT
+        // - Negative adjustment means too much debt → CREDIT (payment)
+        // For normal accounts (bank, cash):
+        // - Positive balance = asset (increases with CREDITS)
+        // - Positive adjustment means missing income → CREDIT
+        // - Negative adjustment means missing expense → DEBIT
+        const creditAmount = isCreditAccount
+          ? (newAdjustmentAmount < 0 ? Math.abs(newAdjustmentAmount) : null)  // Inverted
+          : (newAdjustmentAmount > 0 ? newAdjustmentAmount : null)             // Normal
+
+        const debitAmount = isCreditAccount
+          ? (newAdjustmentAmount > 0 ? newAdjustmentAmount : null)             // Inverted
+          : (newAdjustmentAmount < 0 ? Math.abs(newAdjustmentAmount) : null)  // Normal
+
         const { error: insertError } = await supabase
           .from('original_transaction')
           .insert({
@@ -544,8 +596,8 @@ export async function recalculateAllCheckpoints(
             account_id,
             transaction_date: checkpointDate.toISOString(),
             description: CHECKPOINT_CONFIG.BALANCE_ADJUSTMENT_DESCRIPTION,
-            credit_amount: newAdjustmentAmount > 0 ? newAdjustmentAmount : null,
-            debit_amount: newAdjustmentAmount < 0 ? Math.abs(newAdjustmentAmount) : null,
+            credit_amount: creditAmount,
+            debit_amount: debitAmount,
             transaction_source: 'auto_adjustment',
             checkpoint_id: checkpoint.checkpoint_id,
             is_balance_adjustment: true,
