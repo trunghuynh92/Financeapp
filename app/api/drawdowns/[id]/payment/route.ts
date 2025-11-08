@@ -71,19 +71,11 @@ export async function POST(
       )
     }
 
-    // For principal payments, verify amount doesn't exceed remaining balance
-    if (body.transaction_subtype === 'principal') {
-      if (body.amount > drawdown.remaining_balance) {
-        return NextResponse.json(
-          {
-            error: 'Payment amount exceeds remaining balance',
-            remaining_balance: drawdown.remaining_balance,
-            requested_amount: body.amount,
-          },
-          { status: 400 }
-        )
-      }
+    // For principal payments, check if overpayment will occur
+    let isOverpayment = false
+    let overpaymentAmount = 0
 
+    if (body.transaction_subtype === 'principal') {
       if (drawdown.status !== 'active' && drawdown.status !== 'overdue') {
         return NextResponse.json(
           {
@@ -92,6 +84,13 @@ export async function POST(
           },
           { status: 400 }
         )
+      }
+
+      // Check for overpayment (allow it, but flag it)
+      if (body.amount > drawdown.remaining_balance) {
+        isOverpayment = true
+        overpaymentAmount = body.amount - drawdown.remaining_balance
+        console.warn(`⚠️ Overpayment detected: Drawdown ${drawdown.drawdown_reference}, Owed: ${drawdown.remaining_balance}, Paid: ${body.amount}, Excess: ${overpaymentAmount}`)
       }
     }
 
@@ -169,16 +168,27 @@ export async function POST(
       .eq('drawdown_id', drawdownId)
       .single()
 
-    return NextResponse.json(
-      {
-        data: {
-          transaction,
-          drawdown: updatedDrawdown,
-        },
-        message: `${body.transaction_subtype.charAt(0).toUpperCase() + body.transaction_subtype.slice(1)} payment recorded successfully`,
+    // Build response
+    const responseData: any = {
+      data: {
+        transaction,
+        drawdown: updatedDrawdown,
       },
-      { status: 201 }
-    )
+      message: `${body.transaction_subtype.charAt(0).toUpperCase() + body.transaction_subtype.slice(1)} payment recorded successfully`,
+    }
+
+    // Add overpayment warning if applicable
+    if (isOverpayment) {
+      responseData.warning = {
+        type: 'overpayment',
+        message: `Payment exceeded remaining balance by ${overpaymentAmount.toLocaleString()}`,
+        overpayment_amount: overpaymentAmount,
+        original_balance: drawdown.remaining_balance,
+        payment_amount: body.amount,
+      }
+    }
+
+    return NextResponse.json(responseData, { status: 201 })
   } catch (error) {
     console.error('Unexpected error:', error)
     return NextResponse.json(

@@ -14,6 +14,7 @@ export interface DebtDrawdown {
   drawdown_date: string
   original_amount: number
   remaining_balance: number
+  overpayment_amount: number
   due_date: string | null
   interest_rate: number | null
   status: DrawdownStatus
