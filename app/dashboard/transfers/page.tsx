@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Link2, Link2Off, ArrowDown, ArrowUp } from "lucide-react"
 import { MainTransactionDetails } from "@/types/main-transaction"
+import { useEntity } from "@/contexts/EntityContext"
 
 export default function TransfersPage() {
+  const { currentEntity, loading: entityLoading } = useEntity()
   const [loading, setLoading] = useState(true)
   const [transfersOut, setTransfersOut] = useState<MainTransactionDetails[]>([])
   const [transfersIn, setTransfersIn] = useState<MainTransactionDetails[]>([])
@@ -21,16 +23,24 @@ export default function TransfersPage() {
   const [showMatched, setShowMatched] = useState(false)
 
   useEffect(() => {
-    fetchAccounts()
-    fetchUnmatchedTransfers()
-    if (showMatched) {
-      fetchMatchedTransfers()
+    if (currentEntity) {
+      fetchAccounts()
+      fetchUnmatchedTransfers()
+      if (showMatched) {
+        fetchMatchedTransfers()
+      }
     }
-  }, [selectedAccount, showMatched])
+  }, [currentEntity?.id, selectedAccount, showMatched])
 
   const fetchAccounts = async () => {
     try {
-      const response = await fetch("/api/accounts")
+      if (!currentEntity) return
+
+      const params = new URLSearchParams()
+      params.set('entity_id', currentEntity.id)
+      params.set('limit', '1000')
+
+      const response = await fetch(`/api/accounts?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
         setAccounts(data.data || [])
@@ -207,12 +217,34 @@ export default function TransfersPage() {
     </tr>
   )
 
+  // Show loading while entity context is loading
+  if (entityLoading) {
+    return (
+      <div className="flex items-center justify-center h-[50vh]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+
+  // Show empty state if no entity selected
+  if (!currentEntity) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+        <Link2 className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-2xl font-bold mb-2">No Entity Selected</h2>
+        <p className="text-muted-foreground mb-4">
+          Please select an entity from the sidebar to view transfers
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Transfer Matching</h1>
         <p className="text-muted-foreground">
-          Match transfers between accounts to track money movement accurately
+          {currentEntity ? `Managing transfers for ${currentEntity.name}` : 'Match transfers between accounts to track money movement accurately'}
         </p>
       </div>
 

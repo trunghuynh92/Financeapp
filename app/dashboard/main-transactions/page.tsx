@@ -16,6 +16,7 @@ import { QuickMatchTransferDialog } from "@/components/main-transactions/QuickMa
 import { QuickMatchDebtDialog } from "@/components/main-transactions/QuickMatchDebtDialog"
 import { SelectDrawdownDialog } from "@/components/main-transactions/SelectDrawdownDialog"
 import { InlineCombobox } from "@/components/main-transactions/InlineCombobox"
+import { useEntity } from "@/contexts/EntityContext"
 
 interface PaginationInfo {
   page: number
@@ -25,6 +26,8 @@ interface PaginationInfo {
 }
 
 export default function MainTransactionsPage() {
+  const { currentEntity, loading: entityLoading } = useEntity()
+
   // Data state
   const [transactions, setTransactions] = useState<MainTransactionDetails[]>([])
   const [transactionTypes, setTransactionTypes] = useState<TransactionType[]>([])
@@ -77,13 +80,19 @@ export default function MainTransactionsPage() {
 
   // Fetch transaction types, categories, branches, accounts on mount
   useEffect(() => {
+    if (!currentEntity) return
+
     const fetchMetadata = async () => {
       try {
+        const params = new URLSearchParams()
+        params.set('entity_id', currentEntity.id)
+        params.set('limit', '1000')
+
         const [typesRes, categoriesRes, branchesRes, accountsRes] = await Promise.all([
           fetch("/api/transaction-types"),
           fetch("/api/categories"),
           fetch("/api/branches"),
-          fetch("/api/accounts"),
+          fetch(`/api/accounts?${params.toString()}`),
         ])
 
         if (typesRes.ok) {
@@ -111,12 +120,14 @@ export default function MainTransactionsPage() {
     }
 
     fetchMetadata()
-  }, [])
+  }, [currentEntity?.id])
 
   // Fetch transactions when filters or pagination change
   useEffect(() => {
-    fetchTransactions()
-  }, [currentPage, itemsPerPage, selectedAccount, selectedType, selectedCategory, selectedBranch, selectedDirection, startDate, endDate, searchQuery])
+    if (currentEntity) {
+      fetchTransactions()
+    }
+  }, [currentEntity?.id, currentPage, itemsPerPage, selectedAccount, selectedType, selectedCategory, selectedBranch, selectedDirection, startDate, endDate, searchQuery])
 
   const fetchTransactions = async () => {
     setLoading(true)
@@ -367,12 +378,36 @@ export default function MainTransactionsPage() {
     }
   }
 
+  // Show loading while entity context is loading
+  if (entityLoading) {
+    return (
+      <div className="flex items-center justify-center h-[50vh]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+
+  // Show empty state if no entity selected
+  if (!currentEntity) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+        <div className="h-12 w-12 text-muted-foreground mb-4">
+          <Filter className="h-12 w-12" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">No Entity Selected</h2>
+        <p className="text-muted-foreground mb-4">
+          Please select an entity from the sidebar to view main transactions
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Main Transactions</h1>
         <p className="text-muted-foreground">
-          Categorized and analyzed transactions
+          {currentEntity ? `Managing main transactions for ${currentEntity.name}` : 'Categorized and analyzed transactions'}
         </p>
       </div>
 

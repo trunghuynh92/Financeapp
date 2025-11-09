@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import type { CreateAccountInput } from '@/types/account'
 import { createOrUpdateCheckpoint } from '@/lib/checkpoint-service'
 
 // GET /api/accounts - List all accounts with filters and calculated balances
 export async function GET(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
+
     const searchParams = request.nextUrl.searchParams
     const entityId = searchParams.get('entity_id')
     const accountTypes = searchParams.get('account_type')?.split(',')
@@ -175,6 +177,8 @@ export async function GET(request: NextRequest) {
 // POST /api/accounts - Create new account
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
+
     const body: CreateAccountInput = await request.json()
 
     // Validate required fields

@@ -30,6 +30,7 @@ import {
 import { TransactionFormDialog } from "@/components/transaction-form-dialog"
 import { TransactionDeleteDialog } from "@/components/transaction-delete-dialog"
 import { ViewCheckpointDialog } from "@/components/view-checkpoint-dialog"
+import { useEntity } from "@/contexts/EntityContext"
 
 interface Account {
   account_id: number
@@ -75,6 +76,7 @@ interface GroupedTransaction {
 }
 
 export default function TransactionsPage() {
+  const { currentEntity, loading: entityLoading } = useEntity()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [groupedTransactions, setGroupedTransactions] = useState<GroupedTransaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -103,20 +105,30 @@ export default function TransactionsPage() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
 
   useEffect(() => {
-    fetchAccounts()
-  }, [])
+    if (currentEntity) {
+      fetchAccounts()
+    }
+  }, [currentEntity?.id])
 
   useEffect(() => {
-    if (isGroupedView) {
-      fetchGroupedTransactions()
-    } else {
-      fetchTransactions()
+    if (currentEntity) {
+      if (isGroupedView) {
+        fetchGroupedTransactions()
+      } else {
+        fetchTransactions()
+      }
     }
-  }, [currentPage, itemsPerPage, selectedAccount, selectedSource, searchQuery, startDate, endDate, isGroupedView])
+  }, [currentEntity?.id, currentPage, itemsPerPage, selectedAccount, selectedSource, searchQuery, startDate, endDate, isGroupedView])
 
   async function fetchAccounts() {
     try {
-      const response = await fetch('/api/accounts')
+      if (!currentEntity) return
+
+      const params = new URLSearchParams()
+      params.set('entity_id', currentEntity.id)
+      params.set('limit', '1000') // Get all accounts for the entity
+
+      const response = await fetch(`/api/accounts?${params.toString()}`)
       if (!response.ok) throw new Error('Failed to fetch accounts')
       const result = await response.json()
       setAccounts(result.data || [])
@@ -129,9 +141,14 @@ export default function TransactionsPage() {
     try {
       setLoading(true)
 
+      if (!currentEntity) return
+
       const params = new URLSearchParams()
       params.append('page', currentPage.toString())
       params.append('limit', itemsPerPage.toString())
+
+      // Always filter by current entity
+      params.append('entity_id', currentEntity.id)
 
       if (selectedAccount !== "all") {
         params.append('account_id', selectedAccount)
@@ -166,7 +183,12 @@ export default function TransactionsPage() {
     try {
       setLoading(true)
 
+      if (!currentEntity) return
+
       const params = new URLSearchParams()
+
+      // Always filter by current entity
+      params.append('entity_id', currentEntity.id)
 
       if (selectedAccount !== "all") {
         params.append('account_id', selectedAccount)
@@ -261,6 +283,28 @@ export default function TransactionsPage() {
     setCurrentPage(1)
   }
 
+  // Show loading while entity context is loading
+  if (entityLoading) {
+    return (
+      <div className="flex items-center justify-center h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  // Show empty state if no entity selected
+  if (!currentEntity) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+        <DollarSign className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-2xl font-bold mb-2">No Entity Selected</h2>
+        <p className="text-muted-foreground mb-4">
+          Please select an entity from the sidebar to view transactions
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -268,7 +312,7 @@ export default function TransactionsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
           <p className="text-muted-foreground">
-            View and manage all original transactions
+            {currentEntity ? `Managing transactions for ${currentEntity.name}` : 'View and manage all original transactions'}
           </p>
         </div>
         <Button onClick={() => {

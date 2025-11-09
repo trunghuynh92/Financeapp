@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 // ==============================================================================
 // GET - Get single main transaction with full details
@@ -15,6 +15,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const mainTransactionId = parseInt(params.id, 10)
 
     if (isNaN(mainTransactionId)) {
@@ -61,6 +62,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const mainTransactionId = parseInt(params.id, 10)
 
     if (isNaN(mainTransactionId)) {
@@ -187,6 +189,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const mainTransactionId = parseInt(params.id, 10)
 
     if (isNaN(mainTransactionId)) {

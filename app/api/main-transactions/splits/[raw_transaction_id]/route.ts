@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 // ==============================================================================
 // DELETE - Unsplit a transaction
@@ -15,6 +15,7 @@ export async function DELETE(
   { params }: { params: { raw_transaction_id: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const rawTransactionId = params.raw_transaction_id
 
     if (!rawTransactionId) {

@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 // ==============================================================================
 // GET - List main transactions with filters and pagination
@@ -12,6 +12,8 @@ import { supabase } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
+
     const searchParams = request.nextUrl.searchParams
 
     // Filters

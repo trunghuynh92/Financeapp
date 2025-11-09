@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useEntity } from "@/contexts/EntityContext"
 import { ArrowLeft, Pencil, Trash2, Loader2, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -47,6 +48,7 @@ const AccountTypeIcon = ({ type, className }: { type: AccountType; className?: s
 
 export default function AccountDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
+  const { currentEntity } = useEntity()
   const [account, setAccount] = useState<AccountWithEntity | null>(null)
   const [checkpoints, setCheckpoints] = useState<BalanceCheckpoint[]>([])
   const [calculatedBalance, setCalculatedBalance] = useState<number | null>(null)
@@ -61,12 +63,34 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
   const [isBalanceEditDialogOpen, setIsBalanceEditDialogOpen] = useState(false)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
 
+  // Store the initial entity ID when component mounts
+  const [initialEntityId, setInitialEntityId] = useState<string | null>(null)
+
   useEffect(() => {
     fetchAccount()
     fetchCheckpoints()
     fetchCalculatedBalance()
     fetchTransactionDates()
   }, [params.id])
+
+  // Store the entity ID when account is first loaded
+  useEffect(() => {
+    if (account && !initialEntityId) {
+      const accountEntity = Array.isArray(account.entity) ? account.entity[0] : account.entity
+      if (accountEntity) {
+        setInitialEntityId(accountEntity.id)
+        console.log('Account loaded, entity ID:', accountEntity.id)
+      }
+    }
+  }, [account, initialEntityId])
+
+  // Redirect if current entity changes from the initial entity
+  useEffect(() => {
+    if (currentEntity && initialEntityId && currentEntity.id !== initialEntityId) {
+      console.log('Entity switched from', initialEntityId, 'to', currentEntity.id, '- redirecting')
+      router.push("/dashboard/accounts")
+    }
+  }, [currentEntity?.id, initialEntityId, router])
 
   async function fetchAccount() {
     try {

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 // GET /api/transactions - List all transactions with filters
 export async function GET(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
+
     const searchParams = request.nextUrl.searchParams
     const accountId = searchParams.get('account_id')
+    const entityId = searchParams.get('entity_id')
     const transactionSource = searchParams.get('transaction_source')
     const startDate = searchParams.get('start_date')
     const endDate = searchParams.get('end_date')
@@ -13,18 +16,41 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
 
+    // If entity_id filter is provided, get all account IDs for that entity first
+    let accountIdsForEntity: number[] = []
+    if (entityId && !accountId) {
+      const { data: entityAccounts } = await supabase
+        .from('accounts')
+        .select('account_id')
+        .eq('entity_id', entityId)
+
+      accountIdsForEntity = entityAccounts?.map(a => a.account_id) || []
+
+      // If entity has no accounts, return empty result
+      if (accountIdsForEntity.length === 0) {
+        return NextResponse.json({
+          data: [],
+          pagination: { page, limit, total: 0, totalPages: 0 }
+        })
+      }
+    }
+
     // Start building query
     let query = supabase
       .from('original_transaction')
       .select(`
         *,
-        account:accounts(account_id, account_name, account_type, bank_name),
+        account:accounts(account_id, account_name, account_type, bank_name, entity_id),
         import_batch:import_batch(import_batch_id, import_file_name, import_date)
       `)
 
     // Apply filters
     if (accountId) {
+      // Specific account filter takes priority
       query = query.eq('account_id', accountId)
+    } else if (entityId && accountIdsForEntity.length > 0) {
+      // Filter by entity's accounts
+      query = query.in('account_id', accountIdsForEntity)
     }
 
     if (transactionSource) {
@@ -55,6 +81,8 @@ export async function GET(request: NextRequest) {
 
     if (accountId) {
       countQuery = countQuery.eq('account_id', accountId)
+    } else if (entityId && accountIdsForEntity.length > 0) {
+      countQuery = countQuery.in('account_id', accountIdsForEntity)
     }
     if (transactionSource) {
       countQuery = countQuery.eq('transaction_source', transactionSource)
@@ -104,6 +132,7 @@ export async function GET(request: NextRequest) {
 // POST /api/transactions - Create new transaction
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
     const body = await request.json()
 
     // Validate required fields

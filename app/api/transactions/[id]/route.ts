@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 // GET /api/transactions/[id] - Get single transaction
 export async function GET(
@@ -7,6 +7,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const transactionId = params.id
 
     const { data, error } = await supabase
@@ -43,6 +44,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const transactionId = params.id
     const body = await request.json()
 
@@ -190,6 +192,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const transactionId = params.id
 
     // Check if transaction exists and get is_balance_adjustment flag

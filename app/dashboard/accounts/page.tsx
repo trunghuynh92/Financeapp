@@ -39,6 +39,7 @@ import {
 } from "@/lib/account-utils"
 import { AccountFormDialog } from "@/components/account-form-dialog"
 import { AccountDeleteDialog } from "@/components/account-delete-dialog"
+import { useEntity } from "@/contexts/EntityContext"
 
 // Icon mapping
 const AccountTypeIcon = ({ type }: { type: AccountType }) => {
@@ -55,10 +56,10 @@ const AccountTypeIcon = ({ type }: { type: AccountType }) => {
 }
 
 export default function AccountsPage() {
+  const { currentEntity, entities: userEntities, loading: entityLoading } = useEntity()
   const [accounts, setAccounts] = useState<AccountWithEntity[]>([])
-  const [entities, setEntities] = useState<Entity[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedEntity, setSelectedEntity] = useState<string>("all")
+  const [selectedEntity, setSelectedEntity] = useState<string>("current")
   const [selectedTypes, setSelectedTypes] = useState<AccountType[]>([])
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
@@ -68,34 +69,40 @@ export default function AccountsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
 
+  // Reset selectedEntity filter when currentEntity changes (from sidebar switcher)
   useEffect(() => {
-    fetchEntities()
-    fetchAccounts()
-  }, [])
-
-  async function fetchEntities() {
-    try {
-      const { data, error } = await supabase
-        .from("entities")
-        .select("*")
-        .order("name")
-
-      if (error) throw error
-      setEntities(data || [])
-    } catch (error) {
-      console.error("Error fetching entities:", error)
+    if (currentEntity) {
+      setSelectedEntity("current")
     }
-  }
+  }, [currentEntity?.id])
+
+  // Fetch accounts when currentEntity loads or filters change
+  useEffect(() => {
+    if (currentEntity) {
+      fetchAccounts()
+    }
+  }, [currentEntity?.id, selectedEntity, selectedTypes, statusFilter, searchQuery])
 
   async function fetchAccounts() {
     try {
       setLoading(true)
+      if (!currentEntity) return
 
       // Build query parameters for API
       const params = new URLSearchParams()
 
-      if (selectedEntity !== "all") {
-        params.set("entity_id", selectedEntity)
+      // Filter by selected entity (current or specific one from user's entities)
+      if (selectedEntity === "current" || selectedEntity === "all") {
+        params.set("entity_id", currentEntity.id)
+      } else {
+        // Ensure user has access to this entity
+        const hasAccess = userEntities.some(e => e.id === selectedEntity)
+        if (hasAccess) {
+          params.set("entity_id", selectedEntity)
+        } else {
+          // Fallback to current entity if trying to access unauthorized entity
+          params.set("entity_id", currentEntity.id)
+        }
       }
 
       if (selectedTypes.length > 0) {
@@ -129,10 +136,6 @@ export default function AccountsPage() {
     }
   }
 
-  // Refetch when filters change
-  useEffect(() => {
-    fetchAccounts()
-  }, [selectedEntity, selectedTypes, statusFilter, searchQuery])
 
   // Calculate total balance
   const totalBalance = accounts.reduce((sum, account) => {
@@ -143,6 +146,28 @@ export default function AccountsPage() {
 
   const activeAccounts = accounts.filter(a => a.is_active).length
 
+  // Show loading while entity context is loading
+  if (entityLoading) {
+    return (
+      <div className="flex items-center justify-center h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  // Show empty state if no entity selected
+  if (!currentEntity) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+        <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-2xl font-bold mb-2">No Entity Selected</h2>
+        <p className="text-muted-foreground mb-4">
+          Please select an entity from the sidebar to view accounts
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -150,7 +175,7 @@ export default function AccountsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Accounts</h1>
           <p className="text-muted-foreground">
-            Manage all your financial accounts
+            {currentEntity ? `Managing accounts for ${currentEntity.name}` : 'Manage all your financial accounts'}
           </p>
         </div>
         <Button onClick={() => {
@@ -190,13 +215,13 @@ export default function AccountsPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Entities</CardTitle>
+            <CardTitle className="text-sm font-medium">My Entities</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{entities.length}</div>
+            <div className="text-2xl font-bold">{userEntities.length}</div>
             <p className="text-xs text-muted-foreground">
-              Linked entities
+              Total access
             </p>
           </CardContent>
         </Card>
@@ -229,15 +254,19 @@ export default function AccountsPage() {
               <label className="text-sm font-medium">Entity</label>
               <Select value={selectedEntity} onValueChange={setSelectedEntity}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All entities" />
+                  <SelectValue placeholder="Current entity" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Entities</SelectItem>
-                  {entities.map((entity) => (
-                    <SelectItem key={entity.id} value={entity.id}>
-                      {entity.name}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="current">Current Entity ({currentEntity.name})</SelectItem>
+                  {userEntities.length > 1 && (
+                    <>
+                      {userEntities.filter(e => e.id !== currentEntity.id).map((entity) => (
+                        <SelectItem key={entity.id} value={entity.id}>
+                          {entity.name}
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -262,7 +291,7 @@ export default function AccountsPage() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  setSelectedEntity("all")
+                  setSelectedEntity("current")
                   setSelectedTypes([])
                   setStatusFilter("all")
                   setSearchQuery("")

@@ -7,11 +7,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { MatchTransferRequest } from '@/types/main-transaction'
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
     const body: MatchTransferRequest = await request.json()
     const { transfer_out_id, transfer_in_id } = body
 

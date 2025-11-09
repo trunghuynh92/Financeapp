@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 // ==============================================================================
 // GET - List categories with optional filtering
@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
     const searchParams = request.nextUrl.searchParams
     const transactionTypeId = searchParams.get('transaction_type_id')
     const entityType = searchParams.get('entity_type') // 'business', 'personal', 'both'
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
     const body = await request.json()
 
     const { data, error } = await supabase

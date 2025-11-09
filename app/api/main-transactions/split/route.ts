@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { SplitTransactionRequest } from '@/types/main-transaction'
 
 // ==============================================================================
@@ -13,6 +13,7 @@ import { SplitTransactionRequest } from '@/types/main-transaction'
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
     const body: SplitTransactionRequest = await request.json()
     const { raw_transaction_id, splits } = body
 

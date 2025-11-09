@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 /**
  * GET /api/reports/balance-history
@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
  */
 export async function GET(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
     const searchParams = request.nextUrl.searchParams
     const accountIdsParam = searchParams.get('account_ids')
     const startDateParam = searchParams.get('start_date')

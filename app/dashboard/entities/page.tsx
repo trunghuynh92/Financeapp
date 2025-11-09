@@ -35,15 +35,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { supabase, type Entity } from "@/lib/supabase"
+import { createSupabaseClient, type Entity } from "@/lib/supabase"
+import { useEntity } from "@/contexts/EntityContext"
 
 export default function EntitiesPage() {
-  const [entities, setEntities] = useState<Entity[]>([])
-  const [loading, setLoading] = useState(true)
+  const { entities: userEntities, loading: entitiesLoading, refreshEntities } = useEntity()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
+  const [selectedEntity, setSelectedEntity] = useState<any | null>(null)
   const [formData, setFormData] = useState({
     name: "",
     type: "company" as "company" | "personal",
@@ -51,30 +51,11 @@ export default function EntitiesPage() {
   })
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    fetchEntities()
-  }, [])
-
-  async function fetchEntities() {
-    try {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from("entities")
-        .select("*")
-        .order("created_at", { ascending: false })
-
-      if (error) throw error
-      setEntities(data || [])
-    } catch (error) {
-      console.error("Error fetching entities:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   async function handleAdd() {
     try {
       setSubmitting(true)
+      const supabase = createSupabaseClient()
+
       const { error } = await supabase.from("entities").insert([
         {
           name: formData.name,
@@ -87,7 +68,7 @@ export default function EntitiesPage() {
 
       setIsAddDialogOpen(false)
       setFormData({ name: "", type: "company", description: "" })
-      fetchEntities()
+      await refreshEntities()
     } catch (error) {
       console.error("Error adding entity:", error)
       alert("Failed to add entity. Please try again.")
@@ -101,6 +82,8 @@ export default function EntitiesPage() {
 
     try {
       setSubmitting(true)
+      const supabase = createSupabaseClient()
+
       const { error } = await supabase
         .from("entities")
         .update({
@@ -116,7 +99,7 @@ export default function EntitiesPage() {
       setIsEditDialogOpen(false)
       setSelectedEntity(null)
       setFormData({ name: "", type: "company", description: "" })
-      fetchEntities()
+      await refreshEntities()
     } catch (error) {
       console.error("Error updating entity:", error)
       alert("Failed to update entity. Please try again.")
@@ -130,7 +113,9 @@ export default function EntitiesPage() {
 
     try {
       setSubmitting(true)
-      const { error } = await supabase
+      const supabase = createSupabaseClient()
+
+      const { error} = await supabase
         .from("entities")
         .delete()
         .eq("id", selectedEntity.id)
@@ -139,7 +124,7 @@ export default function EntitiesPage() {
 
       setIsDeleteDialogOpen(false)
       setSelectedEntity(null)
-      fetchEntities()
+      await refreshEntities()
     } catch (error) {
       console.error("Error deleting entity:", error)
       alert("Failed to delete entity. Please try again.")
@@ -186,13 +171,13 @@ export default function EntitiesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {entitiesLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : entities.length === 0 ? (
+          ) : userEntities.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
+              <Plus className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">No entities found</p>
               <p className="text-sm text-muted-foreground">
                 Get started by adding your first entity
@@ -204,13 +189,14 @@ export default function EntitiesPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Your Role</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entities.map((entity) => (
+                {userEntities.map((entity) => (
                   <TableRow key={entity.id}>
                     <TableCell className="font-medium">{entity.name}</TableCell>
                     <TableCell>
@@ -222,6 +208,21 @@ export default function EntitiesPage() {
                         }`}
                       >
                         {entity.type}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium capitalize ${
+                          entity.user_role === "owner"
+                            ? "bg-purple-50 text-purple-700"
+                            : entity.user_role === "admin"
+                            ? "bg-blue-50 text-blue-700"
+                            : entity.user_role === "editor"
+                            ? "bg-green-50 text-green-700"
+                            : "bg-gray-50 text-gray-700"
+                        }`}
+                      >
+                        {entity.user_role}
                       </span>
                     </TableCell>
                     <TableCell className="text-muted-foreground">

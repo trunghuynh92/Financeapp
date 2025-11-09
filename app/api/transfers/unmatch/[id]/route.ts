@@ -4,13 +4,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const mainTransactionId = parseInt(params.id, 10)
 
     if (isNaN(mainTransactionId)) {

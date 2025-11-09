@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 // ==============================================================================
 // GET - List branches with optional filtering
@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
     const searchParams = request.nextUrl.searchParams
     const entityId = searchParams.get('entity_id')
     const activeOnly = searchParams.get('active_only') !== 'false' // default true
@@ -52,6 +53,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
     const body = await request.json()
 
     const { data, error } = await supabase

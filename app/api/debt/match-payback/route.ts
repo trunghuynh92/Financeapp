@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 interface MatchPaybackRequest {
   payback_transaction_id: number
@@ -13,6 +13,7 @@ interface MatchPaybackRequest {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
     const body: MatchPaybackRequest = await request.json()
     const { payback_transaction_id, drawdown_id } = body
 

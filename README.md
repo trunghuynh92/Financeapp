@@ -1,10 +1,50 @@
-# Finance SaaS v2.2.0
+# Finance SaaS v4.0.0
 
-A comprehensive financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features advanced transaction processing, debt management, balance checkpointing, and detailed financial reporting.
+A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, advanced transaction processing, debt management, balance checkpointing, and detailed financial reporting with complete entity isolation.
 
-## Version 2.2.0 - Debt Payback System & UI Enhancements
+## Version 4.0.0 - Multi-User Authentication & Security Hardening
 
-### What's New in v2.2.0
+### What's New in v4.0.0
+
+#### 🔐 Multi-User Authentication System
+- **User Profiles**: Extended Supabase auth with custom user profiles
+- **Entity-Based Access Control**: Users can belong to multiple entities with different roles
+- **Role Hierarchy**: Owner → Admin → Editor → Viewer with granular permissions
+- **Automatic Owner Assignment**: Entity creators automatically become owners
+- **Entity Switcher**: Quick switching between entities with role-based visibility
+
+#### 🛡️ Security & Data Isolation
+- **Row-Level Security (RLS)**: Complete database-level security enforcement
+- **Entity Isolation**: Users can only access data for entities they're members of
+- **Fixed Infinite Recursion Bug**: Resolved critical RLS policy issue (Migration 026)
+- **Removed Permissive Policies**: Eliminated "Enable all access" policies (Migration 025)
+- **Authenticated API Routes**: All API endpoints use server-side authentication
+- **Cross-Entity Transfer Prevention**: Transfers only allowed within same entity (Migration 024)
+
+####  💻 Frontend Enhancements
+- **Entity Context**: Global entity management with React Context
+- **Auto-Redirect on Entity Switch**: Navigates away from invalid pages when switching entities
+- **Filtered Data Views**: All pages respect current entity selection
+- **Account Balance Display**: Fixed balance calculation with proper authentication
+- **Transaction Filtering**: Entity-aware transaction queries with "All accounts" support
+
+#### 🔧 API & Backend Improvements
+- **Server Client Migration**: Converted 20+ API routes to use authenticated Supabase client
+- **Entity-Aware APIs**: Added entity_id filtering to transactions, accounts, and reports
+- **Balance Calculation Fix**: Proper RLS-compliant balance calculations
+- **Transaction Creation**: Fixed supabase client initialization issues
+- **Split Transactions**: Corrected authentication for split operations
+
+#### 🗄️ Database Migrations
+- **Migration 022**: Multi-user auth system with `users` and `entity_users` tables
+- **Migration 023**: Additional RLS enhancements
+- **Migration 024**: Cross-entity transfer prevention
+- **Migration 025**: Removed permissive RLS policies
+- **Migration 026**: Fixed entity_users infinite recursion bug
+
+---
+
+### Previous Version: v2.2.0 - Debt Payback System
 
 #### 💸 Complete Debt Payback System
 - **DEBT_PAY ↔ DEBT_SETTLE Matching**: Match debt payments with drawdowns and auto-create settlement transactions

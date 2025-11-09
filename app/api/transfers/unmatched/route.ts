@@ -4,10 +4,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = createSupabaseServerClient()
+
     const searchParams = request.nextUrl.searchParams
     const accountId = searchParams.get('account_id')
 
