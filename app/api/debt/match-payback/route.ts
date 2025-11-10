@@ -384,7 +384,7 @@ export async function POST(request: NextRequest) {
         ? `Payback matched successfully. Overpayment of ${overpaymentAmount} detected. Credit memo created.`
         : 'Payback matched successfully',
       payback_transaction_id,
-      settle_transaction_id: settleTx.main_transaction_id,
+      settle_transaction_id: debtPayTx.main_transaction_id,
       drawdown_id,
       is_overpaid: willBeOverpaid,
       overpayment_amount: overpaymentAmount,

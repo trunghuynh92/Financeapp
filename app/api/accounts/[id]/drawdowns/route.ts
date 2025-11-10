@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { CreateDrawdownRequest } from '@/types/debt'
 
 // ==============================================================================
@@ -16,6 +16,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const accountId = parseInt(params.id, 10)
 
     if (isNaN(accountId)) {
@@ -81,6 +82,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const accountId = parseInt(params.id, 10)
 
     if (isNaN(accountId)) {
