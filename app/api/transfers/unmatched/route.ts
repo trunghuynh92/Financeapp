@@ -1,6 +1,6 @@
 /**
  * API Route: /api/transfers/unmatched
- * Purpose: Get all unmatched transfer transactions (TRF_OUT, TRF_IN, DEBT_DRAW, DEBT_ACQ without matches)
+ * Purpose: Get all unmatched transfer transactions (TRF_OUT, TRF_IN, DEBT_TAKE without matches)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('main_transaction_details')
       .select('*')
-      .in('transaction_type_code', ['TRF_OUT', 'TRF_IN', 'DEBT_DRAW', 'DEBT_ACQ'])
+      .in('transaction_type_code', ['TRF_OUT', 'TRF_IN', 'DEBT_TAKE'])
       .is('transfer_matched_transaction_id', null)
 
     // Filter by account if specified
@@ -39,15 +39,13 @@ export async function GET(request: NextRequest) {
     // Separate by type for easier UI handling
     const transfersOut = data?.filter(t => t.transaction_type_code === 'TRF_OUT') || []
     const transfersIn = data?.filter(t => t.transaction_type_code === 'TRF_IN') || []
-    const debtDrawdowns = data?.filter(t => t.transaction_type_code === 'DEBT_DRAW') || []
-    const debtAcquired = data?.filter(t => t.transaction_type_code === 'DEBT_ACQ') || []
+    const debtTake = data?.filter(t => t.transaction_type_code === 'DEBT_TAKE') || []
 
     return NextResponse.json({
       data: data || [],
       transfersOut,
       transfersIn,
-      debtDrawdowns,
-      debtAcquired,
+      debtTake,
       total: data?.length || 0,
     })
   } catch (error) {
