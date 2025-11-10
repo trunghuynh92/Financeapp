@@ -32,6 +32,7 @@ interface CreateLoanDisbursementDialogProps {
   onOpenChange: (open: boolean) => void
   accountId?: number
   accountName?: string
+  prefilledSourceAccountId?: number
   prefilledAmount?: number
   prefilledDate?: string
   onSuccess: () => void
@@ -42,6 +43,7 @@ export function CreateLoanDisbursementDialog({
   onOpenChange,
   accountId,
   accountName,
+  prefilledSourceAccountId,
   prefilledAmount,
   prefilledDate,
   onSuccess,
@@ -56,7 +58,7 @@ export function CreateLoanDisbursementDialog({
 
   const [formData, setFormData] = useState<CreateLoanDisbursementInput>({
     account_id: accountId || 0,
-    source_account_id: 0,
+    source_account_id: prefilledSourceAccountId || 0,
     partner_id: 0,
     loan_category: "short_term",
     principal_amount: prefilledAmount || 0,
@@ -84,6 +86,12 @@ export function CreateLoanDisbursementDialog({
   }, [accountId])
 
   // Update formData when prefilled values change
+  useEffect(() => {
+    if (prefilledSourceAccountId) {
+      setFormData(prev => ({ ...prev, source_account_id: prefilledSourceAccountId }))
+    }
+  }, [prefilledSourceAccountId])
+
   useEffect(() => {
     if (prefilledAmount) {
       setFormData(prev => ({ ...prev, principal_amount: prefilledAmount }))

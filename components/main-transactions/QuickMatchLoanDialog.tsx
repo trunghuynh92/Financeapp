@@ -523,6 +523,7 @@ export function QuickMatchLoanDialog({
       <CreateLoanDisbursementDialog
         open={createDisbursementDialogOpen}
         onOpenChange={setCreateLoanDisbursementDialogOpen}
+        prefilledSourceAccountId={sourceTransaction?.account_id}
         prefilledAmount={sourceTransaction?.amount}
         prefilledDate={sourceTransaction?.transaction_date ? new Date(sourceTransaction.transaction_date).toISOString().split('T')[0] : undefined}
         onSuccess={() => {
