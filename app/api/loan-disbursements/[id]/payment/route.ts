@@ -88,25 +88,24 @@ export async function POST(
       console.warn(`⚠️ Overpayment detected: Loan ${disbursement.loan_disbursement_id}, Owed: ${disbursement.remaining_balance}, Received: ${body.payment_amount}, Excess: ${overpaymentAmount}`)
     }
 
-    // Find LOAN_RECEIVE transaction type
-    const { data: loanReceiveType } = await supabase
+    // Find LOAN_COLLECT transaction type
+    const { data: loanCollectType } = await supabase
       .from('transaction_types')
       .select('transaction_type_id')
-      .eq('type_code', 'LOAN_RECEIVE')
+      .eq('type_code', 'LOAN_COLLECT')
       .single()
 
-    if (!loanReceiveType) {
-      throw new Error('LOAN_RECEIVE transaction type not found')
+    if (!loanCollectType) {
+      throw new Error('LOAN_COLLECT transaction type not found')
     }
 
-    // Create LOAN_RECEIVE transaction (on bank account that received the payment)
+    // Create LOAN_COLLECT transaction (on bank account that received the payment)
     // Note: User will need to specify which bank account received the payment
-    // For now, we'll create the transaction and let the trigger handle LOAN_SETTLE
 
     const description = body.notes || `Loan payment from ${disbursement.borrower_name}`
 
     // Generate unique transaction ID
-    const rawTxId = `LOAN_RECEIVE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const rawTxId = `LOAN_COLLECT_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     // Create original_transaction first (this will auto-create main_transaction via trigger)
     const { data: originalTx, error: originalTxError } = await supabase
@@ -143,12 +142,12 @@ export async function POST(
       console.error('Error fetching main transaction:', mainTxError)
     }
 
-    // Update main_transaction to set transaction type to LOAN_RECEIVE and link to disbursement
+    // Update main_transaction to set transaction type to LOAN_COLLECT and link to disbursement
     if (mainTx) {
       const { error: updateError } = await supabase
         .from('main_transaction')
         .update({
-          transaction_type_id: loanReceiveType.transaction_type_id,
+          transaction_type_id: loanCollectType.transaction_type_id,
           loan_disbursement_id: disbursementId,
         })
         .eq('main_transaction_id', mainTx.main_transaction_id)

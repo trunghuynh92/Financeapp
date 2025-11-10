@@ -232,21 +232,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Step 3: Get LOAN_GIVE transaction type
-    const { data: loanGiveType, error: loanGiveError } = await supabase
+    // Step 3: Get LOAN_DISBURSE transaction type
+    const { data: loanDisburseType, error: loanDisburseError } = await supabase
       .from('transaction_types')
       .select('transaction_type_id')
-      .eq('type_code', 'LOAN_GIVE')
+      .eq('type_code', 'LOAN_DISBURSE')
       .single()
 
-    if (loanGiveError || !loanGiveType) {
-      console.error('Error finding LOAN_GIVE type:', loanGiveError)
+    if (loanDisburseError || !loanDisburseType) {
+      console.error('Error finding LOAN_DISBURSE type:', loanDisburseError)
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
       await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
 
       return NextResponse.json(
-        { error: 'LOAN_GIVE transaction type not found. Ensure Migration 037 has been run.' },
+        { error: 'LOAN_DISBURSE transaction type not found. Ensure Migration 042 has been run.' },
         { status: 500 }
       )
     }
@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
     const { error: mainTxnError } = await supabase
       .from('main_transaction')
       .update({
-        transaction_type_id: loanGiveType.transaction_type_id,
+        transaction_type_id: loanDisburseType.transaction_type_id,
         loan_disbursement_id: disbursement.loan_disbursement_id,
         description: description,
       })
@@ -305,13 +305,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Step 6: Update loan receivable main_transaction - also use LOAN_GIVE type
-    // Both sides of loan disbursement use LOAN_GIVE
-    // (LOAN_SETTLE is only used when borrower pays back)
+    // Step 6: Update loan receivable main_transaction - also use LOAN_DISBURSE type
+    // Both sides of loan disbursement use LOAN_DISBURSE
+    // (LOAN_COLLECT is only used when borrower pays back)
     const { error: receivableMainError } = await supabase
       .from('main_transaction')
       .update({
-        transaction_type_id: loanGiveType.transaction_type_id, // Reuse LOAN_GIVE type
+        transaction_type_id: loanDisburseType.transaction_type_id, // Reuse LOAN_DISBURSE type
         loan_disbursement_id: disbursement.loan_disbursement_id,
         description: description,
       })

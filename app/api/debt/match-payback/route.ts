@@ -1,6 +1,6 @@
 /**
  * API Route: /api/debt/match-payback
- * Purpose: Match DEBT_PAYBACK transaction with a drawdown and auto-create DEBT_SETTLE transaction
+ * Purpose: Match DEBT_PAY transaction with a drawdown
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -118,23 +118,23 @@ export async function POST(request: NextRequest) {
     const willBeOverpaid = paybackTx.amount > drawdown.remaining_balance
     const overpaymentAmount = willBeOverpaid ? paybackTx.amount - drawdown.remaining_balance : 0
 
-    // Get DEBT_SETTLE transaction type ID
-    const { data: settleType } = await supabase
+    // Get DEBT_PAY transaction type ID
+    const { data: debtPayType } = await supabase
       .from('transaction_types')
       .select('transaction_type_id')
-      .eq('type_code', 'DEBT_SETTLE')
+      .eq('type_code', 'DEBT_PAY')
       .single()
 
-    if (!settleType) {
+    if (!debtPayType) {
       return NextResponse.json(
-        { error: 'DEBT_SETTLE transaction type not found. Please run migration 021.' },
+        { error: 'DEBT_PAY transaction type not found. Please run migration 042.' },
         { status: 500 }
       )
     }
 
     // Create original_transaction for the credit line account
     // Generate a unique raw_transaction_id
-    const rawTxId = `DEBT_SETTLE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const rawTxId = `DEBT_PAY_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     const { data: newOriginalTx, error: originalTxError } = await supabase
       .from('original_transaction')
@@ -170,8 +170,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // The auto-create trigger will have created a main_transaction with type INC
-    // We need to update it to DEBT_SETTLE type instead
+    // The auto-create trigger will have created a main_transaction
+    // We need to update it to DEBT_PAY type and link to drawdown
     // First, find the auto-created main_transaction
     const { data: autoCreatedTx } = await supabase
       .from('main_transaction')
@@ -192,30 +192,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update the auto-created main_transaction to DEBT_SETTLE
-    const { data: settleTx, error: settleTxError } = await supabase
+    // Update the auto-created main_transaction to DEBT_PAY
+    const { data: debtPayTx, error: debtPayTxError } = await supabase
       .from('main_transaction')
       .update({
-        transaction_type_id: settleType.transaction_type_id,
-        description: `Settlement: ${paybackTx.description}`,
+        transaction_type_id: debtPayType.transaction_type_id,
+        description: `Debt payment: ${paybackTx.description}`,
         drawdown_id: drawdown_id,
-        notes: `Auto-generated from DEBT_PAY transaction #${payback_transaction_id}`,
+        notes: `Linked to DEBT_PAY transaction #${payback_transaction_id}`,
         updated_at: new Date().toISOString(),
       })
       .eq('main_transaction_id', autoCreatedTx.main_transaction_id)
       .select('main_transaction_id')
       .single()
 
-    if (settleTxError || !settleTx) {
-      console.error('Error creating DEBT_SETTLE transaction:', settleTxError)
-      console.error('DEBT_SETTLE data:', {
+    if (debtPayTxError || !debtPayTx) {
+      console.error('Error updating DEBT_PAY transaction:', debtPayTxError)
+      console.error('DEBT_PAY data:', {
         raw_transaction_id: newOriginalTx.raw_transaction_id,
         account_id: creditAccount.account_id,
         transaction_date: paybackTx.transaction_date,
         transaction_direction: 'credit',
-        description: `Settlement: ${paybackTx.description}`,
+        description: `Debt payment: ${paybackTx.description}`,
         amount: paybackTx.amount,
-        transaction_type_id: settleType.transaction_type_id,
+        transaction_type_id: debtPayType.transaction_type_id,
         drawdown_id: drawdown_id,
       })
       // Rollback: delete the original_transaction
@@ -226,8 +226,8 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(
         {
-          error: 'Failed to create settlement transaction',
-          details: settleTxError?.message || 'Unknown error'
+          error: 'Failed to create debt payment transaction',
+          details: debtPayTxError?.message || 'Unknown error'
         },
         { status: 500 }
       )
@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
     const { error: updatePaybackError } = await supabase
       .from('main_transaction')
       .update({
-        transfer_matched_transaction_id: settleTx.main_transaction_id,
+        transfer_matched_transaction_id: debtPayTx.main_transaction_id,
         drawdown_id: drawdown_id, // Link payback to drawdown
         updated_at: new Date().toISOString(),
       })
@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
     if (updatePaybackError) {
       console.error('Error updating payback transaction:', updatePaybackError)
       // Rollback
-      await supabase.from('main_transaction').delete().eq('main_transaction_id', settleTx.main_transaction_id)
+      await supabase.from('main_transaction').delete().eq('main_transaction_id', debtPayTx.main_transaction_id)
       await supabase.from('original_transaction').delete().eq('raw_transaction_id', newOriginalTx.raw_transaction_id)
 
       return NextResponse.json(
@@ -255,26 +255,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { error: updateSettleError } = await supabase
+    const { error: updateDebtPayError } = await supabase
       .from('main_transaction')
       .update({
         transfer_matched_transaction_id: payback_transaction_id,
         updated_at: new Date().toISOString(),
       })
-      .eq('main_transaction_id', settleTx.main_transaction_id)
+      .eq('main_transaction_id', debtPayTx.main_transaction_id)
 
-    if (updateSettleError) {
-      console.error('Error updating settle transaction:', updateSettleError)
+    if (updateDebtPayError) {
+      console.error('Error updating debt pay transaction:', updateDebtPayError)
       // Rollback
       await supabase
         .from('main_transaction')
         .update({ transfer_matched_transaction_id: null, drawdown_id: null })
         .eq('main_transaction_id', payback_transaction_id)
-      await supabase.from('main_transaction').delete().eq('main_transaction_id', settleTx.main_transaction_id)
+      await supabase.from('main_transaction').delete().eq('main_transaction_id', debtPayTx.main_transaction_id)
       await supabase.from('original_transaction').delete().eq('raw_transaction_id', newOriginalTx.raw_transaction_id)
 
       return NextResponse.json(
-        { error: 'Failed to link settlement transaction' },
+        { error: 'Failed to link debt payment transaction' },
         { status: 500 }
       )
     }
