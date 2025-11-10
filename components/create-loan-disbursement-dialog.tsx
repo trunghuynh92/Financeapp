@@ -35,6 +35,7 @@ interface CreateLoanDisbursementDialogProps {
   prefilledSourceAccountId?: number
   prefilledAmount?: number
   prefilledDate?: string
+  existingSourceTransactionId?: number  // When matching, links to existing transaction
   onSuccess: () => void
 }
 
@@ -46,6 +47,7 @@ export function CreateLoanDisbursementDialog({
   prefilledSourceAccountId,
   prefilledAmount,
   prefilledDate,
+  existingSourceTransactionId,
   onSuccess,
 }: CreateLoanDisbursementDialogProps) {
   const { currentEntity } = useEntity()
@@ -191,10 +193,20 @@ export function CreateLoanDisbursementDialog({
         return
       }
 
+      const requestBody = {
+        ...formData,
+        existing_source_transaction_id: existingSourceTransactionId,
+      }
+
+      console.log('=== CreateLoanDisbursementDialog - Submitting ===')
+      console.log('existingSourceTransactionId prop:', existingSourceTransactionId)
+      console.log('Request body:', requestBody)
+      console.log('=================================================')
+
       const response = await fetch("/api/loan-disbursements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(requestBody),
       })
 
       const data = await response.json()

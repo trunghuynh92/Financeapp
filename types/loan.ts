@@ -49,6 +49,7 @@ export interface CreateLoanDisbursementInput {
   term_months?: number | null
   interest_rate?: number | null
   notes?: string | null
+  existing_source_transaction_id?: number  // Optional: if provided, links to existing transaction instead of creating new one
 }
 
 export interface UpdateLoanDisbursementInput {

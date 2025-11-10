@@ -86,6 +86,13 @@ export async function POST(request: NextRequest) {
 
     const body: CreateLoanDisbursementInput = await request.json()
 
+    // Debug logging
+    console.log('=== Loan Disbursement Creation Request ===')
+    console.log('existing_source_transaction_id:', body.existing_source_transaction_id)
+    console.log('source_account_id:', body.source_account_id)
+    console.log('account_id:', body.account_id)
+    console.log('=========================================')
+
     // Validation
     if (!body.account_id || !body.source_account_id || !body.partner_id ||
         !body.loan_category || !body.principal_amount || !body.disbursement_date) {
@@ -194,42 +201,67 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Step 2: Create LOAN_GIVE transaction on source account (money out)
+    // Step 2: Handle source account transaction
+    // If existing_source_transaction_id is provided, link to it instead of creating new
     const description = `Loan disbursement to ${partner.partner_name}`
+    let raw_transaction_id_1: string
+    let sourceMainTransactionId: number | null = null
 
-    // Generate unique transaction ID
-    const timestamp = Date.now()
-    const random1 = Math.random().toString(36).substring(2, 9)
-    const raw_transaction_id_1 = `TXN-${timestamp}-${random1}`
+    if (body.existing_source_transaction_id) {
+      // Link to existing transaction - get its raw_transaction_id
+      const { data: existingMainTxn, error: existingError } = await supabase
+        .from('main_transaction')
+        .select('raw_transaction_id, main_transaction_id')
+        .eq('main_transaction_id', body.existing_source_transaction_id)
+        .single()
 
-    const { data: originalTxn, error: originalError } = await supabase
-      .from('original_transaction')
-      .insert([{
-        raw_transaction_id: raw_transaction_id_1,
-        account_id: body.source_account_id,
-        transaction_date: body.disbursement_date,
-        description: description,
-        debit_amount: body.principal_amount, // Debit = money out from bank/cash
-        credit_amount: null,
-        balance: null, // Will be calculated
-        transaction_source: 'user_manual',
-        created_by_user_id: null, // original_transaction uses INTEGER, not UUID
-      }])
-      .select()
-      .single()
+      if (existingError || !existingMainTxn) {
+        console.error('Error finding existing transaction:', existingError)
+        // Rollback
+        await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
+        return NextResponse.json(
+          { error: 'Existing source transaction not found' },
+          { status: 404 }
+        )
+      }
 
-    if (originalError) {
-      console.error('Error creating original transaction:', originalError)
-      // Rollback: delete the disbursement
-      await supabase
-        .from('loan_disbursement')
-        .delete()
-        .eq('loan_disbursement_id', disbursement.loan_disbursement_id)
+      raw_transaction_id_1 = existingMainTxn.raw_transaction_id
+      sourceMainTransactionId = existingMainTxn.main_transaction_id
+    } else {
+      // Create new source account transaction (money out)
+      const timestamp = Date.now()
+      const random1 = Math.random().toString(36).substring(2, 9)
+      raw_transaction_id_1 = `TXN-${timestamp}-${random1}`
 
-      return NextResponse.json(
-        { error: 'Failed to create transaction: ' + originalError.message },
-        { status: 500 }
-      )
+      const { data: originalTxn, error: originalError } = await supabase
+        .from('original_transaction')
+        .insert([{
+          raw_transaction_id: raw_transaction_id_1,
+          account_id: body.source_account_id,
+          transaction_date: body.disbursement_date,
+          description: description,
+          debit_amount: body.principal_amount, // Debit = money out from bank/cash
+          credit_amount: null,
+          balance: null, // Will be calculated
+          transaction_source: 'user_manual',
+          created_by_user_id: null, // original_transaction uses INTEGER, not UUID
+        }])
+        .select()
+        .single()
+
+      if (originalError) {
+        console.error('Error creating original transaction:', originalError)
+        // Rollback: delete the disbursement
+        await supabase
+          .from('loan_disbursement')
+          .delete()
+          .eq('loan_disbursement_id', disbursement.loan_disbursement_id)
+
+        return NextResponse.json(
+          { error: 'Failed to create transaction: ' + originalError.message },
+          { status: 500 }
+        )
+      }
     }
 
     // Step 3: Get LOAN_DISBURSE transaction type
@@ -251,31 +283,76 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Step 4: Update main_transaction (auto-created by trigger) with type and loan info
-    const { error: mainTxnError } = await supabase
-      .from('main_transaction')
-      .update({
-        transaction_type_id: loanDisburseType.transaction_type_id,
-        loan_disbursement_id: disbursement.loan_disbursement_id,
-        description: description,
-      })
-      .eq('raw_transaction_id', raw_transaction_id_1)
+    // Step 4: Update source main_transaction with type and loan info
+    // Only update if we created a new transaction (not when linking to existing)
+    if (!body.existing_source_transaction_id) {
+      const { error: mainTxnError } = await supabase
+        .from('main_transaction')
+        .update({
+          transaction_type_id: loanDisburseType.transaction_type_id,
+          loan_disbursement_id: disbursement.loan_disbursement_id,
+          description: description,
+        })
+        .eq('raw_transaction_id', raw_transaction_id_1)
 
-    if (mainTxnError) {
-      console.error('Error updating main transaction:', mainTxnError)
-      // Rollback
-      await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
-      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
+      if (mainTxnError) {
+        console.error('Error updating main transaction:', mainTxnError)
+        // Rollback
+        await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
+        await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
 
-      return NextResponse.json(
-        { error: 'Failed to update main transaction: ' + mainTxnError.message },
-        { status: 500 }
-      )
+        return NextResponse.json(
+          { error: 'Failed to update main transaction: ' + mainTxnError.message },
+          { status: 500 }
+        )
+      }
+
+      // Get the main_transaction_id for the newly created transaction
+      const { data: newMainTxn, error: getMainError } = await supabase
+        .from('main_transaction')
+        .select('main_transaction_id')
+        .eq('raw_transaction_id', raw_transaction_id_1)
+        .single()
+
+      if (getMainError || !newMainTxn) {
+        console.error('Error getting new main transaction:', getMainError)
+        // Rollback
+        await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
+        await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
+
+        return NextResponse.json(
+          { error: 'Failed to get new main transaction' },
+          { status: 500 }
+        )
+      }
+
+      sourceMainTransactionId = newMainTxn.main_transaction_id
+    } else {
+      // When linking to existing transaction, update it with disbursement info
+      const { error: linkError } = await supabase
+        .from('main_transaction')
+        .update({
+          loan_disbursement_id: disbursement.loan_disbursement_id,
+          transaction_type_id: loanDisburseType.transaction_type_id,
+        })
+        .eq('main_transaction_id', body.existing_source_transaction_id)
+
+      if (linkError) {
+        console.error('Error linking existing transaction:', linkError)
+        // Rollback
+        await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
+
+        return NextResponse.json(
+          { error: 'Failed to link existing transaction: ' + linkError.message },
+          { status: 500 }
+        )
+      }
     }
 
-    // Step 5: Create second LOAN_GIVE transaction on loan_receivable account (asset increases)
+    // Step 5: Create second LOAN_DISBURSE transaction on loan_receivable account (asset increases)
+    const timestamp2 = Date.now()
     const random2 = Math.random().toString(36).substring(2, 9)
-    const raw_transaction_id_2 = `TXN-${timestamp}-${random2}`
+    const raw_transaction_id_2 = `TXN-${timestamp2}-${random2}`
 
     const { data: loanReceivableOriginal, error: receivableOriginalError } = await supabase
       .from('original_transaction')
@@ -297,7 +374,10 @@ export async function POST(request: NextRequest) {
       console.error('Error creating loan receivable transaction:', receivableOriginalError)
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
-      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
+      // Only delete source transaction if we created it (not if we linked to existing)
+      if (!body.existing_source_transaction_id) {
+        await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
+      }
 
       return NextResponse.json(
         { error: 'Failed to create loan receivable transaction: ' + receivableOriginalError.message },
@@ -321,7 +401,10 @@ export async function POST(request: NextRequest) {
       console.error('Error updating loan receivable main transaction:', receivableMainError)
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
-      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
+      // Only delete source transaction if we created it (not if we linked to existing)
+      if (!body.existing_source_transaction_id) {
+        await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
+      }
       await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_2)
 
       return NextResponse.json(
@@ -329,6 +412,10 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+
+    // When using existing_source_transaction_id, the transactions are NOT auto-matched
+    // The user will manually match them using the QuickMatchLoanDialog
+    // This allows them to review both transactions before linking them
 
     return NextResponse.json({
       data: disbursement,

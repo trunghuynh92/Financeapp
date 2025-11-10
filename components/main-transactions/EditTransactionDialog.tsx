@@ -15,8 +15,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { MainTransactionDetails, TransactionType, Category, Branch } from "@/types/main-transaction"
-import { Loader2 } from "lucide-react"
+import { Loader2, AlertTriangle, Info } from "lucide-react"
+import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
 
 interface EditTransactionDialogProps {
   transaction: MainTransactionDetails | null
@@ -62,6 +64,20 @@ export function EditTransactionDialog({
       })
     }
   }, [transaction, open])
+
+  // Filter transaction types based on account type and direction
+  const filteredTransactionTypes = getFilteredTransactionTypes(
+    transaction?.account_type as AccountType,
+    transaction?.transaction_direction as TransactionDirection,
+    transactionTypes
+  )
+
+  // Check if transaction is locked (matched or linked to drawdown/loan)
+  const isTransactionLocked = !!(
+    transaction?.transfer_matched_transaction_id ||
+    transaction?.drawdown_id ||
+    transaction?.loan_disbursement_id
+  )
 
   // Filter categories by transaction type only
   const currentTypeId = formData.transaction_type_id || transaction?.transaction_type_id?.toString()
@@ -140,10 +156,6 @@ export function EditTransactionDialog({
 
   if (!transaction) return null
 
-  // Debug: log the values
-  console.log('Transaction type ID:', transaction.transaction_type_id)
-  console.log('FormData type ID:', formData.transaction_type_id)
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" key={transaction?.main_transaction_id}>
@@ -155,6 +167,32 @@ export function EditTransactionDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Warnings for locked transactions */}
+          {isTransactionLocked && (
+            <Alert variant="default" className="border-yellow-500 bg-yellow-50">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              <AlertDescription className="text-yellow-800">
+                <strong>Warning:</strong> This transaction is linked to other records:
+                {transaction.transfer_matched_transaction_id && " • Matched with another transaction"}
+                {transaction.drawdown_id && " • Linked to a debt drawdown"}
+                {transaction.loan_disbursement_id && " • Linked to a loan disbursement"}
+                <br />
+                Changing the transaction type may cause issues. Unmatch or unlink first if needed.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Info about filtered types */}
+          {filteredTransactionTypes.length < transactionTypes.length && (
+            <Alert variant="default" className="border-blue-500 bg-blue-50">
+              <Info className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800 text-sm">
+                Only showing transaction types valid for <strong>{transaction.account_type}</strong> accounts with <strong>{transaction.transaction_direction}</strong> direction.
+                ({filteredTransactionTypes.length} of {transactionTypes.length} types available)
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Read-only information */}
           <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
             <div className="grid grid-cols-2 gap-4">
@@ -201,13 +239,16 @@ export function EditTransactionDialog({
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {transactionTypes.map((type) => (
+                  {filteredTransactionTypes.map((type) => (
                     <SelectItem key={type.transaction_type_id} value={type.transaction_type_id.toString()}>
                       {type.type_display_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Filtered based on account type ({transaction.account_type}) and direction ({transaction.transaction_direction})
+              </p>
             </div>
 
             {/* Category */}

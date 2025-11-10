@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ChevronLeft, ChevronRight, Edit, Search, Filter, X, Split, Check, Link2 } from "lucide-react"
 import { MainTransactionDetails, TransactionType, Category, Branch } from "@/types/main-transaction"
 import { EditTransactionDialog } from "@/components/main-transactions/EditTransactionDialog"
+import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
 import { SplitTransactionDialog } from "@/components/main-transactions/SplitTransactionDialog"
 import { BulkEditDialog } from "@/components/main-transactions/BulkEditDialog"
 import { QuickMatchTransferDialog } from "@/components/main-transactions/QuickMatchTransferDialog"
@@ -641,6 +642,13 @@ export default function MainTransactionsPage() {
                   </thead>
                   <tbody>
                     {transactions.map((tx, txIndex) => {
+                      // Filter transaction types based on account type and direction
+                      const filteredTransactionTypes = getFilteredTransactionTypes(
+                        tx.account_type as AccountType,
+                        tx.transaction_direction as TransactionDirection,
+                        transactionTypes
+                      )
+
                       const filteredCategories = categories.filter(cat =>
                         cat.transaction_type_id === tx.transaction_type_id
                       )
@@ -822,7 +830,7 @@ export default function MainTransactionsPage() {
                           <td className="py-3 px-4">
                             <InlineCombobox
                               value={tx.transaction_type_id?.toString() || ""}
-                              options={transactionTypes.map((type) => ({
+                              options={filteredTransactionTypes.map((type) => ({
                                 value: type.transaction_type_id.toString(),
                                 label: type.type_display_name,
                               }))}

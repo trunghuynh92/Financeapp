@@ -1,6 +1,71 @@
-# Finance SaaS v4.2.0
+# Finance SaaS v4.3.0
 
-A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, team collaboration, advanced transaction processing, debt management, loan receivables, business partners, balance checkpointing, and detailed financial reporting with complete entity isolation.
+A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, team collaboration, advanced transaction processing, debt management, loan receivables, business partners, intelligent transaction type filtering, balance checkpointing, and detailed financial reporting with complete entity isolation.
+
+## Version 4.3.0 - Transaction Type Intelligence & Simplification
+
+### What's New in v4.3.0
+
+#### 🎯 Intelligent Transaction Type Filtering
+- **Context-Aware Type Selection**: Transaction type dropdowns now intelligently filter based on account type and direction
+- **Business Logic Enforcement**: Prevent illogical transaction types (e.g., LOAN_DISBURSE on credit cards)
+- **Inline Editing Support**: Real-time filtering in both edit dialog and inline table editing
+- **Account-Specific Rules**: Different allowed types for bank, credit card, loan receivable, and other account types
+- **Direction-Based Filtering**: Separate rules for debit (money out) vs credit (money in) transactions
+- **User-Friendly Messages**: Clear explanations of filtering logic with type counts
+
+**Transaction Type Rules by Account:**
+- **Bank/Cash Accounts**:
+  - Debit: EXP, TRF_OUT, DEBT_PAY, INV, LOAN_DISBURSE
+  - Credit: INC, TRF_IN, DEBT_TAKE, LOAN_COLLECT
+- **Credit Card Accounts**:
+  - Debit: EXP, TRF_OUT (charges, balance transfers out)
+  - Credit: DEBT_PAY, TRF_IN (payments, balance transfers in)
+- **Credit Line Accounts**:
+  - Debit: DEBT_TAKE (drawing from line)
+  - Credit: DEBT_PAY (repaying line)
+- **Term Loan Accounts**:
+  - Debit: DEBT_TAKE (initial drawdown)
+  - Credit: DEBT_PAY (loan payments)
+- **Loan Receivable Accounts**:
+  - Debit: LOAN_DISBURSE (lending money)
+  - Credit: LOAN_COLLECT (receiving repayment)
+- **Investment Accounts**:
+  - Debit: INV, EXP (purchases, fees)
+  - Credit: INC (returns, sales)
+
+#### 🔄 Transaction Type Simplification (Migration 042)
+- **Reduced Complexity**: Simplified from 13 to 9 transaction types
+- **Consolidated Types**: Merged redundant transaction types:
+  - DEBT_DRAW, DEBT_ACQ → DEBT_TAKE (borrowing money)
+  - DEBT_SETTLE, DEBT_PAYBACK → DEBT_PAY (paying back debt)
+  - LOAN_COLLECT, LOAN_REPAY → LOAN_COLLECT (receiving loan repayment)
+- **Double-Entry Consistency**: Both sides of debt/loan transactions now use same type code
+- **Preserved Data**: Existing transactions maintained with type mapping
+- **Updated Functions**: All database functions updated to use new type codes
+
+**Current Transaction Types:**
+1. `INC` - Income
+2. `EXP` - Expense
+3. `TRF_OUT` - Transfer Out
+4. `TRF_IN` - Transfer In
+5. `DEBT_TAKE` - Debt Taken (borrowing)
+6. `DEBT_PAY` - Debt Payment (repaying)
+7. `LOAN_DISBURSE` - Loan Disbursement (lending)
+8. `LOAN_COLLECT` - Loan Collection (receiving repayment)
+9. `INV` - Investment
+
+#### 🗄️ Database Migrations (v4.3.0)
+- **Migration 041**: Fix validate_transfer_match function with new type codes
+- **Migration 042**: Simplify transaction types system (13→9 types)
+- **Migration 043**: Recalculate drawdown balances for consistency
+
+#### 📚 Enhanced Documentation
+- **Transaction Type Rules Library**: New `/lib/transaction-type-rules.ts` with comprehensive filtering logic
+- **SCHEMA.md Updates**: Complete documentation of simplified transaction type system
+- **Type Safety**: Full TypeScript support for account types and directions
+
+---
 
 ## Version 4.2.0 - Loan Receivables & Business Partners
 

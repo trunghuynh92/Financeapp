@@ -2,7 +2,7 @@
 
 **Last Updated**: 2025-11-10
 **Database**: PostgreSQL 15+ via Supabase
-**Current Migration**: 040_remove_borrower_type_from_loans.sql
+**Current Migration**: 042_simplify_transaction_types.sql
 
 ---
 
@@ -246,21 +246,25 @@ Transaction type definitions
 - PRIMARY KEY on `transaction_type_id`
 - UNIQUE index on `type_code`
 
-**Key Type Codes**:
+**Key Type Codes** (After Migration 042 Simplification):
 - `INC`: Income
 - `EXP`: Expense
 - `TRF_OUT`: Transfer Out
 - `TRF_IN`: Transfer In
-- `DEBT_DRAW`: Debt Drawdown (on credit line)
-- `DEBT_ACQ`: Debt Acquisition (receiving account)
-- `DEBT_PAY`: Debt Payment (from bank account)
-- `DEBT_SETTLE`: Debt Settlement (on credit line, auto-created)
-- `LOAN_GIVE`: Loan Disbursement (to borrower, Migration 037)
-- `LOAN_RECEIVE`: Loan Payment Received (from borrower, Migration 037)
-- `LOAN_SETTLE`: Loan Settlement (on loan_receivable account, auto-created, Migration 037)
-- `LOAN_WRITEOFF`: Loan Write-off (Migration 037)
+- `DEBT_TAKE`: Debt Taken (consolidated from DEBT_ACQ + DEBT_DRAW) - used on both sides
+- `DEBT_PAY`: Debt Payment - used on both sides
+- `LOAN_DISBURSE`: Loan Disbursement (renamed from LOAN_GIVE) - used on both sides
+- `LOAN_COLLECT`: Loan Collection (consolidated from LOAN_RECEIVE + LOAN_SETTLE) - used on both sides
 - `INV`: Investment
-- `OTHER`: Other
+
+**Deprecated/Removed Type Codes** (Migration 042):
+- ~~`DEBT_ACQ`~~ → Consolidated into DEBT_TAKE
+- ~~`DEBT_DRAW`~~ → Consolidated into DEBT_TAKE
+- ~~`DEBT_SETTLE`~~ → Consolidated into DEBT_PAY
+- ~~`LOAN_GIVE`~~ → Renamed to LOAN_DISBURSE
+- ~~`LOAN_RECEIVE`~~ → Consolidated into LOAN_COLLECT
+- ~~`LOAN_SETTLE`~~ → Consolidated into LOAN_COLLECT
+- ~~`LOAN_WRITEOFF`~~ → Removed (use write-off field in loan_disbursement table)
 
 ---
 
@@ -657,7 +661,7 @@ available_credit = credit_limit - SUM(remaining_balance WHERE status IN ('active
 
 ### 3. `get_drawdown_settled_amount(p_drawdown_id INTEGER)`
 **Returns**: DECIMAL(15,2)
-**Purpose**: Calculate total settled amount from matched DEBT_SETTLE transactions
+**Purpose**: Calculate total settled amount from matched DEBT_PAY transactions (Migration 042: changed from DEBT_SETTLE)
 
 **Logic**:
 ```sql
@@ -665,20 +669,20 @@ SELECT SUM(mt.amount)
 FROM main_transaction mt
 JOIN transaction_types tt ON mt.transaction_type_id = tt.transaction_type_id
 WHERE mt.drawdown_id = p_drawdown_id
-  AND tt.type_code = 'DEBT_SETTLE'
+  AND tt.type_code = 'DEBT_PAY'  -- Changed from DEBT_SETTLE in Migration 042
   AND mt.transfer_matched_transaction_id IS NOT NULL;
 ```
 
 ---
 
-### 4. `update_drawdown_after_settlement()`
+### 4. `auto_update_drawdown_balance()` (Migration 042: renamed and updated)
 **Returns**: TRIGGER
-**Purpose**: Automatically update drawdown balance when DEBT_SETTLE transactions are created/updated/deleted
+**Purpose**: Automatically update drawdown balance when DEBT_PAY transactions are created/updated/deleted
 
 **Trigger Events**: AFTER INSERT OR UPDATE OR DELETE ON main_transaction
 
-**Logic**:
-1. Detects DEBT_SETTLE transactions
+**Logic** (Migration 042):
+1. Detects DEBT_PAY transactions (changed from DEBT_SETTLE)
 2. Calculates total settled amount using `get_drawdown_settled_amount()`
 3. Updates `remaining_balance` = `original_amount` - `total_settled`
 4. Sets `is_overpaid` flag if overpaid
@@ -695,14 +699,16 @@ WHERE mt.drawdown_id = p_drawdown_id
 
 **Trigger Events**: BEFORE INSERT OR UPDATE ON main_transaction
 
-**Validates**:
-- Both transactions are matchable types (TRF_OUT, TRF_IN, DEBT_DRAW, DEBT_ACQ, DEBT_PAY, DEBT_SETTLE)
+**Validates** (After Migration 042):
+- Both transactions are matchable types (TRF_OUT, TRF_IN, DEBT_TAKE, DEBT_PAY, LOAN_DISBURSE, LOAN_COLLECT)
 - Correct pairs:
   - TRF_OUT ↔ TRF_IN
-  - DEBT_DRAW ↔ DEBT_ACQ
-  - DEBT_PAY ↔ DEBT_SETTLE
+  - DEBT_TAKE ↔ DEBT_TAKE
+  - DEBT_PAY ↔ DEBT_PAY
+  - LOAN_DISBURSE ↔ LOAN_DISBURSE
+  - LOAN_COLLECT ↔ LOAN_COLLECT
 - Different accounts
-- Amount matching (within tolerance)
+- Same entity (cross-entity transfers prevented)
 
 ---
 
@@ -866,11 +872,12 @@ main_transaction ──< transfer_matched_transaction_id >── main_transactio
 
 ## Key Constraints & Business Rules
 
-### Transaction Matching Pairs
+### Transaction Matching Pairs (After Migration 042 Simplification)
 - **TRF_OUT** ↔ **TRF_IN**: Inter-account transfers
-- **DEBT_DRAW** ↔ **DEBT_ACQ**: Debt acquisition (drawdown on credit line ↔ receipt in bank)
-- **DEBT_PAY** ↔ **DEBT_SETTLE**: Debt repayment (payment from bank ↔ settlement on credit line)
-- **LOAN_RECEIVE** ↔ **LOAN_SETTLE**: Loan repayment (payment from borrower ↔ settlement on loan_receivable)
+- **DEBT_TAKE** ↔ **DEBT_TAKE**: Debt drawdown (both credit line and bank account use same type)
+- **DEBT_PAY** ↔ **DEBT_PAY**: Debt repayment (both bank account and credit line use same type)
+- **LOAN_DISBURSE** ↔ **LOAN_DISBURSE**: Loan disbursement (both bank account and loan_receivable use same type)
+- **LOAN_COLLECT** ↔ **LOAN_COLLECT**: Loan collection (both loan_receivable and bank account use same type)
 
 ### Cross-Entity Transfer Prevention 🔒 (Migration 024)
 **CRITICAL SECURITY RULE**: Transfers can ONLY occur between accounts within the SAME entity.
@@ -930,10 +937,17 @@ Account 3 (Entity: Company A) → TRF_IN
 
 ## Migration Status
 
-Last applied migration: **037_add_loan_receivable_system.sql**
+Last applied migration: **042_simplify_transaction_types.sql**
 
 Key changes in recent migrations:
-- Migration 037 (current): Added Loan Receivable System
+- Migration 042 (current): Simplified Transaction Types
+  - **LOAN System**: LOAN_GIVE → LOAN_DISBURSE, LOAN_RECEIVE → LOAN_COLLECT, removed LOAN_SETTLE
+  - **DEBT System**: Consolidated DEBT_ACQ + DEBT_DRAW → DEBT_TAKE, removed DEBT_SETTLE
+  - Both sides of debt/loan transactions now use the same type code (simpler matching logic)
+  - Updated all triggers and functions to use new type codes
+  - Updated `validate_transfer_match()` function for new pairs
+  - Result: 9 transaction types instead of 13
+- Migration 037: Added Loan Receivable System
   - Created `loan_disbursement` table for tracking loans given out
   - Added loan-related enums: `borrower_type`, `loan_category`, `loan_status`
   - Added loan transaction types: LOAN_GIVE, LOAN_RECEIVE, LOAN_SETTLE, LOAN_WRITEOFF

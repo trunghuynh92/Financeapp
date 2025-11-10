@@ -526,6 +526,7 @@ export function QuickMatchLoanDialog({
         prefilledSourceAccountId={sourceTransaction?.account_id}
         prefilledAmount={sourceTransaction?.amount}
         prefilledDate={sourceTransaction?.transaction_date ? new Date(sourceTransaction.transaction_date).toISOString().split('T')[0] : undefined}
+        existingSourceTransactionId={sourceTransaction?.main_transaction_id}
         onSuccess={() => {
           setCreateLoanDisbursementDialogOpen(false)
           fetchAvailableLoans() // Refresh the list
