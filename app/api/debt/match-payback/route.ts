@@ -279,7 +279,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // The trigger will automatically update the drawdown balance and overpayment status
+    // Manually recalculate the drawdown balance
+    // (The trigger should do this, but we'll do it explicitly to be sure)
+    const { data: settledAmount } = await supabase.rpc('get_drawdown_settled_amount', {
+      p_drawdown_id: drawdown_id
+    })
+
+    const newRemainingBalance = Math.max(drawdown.original_amount - (settledAmount || 0), 0)
+    const isNowOverpaid = (settledAmount || 0) > drawdown.original_amount
+    const newStatus = (settledAmount || 0) >= drawdown.original_amount ? 'settled' :
+                     (drawdown.due_date && new Date() > new Date(drawdown.due_date)) ? 'overdue' : 'active'
+
+    await supabase
+      .from('debt_drawdown')
+      .update({
+        remaining_balance: newRemainingBalance,
+        is_overpaid: isNowOverpaid,
+        status: newStatus
+      })
+      .eq('drawdown_id', drawdown_id)
 
     // Create credit memo if overpaid
     let creditMemoId = null
