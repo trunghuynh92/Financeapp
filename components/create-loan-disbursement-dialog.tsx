@@ -78,31 +78,23 @@ export function CreateLoanDisbursementDialog({
     }
   }, [open, currentEntity])
 
-  // Update formData when accountId prop changes
+  // Reset and initialize form when dialog opens with prefilled values
   useEffect(() => {
-    if (accountId) {
-      setFormData(prev => ({ ...prev, account_id: accountId }))
+    if (open) {
+      setFormData({
+        account_id: accountId || 0,
+        source_account_id: prefilledSourceAccountId || 0,
+        partner_id: 0,
+        loan_category: "short_term",
+        principal_amount: prefilledAmount || 0,
+        disbursement_date: prefilledDate || new Date().toISOString().split('T')[0],
+        due_date: null,
+        term_months: null,
+        interest_rate: null,
+        notes: null,
+      })
     }
-  }, [accountId])
-
-  // Update formData when prefilled values change
-  useEffect(() => {
-    if (prefilledSourceAccountId) {
-      setFormData(prev => ({ ...prev, source_account_id: prefilledSourceAccountId }))
-    }
-  }, [prefilledSourceAccountId])
-
-  useEffect(() => {
-    if (prefilledAmount) {
-      setFormData(prev => ({ ...prev, principal_amount: prefilledAmount }))
-    }
-  }, [prefilledAmount])
-
-  useEffect(() => {
-    if (prefilledDate) {
-      setFormData(prev => ({ ...prev, disbursement_date: prefilledDate }))
-    }
-  }, [prefilledDate])
+  }, [open, accountId, prefilledSourceAccountId, prefilledAmount, prefilledDate])
 
   async function fetchPartners() {
     if (!currentEntity) return
