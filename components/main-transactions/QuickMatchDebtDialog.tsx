@@ -69,7 +69,7 @@ export function QuickMatchDebtDialog({
     setLoading(true)
     try {
       // Fetch unmatched debt transactions
-      const response = await fetch("/api/transfers/unmatched")
+      const response = await fetch(`/api/transfers/unmatched?entity_id=${sourceTransaction.entity_id}`)
 
       if (!response.ok) {
         throw new Error("Failed to fetch debt transactions")

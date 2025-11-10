@@ -51,9 +51,12 @@ export default function TransfersPage() {
   }
 
   const fetchUnmatchedTransfers = async () => {
+    if (!currentEntity) return
+
     setLoading(true)
     try {
       const params = new URLSearchParams()
+      params.append("entity_id", currentEntity.id)
       if (selectedAccount !== "all") {
         params.append("account_id", selectedAccount)
       }

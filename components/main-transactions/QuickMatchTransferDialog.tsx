@@ -67,7 +67,7 @@ export function QuickMatchTransferDialog({
     setLoading(true)
     try {
       // Fetch unmatched transfers
-      const response = await fetch("/api/transfers/unmatched")
+      const response = await fetch(`/api/transfers/unmatched?entity_id=${sourceTransaction.entity_id}`)
 
       if (!response.ok) {
         throw new Error("Failed to fetch transfers")

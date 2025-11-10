@@ -12,11 +12,21 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams
     const accountId = searchParams.get('account_id')
+    const entityId = searchParams.get('entity_id')
+
+    // SECURITY: entity_id is REQUIRED to prevent cross-entity data leakage
+    if (!entityId) {
+      return NextResponse.json(
+        { error: 'entity_id parameter is required' },
+        { status: 400 }
+      )
+    }
 
     // Build query for unmatched transfers and debt transactions
     let query = supabase
       .from('main_transaction_details')
       .select('*')
+      .eq('entity_id', entityId) // CRITICAL: Filter by entity first
       .in('transaction_type_code', ['TRF_OUT', 'TRF_IN', 'DEBT_TAKE'])
       .is('transfer_matched_transaction_id', null)
 
