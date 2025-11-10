@@ -1,6 +1,39 @@
-# Finance SaaS v4.1.0
+# Finance SaaS v4.2.0
 
-A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, team collaboration, advanced transaction processing, debt management, balance checkpointing, and detailed financial reporting with complete entity isolation.
+A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, team collaboration, advanced transaction processing, debt management, loan receivables, business partners, balance checkpointing, and detailed financial reporting with complete entity isolation.
+
+## Version 4.2.0 - Loan Receivables & Business Partners
+
+### What's New in v4.2.0
+
+#### 💰 Loan Receivable System
+- **Loan Disbursements**: Track loans given to owners, employees, partners, and customers
+- **Loan Account Type**: New `loan_receivable` account type for managing loans as assets
+- **Payment Tracking**: Record loan payments with automatic balance updates
+- **Interest Tracking**: Store interest rates for reference (not auto-calculated)
+- **Loan Status Management**: Active, Overdue, Repaid, Partially Written Off, Written Off
+- **Due Date Alerts**: Visual indicators for overdue and upcoming due loans
+- **Payment Progress**: Visual progress bars showing repayment completion
+- **Loan Statistics**: Dashboard showing total outstanding, active loans, and next due date
+- **Write-off Support**: Track partially or fully written-off loans
+
+#### 👥 Business Partners Management
+- **Centralized Contacts**: Single source of truth for all business relationships
+- **Partner Types**: Customer, Vendor, Employee, Owner, Partner, Lender, Other
+- **Comprehensive Information**: Store contact details, addresses, bank accounts, tax IDs
+- **Inline Creation**: Create partners directly from loan disbursement form
+- **Banking Details**: Track bank account information for partners
+- **Address Management**: Store complete address information
+- **Contact Information**: Email, phone, mobile, fax, website
+- **Integration**: Referenced by loan disbursements (extensible to other features)
+
+#### 🗄️ Database Migrations (v4.2.0)
+- **Migration 037**: Add loan_receivable system with loan_disbursement table
+- **Migration 038**: Fix account_type CHECK constraint to include loan_receivable
+- **Migration 039**: Create business_partners table with comprehensive fields
+- **Migration 040**: Remove redundant borrower_type from loan_disbursement
+
+---
 
 ## Version 4.1.0 - Team Collaboration & Permission Refinements
 
@@ -152,6 +185,25 @@ A comprehensive multi-user financial management system for businesses and indivi
 - Loan reference tracking
 - Payment schedules
 - Principal and interest breakdown
+
+#### 7. **Loan Receivables** (NEW in v4.2.0)
+- Track loans given to others (assets)
+- Loan disbursement to owners, employees, partners, customers
+- Payment tracking with automatic balance updates
+- Interest rate tracking (for reference)
+- Due date management and alerts
+- Status tracking (Active, Overdue, Repaid, Written Off)
+- Payment progress visualization
+- Write-off support for bad debts
+
+### 👥 Business Partners (NEW in v4.2.0)
+- **Centralized Contact Management**: Single source for all business relationships
+- **Partner Types**: Customers, Vendors, Employees, Owners, Partners, Lenders, Others
+- **Complete Information**: Contact details, addresses, banking info, tax IDs
+- **Integration**: Used by loan disbursements, extensible to invoices and transactions
+- **Inline Creation**: Create partners without leaving forms
+- **Banking Details**: Track bank accounts for payments and transfers
+- **Multi-Tab Form**: Organized data entry (Basic, Contact, Address, Banking)
 
 ### 💰 Dual-Layer Transaction System
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText } from "lucide-react"
+import { Loader2, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText, DollarSign } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -244,6 +244,7 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
     investment: TrendingUp,
     credit_line: LineChart,
     term_loan: FileText,
+    loan_receivable: DollarSign,
   }
 
   return (

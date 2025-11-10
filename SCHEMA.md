@@ -2,13 +2,13 @@
 
 **Last Updated**: 2025-11-10
 **Database**: PostgreSQL 15+ via Supabase
-**Current Migration**: 030_fix_entity_users_recursion_final.sql
+**Current Migration**: 040_remove_borrower_type_from_loans.sql
 
 ---
 
 ## Quick Reference
 
-**Tables**: 14 total (12 original + users + entity_users from migration 022)
+**Tables**: 16 total (12 original + users + entity_users + loan_disbursement + business_partners)
 **Views**: 2 main views
 **Functions**: 14+ RPC functions (+ 3 new auth functions in migration 022)
 **Triggers**: 8+ active triggers (+ 3 new auth triggers in migration 022)
@@ -112,7 +112,7 @@ Financial accounts linked to entities
 | `account_id` | SERIAL | PRIMARY KEY | Auto-incrementing ID |
 | `entity_id` | UUID | FOREIGN KEY → entities(id) | Owner entity |
 | `account_name` | VARCHAR | NOT NULL | Display name |
-| `account_type` | VARCHAR | NOT NULL | 'bank', 'cash', 'credit_card', 'investment', 'credit_line', 'term_loan' |
+| `account_type` | VARCHAR | NOT NULL | 'bank', 'cash', 'credit_card', 'investment', 'credit_line', 'term_loan', 'loan_receivable' |
 | `account_number` | VARCHAR | NULLABLE | Optional account number |
 | `bank_name` | VARCHAR | NULLABLE | Bank institution name |
 | `currency` | VARCHAR | DEFAULT 'VND' | 'VND', 'USD', 'EUR' |
@@ -209,6 +209,7 @@ Processed transaction layer with categorization
 | `split_sequence` | INTEGER | NULLABLE | Order in split group |
 | `transaction_subtype` | VARCHAR | NULLABLE | Additional classification |
 | `drawdown_id` | INTEGER | FOREIGN KEY → debt_drawdown(drawdown_id) | Link to debt drawdown |
+| `loan_disbursement_id` | INTEGER | FOREIGN KEY → loan_disbursement(loan_disbursement_id) | Link to loan disbursement (Migration 037) |
 | `transfer_matched_transaction_id` | INTEGER | FOREIGN KEY → main_transaction(main_transaction_id) | Bidirectional matching |
 | `created_at` | TIMESTAMP | DEFAULT NOW() | Creation timestamp |
 | `updated_at` | TIMESTAMP | DEFAULT NOW() | Last update timestamp |
@@ -254,6 +255,10 @@ Transaction type definitions
 - `DEBT_ACQ`: Debt Acquisition (receiving account)
 - `DEBT_PAY`: Debt Payment (from bank account)
 - `DEBT_SETTLE`: Debt Settlement (on credit line, auto-created)
+- `LOAN_GIVE`: Loan Disbursement (to borrower, Migration 037)
+- `LOAN_RECEIVE`: Loan Payment Received (from borrower, Migration 037)
+- `LOAN_SETTLE`: Loan Settlement (on loan_receivable account, auto-created, Migration 037)
+- `LOAN_WRITEOFF`: Loan Write-off (Migration 037)
 - `INV`: Investment
 - `OTHER`: Other
 
@@ -427,6 +432,133 @@ Tracks matched transfer transactions between accounts (Migration 019)
 - Amount must match between paired transactions
 
 **Created in**: Migration 019
+
+---
+
+### 15. `business_partners`
+Centralized contact management for all business relationships (Migration 039)
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `partner_id` | SERIAL | PRIMARY KEY | Auto-incrementing ID |
+| `entity_id` | UUID | NOT NULL, FOREIGN KEY → entities(id) ON DELETE CASCADE | Entity this partner belongs to |
+| `partner_type` | partner_type | NOT NULL, DEFAULT 'other' | 'customer', 'vendor', 'employee', 'owner', 'partner', 'lender', 'other' |
+| `partner_name` | TEXT | NOT NULL | Primary name |
+| `legal_name` | TEXT | NULLABLE | Official/legal name |
+| `display_name` | TEXT | NULLABLE | Preferred display name |
+| `tax_id` | TEXT | NULLABLE | Tax ID or business registration |
+| `contact_person` | TEXT | NULLABLE | Main contact person |
+| `email` | TEXT | NULLABLE | Email address |
+| `phone` | TEXT | NULLABLE | Phone number |
+| `mobile` | TEXT | NULLABLE | Mobile phone |
+| `fax` | TEXT | NULLABLE | Fax number |
+| `website` | TEXT | NULLABLE | Website URL |
+| `address_line1` | TEXT | NULLABLE | Street address |
+| `address_line2` | TEXT | NULLABLE | Additional address |
+| `city` | TEXT | NULLABLE | City |
+| `state_province` | TEXT | NULLABLE | State/Province |
+| `postal_code` | TEXT | NULLABLE | Postal/ZIP code |
+| `country` | TEXT | NULLABLE | Country |
+| `bank_account_number` | TEXT | NULLABLE | Bank account number |
+| `bank_name` | TEXT | NULLABLE | Bank name |
+| `bank_branch` | TEXT | NULLABLE | Bank branch |
+| `bank_swift_code` | TEXT | NULLABLE | SWIFT/BIC code |
+| `payment_terms` | TEXT | NULLABLE | Payment terms |
+| `credit_limit` | DECIMAL(15,2) | NULLABLE | Credit limit (for customers) |
+| `notes` | TEXT | NULLABLE | Additional notes |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Active status |
+| `created_at` | TIMESTAMPTZ | DEFAULT NOW() | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | DEFAULT NOW() | Last update timestamp |
+| `created_by_user_id` | UUID | FOREIGN KEY → users(id) | User who created |
+
+**Indexes**:
+- PRIMARY KEY on `partner_id`
+- INDEX on `entity_id` (idx_business_partners_entity)
+- INDEX on `partner_type` (idx_business_partners_type)
+- INDEX on `partner_name` (idx_business_partners_name)
+- INDEX on `email` (idx_business_partners_email)
+- FOREIGN KEY on `entity_id`
+
+**RLS Policies**:
+- Users can view partners for their entities
+- Editor+ can create/update partners
+- Admin+ can delete partners (with cascade checks)
+
+**Constraints**:
+- UNIQUE constraint on `(entity_id, partner_name)` - partner names must be unique within entity
+
+**Usage**:
+- Referenced by `loan_disbursement` via `partner_id`
+- Can be extended to reference from transactions, invoices, etc.
+- Provides centralized contact and banking information
+
+**Created in**: Migration 039
+
+---
+
+### 16. `loan_disbursement`
+Tracks individual loans disbursed to borrowers (Migration 037, Updated in 039-040)
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `loan_disbursement_id` | SERIAL | PRIMARY KEY | Auto-incrementing ID |
+| `account_id` | INTEGER | FOREIGN KEY → accounts(account_id) ON DELETE CASCADE | Loan receivable account |
+| `partner_id` | INTEGER | NULLABLE, FOREIGN KEY → business_partners(partner_id) ON DELETE RESTRICT | Borrower (business partner) |
+| `borrower_name` | TEXT | NULLABLE (deprecated) | Name of borrower (deprecated, use partner instead) |
+| `loan_category` | loan_category | NOT NULL, DEFAULT 'short_term' | 'short_term', 'long_term', 'advance', 'other' |
+| `principal_amount` | DECIMAL(15,2) | NOT NULL, CHECK > 0 | Original loan amount |
+| `remaining_balance` | DECIMAL(15,2) | NOT NULL, DEFAULT 0, CHECK >= 0 | Current outstanding balance |
+| `disbursement_date` | DATE | NOT NULL, DEFAULT CURRENT_DATE | Date loan was given |
+| `due_date` | DATE | NULLABLE | Optional payment due date |
+| `term_months` | INTEGER | NULLABLE | Loan duration in months |
+| `interest_rate` | DECIMAL(5,2) | NULLABLE | Annual interest rate (for reference only) |
+| `status` | loan_status | NOT NULL, DEFAULT 'active' | 'active', 'overdue', 'repaid', 'partially_written_off', 'written_off' |
+| `is_overpaid` | BOOLEAN | NOT NULL, DEFAULT false | True if borrower overpaid |
+| `written_off_amount` | DECIMAL(15,2) | DEFAULT 0, CHECK >= 0 | Total written off amount |
+| `written_off_date` | DATE | NULLABLE | Date of write-off |
+| `notes` | TEXT | NULLABLE | Additional notes |
+| `created_at` | TIMESTAMPTZ | DEFAULT NOW() | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | DEFAULT NOW() | Last update timestamp |
+| `created_by_user_id` | UUID | FOREIGN KEY → users(id) | User who created |
+
+**Indexes**:
+- PRIMARY KEY on `loan_disbursement_id`
+- INDEX on `account_id` (idx_loan_disbursement_account)
+- INDEX on `partner_id` (idx_loan_disbursement_partner)
+- INDEX on `status` (idx_loan_disbursement_status)
+- INDEX on `disbursement_date` (idx_loan_disbursement_disbursement_date)
+- INDEX on `due_date` WHERE due_date IS NOT NULL (idx_loan_disbursement_due_date)
+- FOREIGN KEY on `account_id`
+- FOREIGN KEY on `partner_id`
+
+**RLS Policies**:
+- Users can view loan disbursements for their entities' accounts
+- Editor+ can create/update loan disbursements
+- Admin+ can delete loan disbursements
+
+**Triggers**:
+- `trigger_create_loan_disbursement_on_loan_give`: Auto-creates loan_disbursement when LOAN_GIVE transaction is created
+- `trigger_update_loan_disbursement_after_settlement`: Updates balance and status when LOAN_SETTLE transactions change
+
+**Constraints**:
+- CHECK: `principal_amount` > 0
+- CHECK: `remaining_balance` >= 0
+- CHECK: `written_off_amount` >= 0
+
+**Payment Tracking**:
+Payments for loans are tracked using `main_transaction` with:
+- `loan_disbursement_id` column linking to this table
+- Transaction types: LOAN_RECEIVE (bank account), LOAN_SETTLE (loan_receivable account, auto-created)
+- Balance automatically updated by triggers
+
+**Borrower Information**:
+- Migration 037: Initially used `borrower_name` and `borrower_type` fields
+- Migration 039: Added `partner_id` to reference `business_partners` table
+- Migration 040: Removed redundant `borrower_type` field
+- Current: Use `partner_id` for new loans; `borrower_name` is deprecated
+
+**Created in**: Migration 037
+**Updated in**: Migration 039 (added partner_id), Migration 040 (removed borrower_type)
 
 ---
 
@@ -695,6 +827,9 @@ SELECT user_has_permission('entity-uuid', 'user-uuid', 'admin');
 |-------------|-------|--------|----------|---------|
 | `auto_create_main_transaction` | original_transaction | AFTER INSERT | auto_create_main_transaction() | Auto-create main_transaction |
 | `trigger_update_drawdown_on_settlement` | main_transaction | AFTER INSERT/UPDATE/DELETE | update_drawdown_after_settlement() | Update drawdown balance |
+| `trigger_update_loan_disbursement_after_settlement` | main_transaction | AFTER INSERT/UPDATE/DELETE | update_loan_disbursement_after_settlement() | Update loan disbursement balance (037) |
+| `trigger_create_loan_disbursement_on_loan_give` | main_transaction | AFTER INSERT | create_loan_disbursement_on_loan_give() | Auto-create loan disbursement (037) |
+| `trigger_auto_create_loan_settle_on_match` | main_transaction | AFTER UPDATE OF loan_disbursement_id | auto_create_loan_settle_on_match() | Auto-create LOAN_SETTLE (037) |
 | `trigger_validate_transfer_match` | main_transaction | BEFORE INSERT/UPDATE | validate_transfer_match() | Validate matching pairs |
 | `trigger_recalculate_balances` | balance_checkpoints | AFTER INSERT/UPDATE | recalculate_balances_after_checkpoint() | Recalculate balances |
 | `on_auth_user_created` (022) | auth.users | AFTER INSERT | handle_new_user() | Auto-create user profile |
@@ -735,6 +870,7 @@ main_transaction ──< transfer_matched_transaction_id >── main_transactio
 - **TRF_OUT** ↔ **TRF_IN**: Inter-account transfers
 - **DEBT_DRAW** ↔ **DEBT_ACQ**: Debt acquisition (drawdown on credit line ↔ receipt in bank)
 - **DEBT_PAY** ↔ **DEBT_SETTLE**: Debt repayment (payment from bank ↔ settlement on credit line)
+- **LOAN_RECEIVE** ↔ **LOAN_SETTLE**: Loan repayment (payment from borrower ↔ settlement on loan_receivable)
 
 ### Cross-Entity Transfer Prevention 🔒 (Migration 024)
 **CRITICAL SECURITY RULE**: Transfers can ONLY occur between accounts within the SAME entity.
@@ -794,9 +930,21 @@ Account 3 (Entity: Company A) → TRF_IN
 
 ## Migration Status
 
-Last applied migration: **026_fix_entity_users_infinite_recursion.sql**
+Last applied migration: **037_add_loan_receivable_system.sql**
 
 Key changes in recent migrations:
+- Migration 037 (current): Added Loan Receivable System
+  - Created `loan_disbursement` table for tracking loans given out
+  - Added loan-related enums: `borrower_type`, `loan_category`, `loan_status`
+  - Added loan transaction types: LOAN_GIVE, LOAN_RECEIVE, LOAN_SETTLE, LOAN_WRITEOFF
+  - Added `loan_disbursement_id` column to main_transaction
+  - Created triggers for auto-creation and balance updates
+  - Added RLS policies for entity-based access control
+  - Added 'loan_receivable' to allowed account_type values
+- Migration 034-036 (applied): Permission system enhancements
+  - Fixed entity_users RLS infinite recursion (034)
+  - Allowed editors to delete main_transaction records (035)
+  - Allowed editors to delete original_transaction records (036)
 - Migration 026 (applied): Fixed infinite recursion in entity_users RLS policies
   - Removed recursive policies that queried entity_users from within entity_users policies
   - Simplified to non-recursive policies for SELECT operations

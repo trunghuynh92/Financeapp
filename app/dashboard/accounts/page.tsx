@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Plus, Pencil, Trash2, Loader2, Search, Filter, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText, AlertTriangle } from "lucide-react"
+import { Plus, Pencil, Trash2, Loader2, Search, Filter, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText, AlertTriangle, DollarSign } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -50,6 +50,7 @@ const AccountTypeIcon = ({ type }: { type: AccountType }) => {
     investment: TrendingUp,
     credit_line: LineChart,
     term_loan: FileText,
+    loan_receivable: DollarSign,
   }
   const Icon = icons[type]
   return <Icon className="h-4 w-4" />

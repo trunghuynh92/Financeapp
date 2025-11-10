@@ -1,6 +1,6 @@
 // Account Management Types
 
-export type AccountType = 'bank' | 'cash' | 'credit_card' | 'investment' | 'credit_line' | 'term_loan'
+export type AccountType = 'bank' | 'cash' | 'credit_card' | 'investment' | 'credit_line' | 'term_loan' | 'loan_receivable'
 
 export type Currency = 'VND' | 'USD' | 'EUR'
 
@@ -120,6 +120,13 @@ export const ACCOUNT_TYPE_CONFIG: Record<AccountType, AccountTypeConfig> = {
     bgColor: 'bg-red-50',
     textColor: 'text-red-700',
     icon: 'FileText',
+  },
+  loan_receivable: {
+    label: 'Loan Receivable',
+    color: 'teal',
+    bgColor: 'bg-teal-50',
+    textColor: 'text-teal-700',
+    icon: 'DollarSign',
   },
 }
 

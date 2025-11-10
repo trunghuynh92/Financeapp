@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useEntity } from "@/contexts/EntityContext"
-import { ArrowLeft, Pencil, Trash2, Loader2, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText, Upload } from "lucide-react"
+import { ArrowLeft, Pencil, Trash2, Loader2, Building2, Wallet, CreditCard, TrendingUp, LineChart, FileText, Upload, DollarSign } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -32,6 +32,7 @@ import { BankImportDialog } from "@/components/bank-import-dialog"
 import { CheckpointHistoryCard } from "@/components/checkpoint-history-card"
 import { BalanceCheckpoint } from "@/types/checkpoint"
 import { DrawdownListCard } from "@/components/drawdown-list-card"
+import { LoanDisbursementListCard } from "@/components/loan-disbursement-list-card"
 
 const AccountTypeIcon = ({ type, className }: { type: AccountType; className?: string }) => {
   const icons = {
@@ -41,6 +42,7 @@ const AccountTypeIcon = ({ type, className }: { type: AccountType; className?: s
     investment: TrendingUp,
     credit_line: LineChart,
     term_loan: FileText,
+    loan_receivable: DollarSign,
   }
   const Icon = icons[type]
   return <Icon className={className} />
@@ -416,6 +418,19 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
           accountName={account.account_name}
           currency={account.currency}
           creditLimit={account.credit_limit}
+          onRefresh={() => {
+            fetchAccount()
+            fetchCalculatedBalance()
+          }}
+        />
+      )}
+
+      {/* Loan Disbursements (for loan_receivable only) */}
+      {account.account_type === 'loan_receivable' && (
+        <LoanDisbursementListCard
+          accountId={account.account_id}
+          accountName={account.account_name}
+          currency={account.currency}
           onRefresh={() => {
             fetchAccount()
             fetchCalculatedBalance()
