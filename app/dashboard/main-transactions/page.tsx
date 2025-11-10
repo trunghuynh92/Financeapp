@@ -732,7 +732,7 @@ export default function MainTransactionsPage() {
                                   </Badge>
                                 )}
                                 {/* Matched debt transaction */}
-                                {tx.transfer_matched_transaction_id && (tx.transaction_type_code === 'DEBT_DRAW' || tx.transaction_type_code === 'DEBT_ACQ') && (
+                                {tx.transfer_matched_transaction_id && tx.transaction_type_code === 'DEBT_TAKE' && (
                                   <Badge
                                     variant="secondary"
                                     className="bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200"
@@ -740,11 +740,11 @@ export default function MainTransactionsPage() {
                                     title="Click to unmatch this debt transaction"
                                   >
                                     <Link2 className="h-3 w-3 mr-1" />
-                                    Matched {tx.transaction_type_code === 'DEBT_DRAW' ? 'Drawdown' : 'Debt Acquired'}
+                                    Matched Debt
                                   </Badge>
                                 )}
                                 {/* Unmatched debt transaction */}
-                                {!tx.transfer_matched_transaction_id && (tx.transaction_type_code === 'DEBT_DRAW' || tx.transaction_type_code === 'DEBT_ACQ') && (
+                                {!tx.transfer_matched_transaction_id && tx.transaction_type_code === 'DEBT_TAKE' && (
                                   <Badge
                                     variant="secondary"
                                     className="bg-yellow-100 text-yellow-800 border-yellow-200 cursor-pointer hover:bg-yellow-200"
@@ -755,11 +755,11 @@ export default function MainTransactionsPage() {
                                     title="Click to match with corresponding debt transaction"
                                   >
                                     <Link2 className="h-3 w-3 mr-1" />
-                                    Unmatched {tx.transaction_type_code === 'DEBT_DRAW' ? 'Drawdown' : 'Debt Acquired'}
+                                    Unmatched Debt
                                   </Badge>
                                 )}
                                 {/* Matched debt payback */}
-                                {tx.transfer_matched_transaction_id && (tx.transaction_type_code === 'DEBT_PAY' || tx.transaction_type_code === 'DEBT_SETTLE') && (
+                                {tx.transfer_matched_transaction_id && tx.transaction_type_code === 'DEBT_PAY' && (
                                   <Badge
                                     variant="secondary"
                                     className="bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200"
@@ -767,7 +767,7 @@ export default function MainTransactionsPage() {
                                     title="Click to unmatch this debt payback"
                                   >
                                     <Link2 className="h-3 w-3 mr-1" />
-                                    Matched {tx.transaction_type_code === 'DEBT_PAY' ? 'Payback' : 'Settlement'}
+                                    Matched Payback
                                   </Badge>
                                 )}
                                 {/* Unmatched debt payback - needs drawdown selection */}
@@ -782,7 +782,7 @@ export default function MainTransactionsPage() {
                                     title="Click to select which drawdown this payment is for"
                                   >
                                     <Link2 className="h-3 w-3 mr-1" />
-                                    Unmatched Drawdown
+                                    Unmatched Payback
                                   </Badge>
                                 )}
                               </div>

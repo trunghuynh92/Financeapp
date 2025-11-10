@@ -77,19 +77,10 @@ export function QuickMatchDebtDialog({
 
       const data = await response.json()
 
-      // Filter to opposite type and exclude the source transaction
-      // DEBT_DRAW ↔ DEBT_ACQ pairs
-      let oppositeType: string
-      if (sourceTransaction.transaction_type_code === 'DEBT_DRAW') {
-        oppositeType = 'DEBT_ACQ'
-      } else if (sourceTransaction.transaction_type_code === 'DEBT_ACQ') {
-        oppositeType = 'DEBT_DRAW'
-      } else {
-        oppositeType = ''
-      }
-
+      // Filter to same type (DEBT_TAKE matches with DEBT_TAKE on different account)
+      // Both sides of debt transaction use the same type in the new simplified system
       const filtered = data.data.filter((t: MainTransactionDetails) =>
-        t.transaction_type_code === oppositeType &&
+        t.transaction_type_code === 'DEBT_TAKE' &&
         t.main_transaction_id !== sourceTransaction.main_transaction_id &&
         t.account_id !== sourceTransaction.account_id // Different account
       )
@@ -169,7 +160,8 @@ export function QuickMatchDebtDialog({
 
     setMatching(true)
     try {
-      const isSourceDrawdown = sourceTransaction.transaction_type_code === 'DEBT_DRAW'
+      // Not needed anymore - both sides use DEBT_TAKE
+      const isSourceDrawdown = false // Legacy variable kept for compatibility
 
       const response = await fetch("/api/transfers/match", {
         method: "POST",
@@ -207,7 +199,7 @@ export function QuickMatchDebtDialog({
 
   if (!sourceTransaction) return null
 
-  const isSourceDrawdown = sourceTransaction.transaction_type_code === 'DEBT_DRAW'
+  const isSourceDrawdown = false // Both sides use DEBT_TAKE now
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
