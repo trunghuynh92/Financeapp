@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
         debit_amount: null,
         balance: null, // Will be calculated
         transaction_source: 'user_manual',
-        created_by_user_id: user.id,
+        created_by_user_id: null, // original_transaction uses INTEGER, not UUID
       }])
       .select()
       .single()
@@ -287,7 +287,7 @@ export async function POST(request: NextRequest) {
         credit_amount: null,
         balance: null,
         transaction_source: 'user_manual',
-        created_by_user_id: user.id,
+        created_by_user_id: null, // original_transaction uses INTEGER, not UUID
       }])
       .select()
       .single()
