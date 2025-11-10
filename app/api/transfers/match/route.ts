@@ -3,6 +3,7 @@
  * Purpose: Match transaction pairs:
  *  - TRF_OUT ↔ TRF_IN (transfers)
  *  - DEBT_TAKE ↔ DEBT_TAKE (debt drawdowns - both sides use same type)
+ *  - LOAN_DISBURSE ↔ LOAN_DISBURSE (loan disbursements - both sides use same type)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate that transactions are valid pairs: TRF_OUT ↔ TRF_IN or DEBT_TAKE ↔ DEBT_TAKE
+    // Validate that transactions are valid pairs: TRF_OUT ↔ TRF_IN or DEBT_TAKE ↔ DEBT_TAKE or LOAN_DISBURSE ↔ LOAN_DISBURSE
     const { data: types } = await supabase
       .from('transaction_types')
       .select('transaction_type_id, type_code')
@@ -70,10 +71,11 @@ export async function POST(request: NextRequest) {
     // Check for valid pairs
     const isTransferPair = (outType === 'TRF_OUT' && inType === 'TRF_IN')
     const isDebtPair = (outType === 'DEBT_TAKE' && inType === 'DEBT_TAKE')
+    const isLoanPair = (outType === 'LOAN_DISBURSE' && inType === 'LOAN_DISBURSE')
 
-    if (!isTransferPair && !isDebtPair) {
+    if (!isTransferPair && !isDebtPair && !isLoanPair) {
       return NextResponse.json(
-        { error: 'Transactions must be matching pairs: TRF_OUT ↔ TRF_IN or DEBT_TAKE ↔ DEBT_TAKE' },
+        { error: 'Transactions must be matching pairs: TRF_OUT ↔ TRF_IN, DEBT_TAKE ↔ DEBT_TAKE, or LOAN_DISBURSE ↔ LOAN_DISBURSE' },
         { status: 400 }
       )
     }

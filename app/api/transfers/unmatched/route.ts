@@ -1,6 +1,6 @@
 /**
  * API Route: /api/transfers/unmatched
- * Purpose: Get all unmatched transfer transactions (TRF_OUT, TRF_IN, DEBT_TAKE without matches)
+ * Purpose: Get all unmatched transfer transactions (TRF_OUT, TRF_IN, DEBT_TAKE, LOAN_DISBURSE without matches)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -22,12 +22,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Build query for unmatched transfers and debt transactions
+    // Build query for unmatched transfers, debt, and loan transactions
     let query = supabase
       .from('main_transaction_details')
       .select('*')
       .eq('entity_id', entityId) // CRITICAL: Filter by entity first
-      .in('transaction_type_code', ['TRF_OUT', 'TRF_IN', 'DEBT_TAKE'])
+      .in('transaction_type_code', ['TRF_OUT', 'TRF_IN', 'DEBT_TAKE', 'LOAN_DISBURSE'])
       .is('transfer_matched_transaction_id', null)
 
     // Filter by account if specified
@@ -50,12 +50,14 @@ export async function GET(request: NextRequest) {
     const transfersOut = data?.filter(t => t.transaction_type_code === 'TRF_OUT') || []
     const transfersIn = data?.filter(t => t.transaction_type_code === 'TRF_IN') || []
     const debtTake = data?.filter(t => t.transaction_type_code === 'DEBT_TAKE') || []
+    const loanDisburse = data?.filter(t => t.transaction_type_code === 'LOAN_DISBURSE') || []
 
     return NextResponse.json({
       data: data || [],
       transfersOut,
       transfersIn,
       debtTake,
+      loanDisburse,
       total: data?.length || 0,
     })
   } catch (error) {
