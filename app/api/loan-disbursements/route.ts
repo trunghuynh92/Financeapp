@@ -233,19 +233,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 3: Get LOAN_GIVE transaction type
-    const { data: loanGiveType } = await supabase
+    const { data: loanGiveType, error: loanGiveError } = await supabase
       .from('transaction_types')
-      .select('type_id')
+      .select('transaction_type_id')
       .eq('type_code', 'LOAN_GIVE')
       .single()
 
-    if (!loanGiveType) {
+    if (loanGiveError || !loanGiveType) {
+      console.error('Error finding LOAN_GIVE type:', loanGiveError)
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
       await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
 
       return NextResponse.json(
-        { error: 'LOAN_GIVE transaction type not found' },
+        { error: 'LOAN_GIVE transaction type not found. Ensure Migration 037 has been run.' },
         { status: 500 }
       )
     }
@@ -254,7 +255,7 @@ export async function POST(request: NextRequest) {
     const { error: mainTxnError } = await supabase
       .from('main_transaction')
       .update({
-        transaction_type_id: loanGiveType.type_id,
+        transaction_type_id: loanGiveType.transaction_type_id,
         loan_disbursement_id: disbursement.loan_disbursement_id,
         description: description,
       })
@@ -305,20 +306,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 6: Get LOAN_SETTLE transaction type
-    const { data: loanSettleType } = await supabase
+    const { data: loanSettleType, error: loanSettleError } = await supabase
       .from('transaction_types')
-      .select('type_id')
+      .select('transaction_type_id')
       .eq('type_code', 'LOAN_SETTLE')
       .single()
 
-    if (!loanSettleType) {
+    if (loanSettleError || !loanSettleType) {
+      console.error('Error finding LOAN_SETTLE type:', loanSettleError)
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
       await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
       await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_2)
 
       return NextResponse.json(
-        { error: 'LOAN_SETTLE transaction type not found' },
+        { error: 'LOAN_SETTLE transaction type not found. Ensure Migration 037 has been run.' },
         { status: 500 }
       )
     }
@@ -327,7 +329,7 @@ export async function POST(request: NextRequest) {
     const { error: settleMainError } = await supabase
       .from('main_transaction')
       .update({
-        transaction_type_id: loanSettleType.type_id,
+        transaction_type_id: loanSettleType.transaction_type_id,
         loan_disbursement_id: disbursement.loan_disbursement_id,
         description: description,
       })
