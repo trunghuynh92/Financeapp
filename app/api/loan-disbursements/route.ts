@@ -197,15 +197,22 @@ export async function POST(request: NextRequest) {
     // Step 2: Create LOAN_GIVE transaction on source account (money out)
     const description = `Loan disbursement to ${partner.partner_name}`
 
+    // Generate unique transaction ID
+    const timestamp = Date.now()
+    const random1 = Math.random().toString(36).substring(2, 9)
+    const raw_transaction_id_1 = `TXN-${timestamp}-${random1}`
+
     const { data: originalTxn, error: originalError } = await supabase
       .from('original_transaction')
       .insert([{
+        raw_transaction_id: raw_transaction_id_1,
         account_id: body.source_account_id,
         transaction_date: body.disbursement_date,
         description: description,
-        amount: -body.principal_amount, // Negative = money out
-        balance_after: null, // Will be calculated
-        source: 'manual',
+        credit_amount: body.principal_amount, // Credit = money out from bank/cash
+        debit_amount: null,
+        balance: null, // Will be calculated
+        transaction_source: 'user_manual',
         created_by_user_id: user.id,
       }])
       .select()
@@ -235,7 +242,7 @@ export async function POST(request: NextRequest) {
     if (!loanGiveType) {
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
-      await supabase.from('original_transaction').delete().eq('original_transaction_id', originalTxn.original_transaction_id)
+      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
 
       return NextResponse.json(
         { error: 'LOAN_GIVE transaction type not found' },
@@ -251,13 +258,13 @@ export async function POST(request: NextRequest) {
         loan_disbursement_id: disbursement.loan_disbursement_id,
         description: description,
       })
-      .eq('original_transaction_id', originalTxn.original_transaction_id)
+      .eq('raw_transaction_id', raw_transaction_id_1)
 
     if (mainTxnError) {
       console.error('Error updating main transaction:', mainTxnError)
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
-      await supabase.from('original_transaction').delete().eq('original_transaction_id', originalTxn.original_transaction_id)
+      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
 
       return NextResponse.json(
         { error: 'Failed to update main transaction: ' + mainTxnError.message },
@@ -266,15 +273,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 5: Create LOAN_SETTLE transaction on loan_receivable account (asset increases)
+    const random2 = Math.random().toString(36).substring(2, 9)
+    const raw_transaction_id_2 = `TXN-${timestamp}-${random2}`
+
     const { data: loanSettleOriginal, error: settleOriginalError } = await supabase
       .from('original_transaction')
       .insert([{
+        raw_transaction_id: raw_transaction_id_2,
         account_id: body.account_id, // Loan receivable account
         transaction_date: body.disbursement_date,
         description: description,
-        amount: body.principal_amount, // Positive = asset increases
-        balance_after: null,
-        source: 'manual',
+        debit_amount: body.principal_amount, // Debit = asset increases
+        credit_amount: null,
+        balance: null,
+        transaction_source: 'user_manual',
         created_by_user_id: user.id,
       }])
       .select()
@@ -284,7 +296,7 @@ export async function POST(request: NextRequest) {
       console.error('Error creating loan settle original transaction:', settleOriginalError)
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
-      await supabase.from('original_transaction').delete().eq('original_transaction_id', originalTxn.original_transaction_id)
+      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
 
       return NextResponse.json(
         { error: 'Failed to create loan settle transaction: ' + settleOriginalError.message },
@@ -302,8 +314,8 @@ export async function POST(request: NextRequest) {
     if (!loanSettleType) {
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
-      await supabase.from('original_transaction').delete().eq('original_transaction_id', originalTxn.original_transaction_id)
-      await supabase.from('original_transaction').delete().eq('original_transaction_id', loanSettleOriginal.original_transaction_id)
+      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
+      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_2)
 
       return NextResponse.json(
         { error: 'LOAN_SETTLE transaction type not found' },
@@ -319,14 +331,14 @@ export async function POST(request: NextRequest) {
         loan_disbursement_id: disbursement.loan_disbursement_id,
         description: description,
       })
-      .eq('original_transaction_id', loanSettleOriginal.original_transaction_id)
+      .eq('raw_transaction_id', raw_transaction_id_2)
 
     if (settleMainError) {
       console.error('Error updating loan settle main transaction:', settleMainError)
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
-      await supabase.from('original_transaction').delete().eq('original_transaction_id', originalTxn.original_transaction_id)
-      await supabase.from('original_transaction').delete().eq('original_transaction_id', loanSettleOriginal.original_transaction_id)
+      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
+      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_2)
 
       return NextResponse.json(
         { error: 'Failed to update loan settle main transaction: ' + settleMainError.message },
