@@ -39,16 +39,17 @@ WHERE transaction_type_id = (
   SELECT transaction_type_id FROM transaction_types WHERE type_code = 'LOAN_SETTLE'
 );
 
+-- Update categories that might reference LOAN_SETTLE
+UPDATE categories
+SET transaction_type_id = (
+  SELECT transaction_type_id FROM transaction_types WHERE type_code = 'LOAN_COLLECT'
+)
+WHERE transaction_type_id IN (
+  SELECT transaction_type_id FROM transaction_types WHERE type_code = 'LOAN_SETTLE'
+);
+
 -- Delete LOAN_SETTLE type (no longer needed)
 DELETE FROM transaction_types WHERE type_code = 'LOAN_SETTLE';
-
--- ==============================================================================
--- Step 2: Update categories that reference old transaction types
--- ==============================================================================
-
--- Update categories that reference DEBT_ACQ to use DEBT_PAY instead
--- (DEBT_ACQ categories like "Loan Received" should now use DEBT_TAKE once we create it)
--- For now, we'll update them after creating DEBT_TAKE
 
 -- ==============================================================================
 -- Step 3: Update DEBT transaction types
@@ -99,7 +100,8 @@ WHERE transaction_type_id = (
   SELECT transaction_type_id FROM transaction_types WHERE type_code = 'DEBT_SETTLE'
 );
 
--- Update categories that reference DEBT_SETTLE to use DEBT_PAY
+-- Update categories that reference DEBT_DRAW or DEBT_SETTLE to use DEBT_PAY
+-- (These are payment-related categories)
 UPDATE categories
 SET transaction_type_id = (
   SELECT transaction_type_id FROM transaction_types WHERE type_code = 'DEBT_PAY'
@@ -107,6 +109,19 @@ SET transaction_type_id = (
 WHERE transaction_type_id IN (
   SELECT transaction_type_id FROM transaction_types WHERE type_code IN ('DEBT_SETTLE', 'DEBT_DRAW')
 );
+
+-- Final safety check: Update any remaining categories that reference old types
+-- This catches any edge cases we might have missed
+UPDATE categories c
+SET transaction_type_id = CASE
+  WHEN tt.type_code = 'DEBT_ACQ' THEN (SELECT transaction_type_id FROM transaction_types WHERE type_code = 'DEBT_TAKE')
+  WHEN tt.type_code = 'DEBT_DRAW' THEN (SELECT transaction_type_id FROM transaction_types WHERE type_code = 'DEBT_PAY')
+  WHEN tt.type_code = 'DEBT_SETTLE' THEN (SELECT transaction_type_id FROM transaction_types WHERE type_code = 'DEBT_PAY')
+  ELSE c.transaction_type_id
+END
+FROM transaction_types tt
+WHERE c.transaction_type_id = tt.transaction_type_id
+  AND tt.type_code IN ('DEBT_ACQ', 'DEBT_DRAW', 'DEBT_SETTLE');
 
 -- Delete old DEBT types (no longer needed)
 DELETE FROM transaction_types WHERE type_code IN ('DEBT_ACQ', 'DEBT_DRAW', 'DEBT_SETTLE');
