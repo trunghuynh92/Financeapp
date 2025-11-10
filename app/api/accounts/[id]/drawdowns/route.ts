@@ -220,17 +220,17 @@ export async function POST(
       )
     }
 
-    // Get DEBT_DRAW transaction type ID
-    const { data: debtDrawType, error: typeError } = await supabase
+    // Get DEBT_TAKE transaction type ID
+    const { data: debtTakeType, error: typeError } = await supabase
       .from('transaction_types')
       .select('transaction_type_id')
-      .eq('type_code', 'DEBT_DRAW')
+      .eq('type_code', 'DEBT_TAKE')
       .single()
 
-    if (typeError || !debtDrawType) {
-      console.error('DEBT_DRAW transaction type not found. Please run migration 017.')
+    if (typeError || !debtTakeType) {
+      console.error('DEBT_TAKE transaction type not found. Please run migration 042.')
       return NextResponse.json(
-        { error: 'DEBT_DRAW transaction type not found. Please run migration 017.' },
+        { error: 'DEBT_TAKE transaction type not found. Please run migration 042.' },
         { status: 500 }
       )
     }
@@ -258,7 +258,7 @@ export async function POST(
     const { error: updateError } = await supabase
       .from('main_transaction')
       .update({
-        transaction_type_id: debtDrawType.transaction_type_id,
+        transaction_type_id: debtTakeType.transaction_type_id,
         transaction_subtype: 'principal',
         drawdown_id: drawdown.drawdown_id,
       })
