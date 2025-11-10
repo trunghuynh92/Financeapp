@@ -209,8 +209,8 @@ export async function POST(request: NextRequest) {
         account_id: body.source_account_id,
         transaction_date: body.disbursement_date,
         description: description,
-        credit_amount: body.principal_amount, // Credit = money out from bank/cash
-        debit_amount: null,
+        debit_amount: body.principal_amount, // Debit = money out from bank/cash
+        credit_amount: null,
         balance: null, // Will be calculated
         transaction_source: 'user_manual',
         created_by_user_id: null, // original_transaction uses INTEGER, not UUID
@@ -284,8 +284,8 @@ export async function POST(request: NextRequest) {
         account_id: body.account_id, // Loan receivable account
         transaction_date: body.disbursement_date,
         description: description,
-        debit_amount: body.principal_amount, // Debit = asset increases
-        credit_amount: null,
+        credit_amount: body.principal_amount, // Credit = asset increases (loan receivable)
+        debit_amount: null,
         balance: null,
         transaction_source: 'user_manual',
         created_by_user_id: null, // original_transaction uses INTEGER, not UUID
