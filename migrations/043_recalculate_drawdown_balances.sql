@@ -33,9 +33,9 @@ SET
       WHERE mt.drawdown_id = dd.drawdown_id
         AND tt.type_code = 'DEBT_PAY'
         AND mt.transfer_matched_transaction_id IS NOT NULL
-    ), 0) >= dd.original_amount THEN 'settled'::drawdown_status
-    WHEN CURRENT_DATE > dd.due_date AND dd.due_date IS NOT NULL THEN 'overdue'::drawdown_status
-    ELSE 'active'::drawdown_status
+    ), 0) >= dd.original_amount THEN 'settled'
+    WHEN CURRENT_DATE > dd.due_date AND dd.due_date IS NOT NULL THEN 'overdue'
+    ELSE 'active'
   END;
 
 -- Verify the migration
