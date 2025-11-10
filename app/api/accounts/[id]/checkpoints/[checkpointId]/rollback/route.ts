@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { deleteCheckpoint, getCheckpointById } from '@/lib/checkpoint-service'
 
 export async function POST(
@@ -12,6 +12,7 @@ export async function POST(
   { params }: { params: { id: string; checkpointId: string } }
 ) {
   try {
+    const supabase = createSupabaseServerClient()
     const accountId = parseInt(params.id, 10)
     const checkpointId = parseInt(params.checkpointId, 10)
 

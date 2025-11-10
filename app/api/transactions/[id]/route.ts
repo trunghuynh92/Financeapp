@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { getAccountEntityId, getUserEntityRole, canWrite } from '@/lib/permissions'
 
 // GET /api/transactions/[id] - Get single transaction
 export async function GET(
@@ -48,15 +49,41 @@ export async function PATCH(
     const transactionId = params.id
     const body = await request.json()
 
+    // Get current user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     // Check if transaction exists and get is_balance_adjustment flag
     const { data: existingTransaction, error: fetchError } = await supabase
       .from('original_transaction')
-      .select('raw_transaction_id, is_balance_adjustment, checkpoint_id')
+      .select('raw_transaction_id, is_balance_adjustment, checkpoint_id, account_id')
       .eq('raw_transaction_id', transactionId)
       .single()
 
     if (fetchError || !existingTransaction) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
+    }
+
+    // Check write permissions for this transaction's account
+    const entityId = await getAccountEntityId(supabase, existingTransaction.account_id)
+    if (!entityId) {
+      return NextResponse.json(
+        { error: 'Account not found or access denied' },
+        { status: 403 }
+      )
+    }
+
+    const role = await getUserEntityRole(supabase, user.id, entityId)
+    if (!canWrite(role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions. Viewers cannot modify transactions.' },
+        { status: 403 }
+      )
     }
 
     // Prevent editing balance adjustment transactions
@@ -195,15 +222,41 @@ export async function DELETE(
     const supabase = createSupabaseServerClient()
     const transactionId = params.id
 
+    // Get current user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     // Check if transaction exists and get is_balance_adjustment flag
     const { data: existingTransaction, error: fetchError } = await supabase
       .from('original_transaction')
-      .select('raw_transaction_id, description, is_balance_adjustment, checkpoint_id')
+      .select('raw_transaction_id, description, is_balance_adjustment, checkpoint_id, account_id')
       .eq('raw_transaction_id', transactionId)
       .single()
 
     if (fetchError || !existingTransaction) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
+    }
+
+    // Check write permissions for this transaction's account
+    const entityId = await getAccountEntityId(supabase, existingTransaction.account_id)
+    if (!entityId) {
+      return NextResponse.json(
+        { error: 'Account not found or access denied' },
+        { status: 403 }
+      )
+    }
+
+    const role = await getUserEntityRole(supabase, user.id, entityId)
+    if (!canWrite(role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions. Viewers cannot delete transactions.' },
+        { status: 403 }
+      )
     }
 
     // Prevent deleting balance adjustment transactions

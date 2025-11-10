@@ -58,12 +58,23 @@ export async function POST(request: NextRequest) {
 
     // Validate split amounts sum to original
     const totalSplitAmount = splits.reduce((sum, split) => sum + split.amount, 0)
+
+    // Debug logging
+    console.log('Split validation:', {
+      originalAmount,
+      totalSplitAmount,
+      diff: Math.abs(totalSplitAmount - originalAmount),
+      splits: splits.map(s => ({ amount: s.amount })),
+      raw_transaction_id,
+    })
+
     if (Math.abs(totalSplitAmount - originalAmount) > 0.01) {
       return NextResponse.json(
         {
-          error: 'Split amounts must sum to original amount',
+          error: `Split amounts (${totalSplitAmount.toFixed(2)}) must sum to original transaction amount (${originalAmount.toFixed(2)})`,
           original: originalAmount,
           total: totalSplitAmount,
+          splits: splits.map(s => s.amount),
         },
         { status: 400 }
       )
@@ -114,6 +125,13 @@ export async function POST(request: NextRequest) {
       is_split: true,
       split_sequence: index + 1,
     }))
+
+    console.log('About to insert splits:', {
+      count: splitRecords.length,
+      amounts: splitRecords.map(s => s.amount),
+      total: splitRecords.reduce((sum, s) => sum + s.amount, 0),
+      raw_transaction_id,
+    })
 
     const { data: createdSplits, error: insertError } = await supabase
       .from('main_transaction')

@@ -3,7 +3,7 @@
  * Implements core business logic for the "No money without origin" principle
  */
 
-import { supabase } from './supabase'
+import { createSupabaseServerClient } from './supabase-server'
 import type {
   BalanceCheckpoint,
   CreateOrUpdateCheckpointParams,
@@ -26,6 +26,7 @@ export async function calculateBalanceUpToDate(
   accountId: number,
   upToDate: Date
 ): Promise<BalanceCalculation> {
+  const supabase = createSupabaseServerClient()
   try {
     // Use the database function for accurate calculation
     const { data, error } = await supabase.rpc('calculate_balance_up_to_date', {
@@ -70,6 +71,7 @@ export async function calculateBalanceUpToDate(
 export async function createOrUpdateBalanceAdjustmentTransaction(
   checkpoint: BalanceCheckpoint
 ): Promise<void> {
+  const supabase = createSupabaseServerClient()
   try {
     const {
       checkpoint_id,
@@ -198,6 +200,8 @@ export async function createOrUpdateBalanceAdjustmentTransaction(
 export async function createOrUpdateCheckpoint(
   params: CreateOrUpdateCheckpointParams
 ): Promise<BalanceCheckpoint> {
+  const supabase = createSupabaseServerClient()
+
   const {
     account_id,
     checkpoint_date,
@@ -306,6 +310,8 @@ export async function createOrUpdateCheckpoint(
  * - account_balances = cached for quick queries
  */
 export async function syncAccountBalance(accountId: number): Promise<void> {
+  const supabase = createSupabaseServerClient()
+
   try {
     console.log(`Syncing account_balances for account ${accountId}...`)
 
@@ -419,6 +425,7 @@ export async function syncAccountBalance(accountId: number): Promise<void> {
 export async function recalculateAllCheckpoints(
   params: RecalculateCheckpointsParams
 ): Promise<CheckpointRecalculationResult[]> {
+  const supabase = createSupabaseServerClient()
   const { account_id, from_date, to_date, checkpoint_ids } = params
 
   try {
@@ -647,6 +654,7 @@ export async function recalculateAllCheckpoints(
 export async function updateAccountOpeningBalanceDate(
   accountId: number
 ): Promise<void> {
+  const supabase = createSupabaseServerClient()
   try {
     // Use the database function for accurate calculation
     const { error } = await supabase.rpc('update_account_opening_balance_date', {
@@ -678,6 +686,7 @@ export async function getAccountCheckpoints(
     offset?: number
   }
 ): Promise<BalanceCheckpoint[]> {
+  const supabase = createSupabaseServerClient()
   try {
     let query = supabase
       .from('balance_checkpoints')
@@ -719,6 +728,7 @@ export async function getAccountCheckpoints(
 export async function getCheckpointById(
   checkpointId: number
 ): Promise<BalanceCheckpoint | null> {
+  const supabase = createSupabaseServerClient()
   try {
     const { data, error } = await supabase
       .from('balance_checkpoints')
@@ -742,6 +752,7 @@ export async function getCheckpointById(
  * After deletion, recalculates all remaining checkpoints
  */
 export async function deleteCheckpoint(checkpointId: number): Promise<void> {
+  const supabase = createSupabaseServerClient()
   try {
     // Get the checkpoint to find the account_id
     const checkpoint = await getCheckpointById(checkpointId)
@@ -795,6 +806,7 @@ export async function deleteCheckpoint(checkpointId: number): Promise<void> {
  * Get all flagged (balance adjustment) transactions for an account
  */
 export async function getFlaggedTransactions(accountId: number) {
+  const supabase = createSupabaseServerClient()
   try {
     const { data, error } = await supabase
       .from('original_transaction')
@@ -827,6 +839,7 @@ export async function getFlaggedTransactions(accountId: number) {
  * Get checkpoint summary statistics for an account
  */
 export async function getCheckpointSummary(accountId: number) {
+  const supabase = createSupabaseServerClient()
   try {
     const { data, error } = await supabase
       .from('balance_checkpoints')

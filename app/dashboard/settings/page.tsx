@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card"
 import { CategoriesManager } from "@/components/settings/CategoriesManager"
 import { BranchesManager } from "@/components/settings/BranchesManager"
 import { TransactionTypesManager } from "@/components/settings/TransactionTypesManager"
+import { TeamMembersManager } from "@/components/settings/TeamMembersManager"
 
 export default function SettingsPage() {
   return (
@@ -12,16 +13,21 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">
-          Manage categories, branches, and transaction types
+          Manage team members, categories, branches, and transaction types
         </p>
       </div>
 
-      <Tabs defaultValue="categories" className="space-y-4">
+      <Tabs defaultValue="team" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="team">Team Members</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="branches">Branches</TabsTrigger>
           <TabsTrigger value="types">Transaction Types</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="team" className="space-y-4">
+          <TeamMembersManager />
+        </TabsContent>
 
         <TabsContent value="categories" className="space-y-4">
           <CategoriesManager />

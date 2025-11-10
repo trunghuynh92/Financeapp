@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { DatePicker } from "@/components/ui/date-picker"
-import { supabase, type Entity } from "@/lib/supabase"
+import { createSupabaseClient, type Entity } from "@/lib/supabase"
 import type { Account, AccountType, Currency, CreateAccountInput, UpdateAccountInput } from "@/types/account"
 import { ACCOUNT_TYPE_CONFIG, CURRENCIES } from "@/types/account"
 import { requiresBankInfo, requiresCreditLimit, validateAccountNumber } from "@/lib/account-utils"
@@ -98,6 +98,7 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
 
   async function fetchEntities() {
     try {
+      const supabase = createSupabaseClient()
       const { data, error } = await supabase
         .from("entities")
         .select("*")

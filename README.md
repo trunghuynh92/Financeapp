@@ -1,6 +1,40 @@
-# Finance SaaS v4.0.0
+# Finance SaaS v4.1.0
 
-A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, advanced transaction processing, debt management, balance checkpointing, and detailed financial reporting with complete entity isolation.
+A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, team collaboration, advanced transaction processing, debt management, balance checkpointing, and detailed financial reporting with complete entity isolation.
+
+## Version 4.1.0 - Team Collaboration & Permission Refinements
+
+### What's New in v4.1.0
+
+#### 👥 Team Management
+- **Team Member Invitations**: Invite users to entities with specific roles
+- **Role Assignment**: Assign Owner, Admin, Editor, or Viewer roles to team members
+- **Member Management UI**: View, edit roles, and remove team members from settings page
+- **SECURITY DEFINER Functions**: Bypass RLS for team operations while maintaining security
+- **Team Member Display**: View all team members with their roles and details
+
+#### 🔒 Enhanced Permission System
+- **Application-Level Permissions**: Added permission checks to all write operations
+- **Role-Based Write Access**: Owner/Admin/Editor can modify data, Viewer is read-only
+- **Editor Delete Permissions**: Editors can now delete transactions and splits (Migrations 035, 036)
+- **Transaction Split Permissions**: Fixed RLS blocking for editor split operations
+- **Data Isolation Fixes**: Resolved main_transactions entity filtering issues
+
+#### 🐛 Critical Bug Fixes
+- **RLS Infinite Recursion**: Fixed entity_users SELECT policy causing system-wide failures (Migration 034)
+- **Split Transaction Doubling**: Resolved issue where splits were duplicated for editors
+- **Import Authentication**: Fixed transaction import using wrong Supabase client
+- **Transaction Dates Display**: Fixed account detail page showing missing transaction dates
+- **Rollback Authentication**: Fixed checkpoint rollback authentication issues
+
+#### 🗄️ Database Migrations (v4.1.0)
+- **Migration 029**: Allow user lookup by email for entity invites
+- **Migration 030-033**: Team member management with SECURITY DEFINER functions
+- **Migration 034**: Fixed entity_users RLS infinite recursion
+- **Migration 035**: Allow editors to delete main_transaction records
+- **Migration 036**: Allow editors to delete original_transaction records
+
+---
 
 ## Version 4.0.0 - Multi-User Authentication & Security Hardening
 

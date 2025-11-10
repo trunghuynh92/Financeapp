@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { getAccountEntityId, getUserEntityRole, canWrite } from '@/lib/permissions'
 
 // ==============================================================================
 // GET - Get single main transaction with full details
@@ -74,10 +75,19 @@ export async function PATCH(
 
     const body = await request.json()
 
+    // Get current user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     // Check if transaction exists and if it's a balance adjustment
     const { data: existingTransaction, error: fetchError } = await supabase
       .from('main_transaction')
-      .select('main_transaction_id, raw_transaction_id')
+      .select('main_transaction_id, raw_transaction_id, account_id')
       .eq('main_transaction_id', mainTransactionId)
       .single()
 
@@ -85,6 +95,23 @@ export async function PATCH(
       return NextResponse.json(
         { error: 'Main transaction not found' },
         { status: 404 }
+      )
+    }
+
+    // Check write permissions for this transaction's account
+    const entityId = await getAccountEntityId(supabase, existingTransaction.account_id)
+    if (!entityId) {
+      return NextResponse.json(
+        { error: 'Account not found or access denied' },
+        { status: 403 }
+      )
+    }
+
+    const role = await getUserEntityRole(supabase, user.id, entityId)
+    if (!canWrite(role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions. Viewers cannot modify transactions.' },
+        { status: 403 }
       )
     }
 
@@ -199,10 +226,19 @@ export async function DELETE(
       )
     }
 
+    // Get current user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     // Check if this transaction is part of a split
     const { data: transaction, error: fetchError } = await supabase
       .from('main_transaction')
-      .select('raw_transaction_id, is_split')
+      .select('raw_transaction_id, is_split, account_id')
       .eq('main_transaction_id', mainTransactionId)
       .single()
 
@@ -215,6 +251,23 @@ export async function DELETE(
       return NextResponse.json(
         { error: 'Main transaction not found' },
         { status: 404 }
+      )
+    }
+
+    // Check write permissions for this transaction's account
+    const entityId = await getAccountEntityId(supabase, transaction.account_id)
+    if (!entityId) {
+      return NextResponse.json(
+        { error: 'Account not found or access denied' },
+        { status: 403 }
+      )
+    }
+
+    const role = await getUserEntityRole(supabase, user.id, entityId)
+    if (!canWrite(role)) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions. Viewers cannot delete transactions.' },
+        { status: 403 }
       )
     }
 

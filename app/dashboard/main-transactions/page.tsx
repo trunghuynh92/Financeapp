@@ -132,9 +132,14 @@ export default function MainTransactionsPage() {
   const fetchTransactions = async () => {
     setLoading(true)
     try {
+      if (!currentEntity) return
+
       const params = new URLSearchParams()
       params.append("page", currentPage.toString())
       params.append("limit", itemsPerPage.toString())
+
+      // CRITICAL: Always filter by current entity
+      params.append("entity_id", currentEntity.id)
 
       if (selectedAccount !== "all") params.append("account_id", selectedAccount)
       if (selectedType !== "all") params.append("transaction_type_id", selectedType)

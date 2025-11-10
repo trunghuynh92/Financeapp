@@ -1,8 +1,8 @@
 # Database Schema Documentation
 
-**Last Updated**: 2025-11-10
+**Last Updated**: 2025-11-09
 **Database**: PostgreSQL 15+ via Supabase
-**Current Migration**: 030_fix_entity_users_recursion_final.sql
+**Current Migration**: 026_fix_entity_users_infinite_recursion.sql (applied)
 
 ---
 
@@ -36,14 +36,13 @@ User profiles for multi-user authentication and team management
 **RLS Policies**:
 - Users can read their own profile
 - Users can update their own profile
-- Authenticated users can look up other users by email (for entity invites) - Added in Migration 029
+- Users can read profiles of team members in same entities
 
 **Triggers**:
 - `on_auth_user_created`: Automatically creates user profile when auth user is created (references auth.users)
 - Auto-updates `updated_at` on profile changes
 
 **Created in**: Migration 022
-**Updated in**: Migration 029 (added user lookup policy)
 
 ---
 
@@ -67,9 +66,7 @@ Junction table managing user access to entities with role-based permissions
 
 **RLS Policies**:
 - Users can read their own entity memberships
-- Owners can invite users to entities
-- Triggers can create initial owner records (fixed in Migration 027 to allow entity creation)
-- Service role operations use SECURITY DEFINER to bypass RLS when needed
+- Service role can manage entity memberships (fixed in Migration 026 to avoid infinite recursion)
 
 **Role Hierarchy**:
 - `owner` (4): Full access including deletion and member management
@@ -129,7 +126,7 @@ Financial accounts linked to entities
 
 ---
 
-### 5. `balance_checkpoints`
+### 3. `balance_checkpoints`
 Historical balance snapshots for reconciliation
 
 | Column | Type | Constraints | Description |
@@ -153,7 +150,7 @@ Historical balance snapshots for reconciliation
 
 ---
 
-### 6. `original_transaction`
+### 4. `original_transaction`
 Raw transaction layer (immutable source of truth)
 
 | Column | Type | Constraints | Description |
@@ -189,7 +186,7 @@ Raw transaction layer (immutable source of truth)
 
 ---
 
-### 7. `main_transaction`
+### 5. `main_transaction`
 Processed transaction layer with categorization
 
 | Column | Type | Constraints | Description |
@@ -228,7 +225,7 @@ Processed transaction layer with categorization
 
 ---
 
-### 8. `transaction_types`
+### 6. `transaction_types`
 Transaction type definitions
 
 | Column | Type | Constraints | Description |
@@ -259,7 +256,7 @@ Transaction type definitions
 
 ---
 
-### 9. `categories`
+### 7. `categories`
 Hierarchical transaction categories
 
 | Column | Type | Constraints | Description |
@@ -284,7 +281,7 @@ Hierarchical transaction categories
 
 ---
 
-### 10. `branches`
+### 8. `branches`
 Store/location tracking
 
 | Column | Type | Constraints | Description |
@@ -305,7 +302,7 @@ Store/location tracking
 
 ---
 
-### 11. `debt_drawdown`
+### 9. `debt_drawdown`
 Debt drawdown tracking for credit lines and term loans
 
 | Column | Type | Constraints | Description |
@@ -362,29 +359,7 @@ See `main_transaction` table (#5) for full schema.
 
 ---
 
-### 12. `debt_payback`
-Debt payback tracking for matched transfers (Migration 020)
-
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `payback_id` | SERIAL | PRIMARY KEY | Auto-incrementing ID |
-| `credit_account_id` | INTEGER | FOREIGN KEY → accounts(account_id) | Account being paid back |
-| `debit_account_id` | INTEGER | FOREIGN KEY → accounts(account_id) | Account paying |
-| `transfer_pair_id` | INTEGER | FOREIGN KEY → transfer_pairs(transfer_pair_id) | Linked transfer |
-| `amount` | DECIMAL(15,2) | NOT NULL | Payback amount |
-| `payback_date` | DATE | NOT NULL | Payment date |
-| `notes` | TEXT | NULLABLE | Additional notes |
-| `created_at` | TIMESTAMP | DEFAULT NOW() | Creation timestamp |
-
-**Indexes**:
-- PRIMARY KEY on `payback_id`
-- FOREIGN KEY on `credit_account_id`, `debit_account_id`, `transfer_pair_id`
-
-**Created in**: Migration 020
-
----
-
-### 13. `import_batch`
+### 11. `import_batch`
 Track import batches for rollback support
 
 | Column | Type | Constraints | Description |
@@ -397,36 +372,67 @@ Track import batches for rollback support
 | `transaction_count` | INTEGER | DEFAULT 0 | Number of transactions |
 | `status` | VARCHAR | DEFAULT 'completed' | 'completed', 'rolled_back' |
 
-**Indexes**:
-- PRIMARY KEY on `import_batch_id`
-- FOREIGN KEY on `account_id`
-
-**Created in**: Early migrations
-
 ---
 
-### 14. `transfer_pairs`
-Tracks matched transfer transactions between accounts (Migration 019)
+### 12. `users` (Migration 022)
+User profiles extending Supabase auth.users
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `transfer_pair_id` | SERIAL | PRIMARY KEY | Auto-incrementing ID |
-| `transfer_out_id` | INTEGER | FOREIGN KEY → main_transaction(main_transaction_id) | Source transaction |
-| `transfer_in_id` | INTEGER | FOREIGN KEY → main_transaction(main_transaction_id) | Destination transaction |
-| `amount` | DECIMAL(15,2) | NOT NULL | Transfer amount |
-| `transfer_date` | DATE | NOT NULL | Transfer date |
-| `notes` | TEXT | NULLABLE | Additional notes |
-| `created_at` | TIMESTAMP | DEFAULT NOW() | Creation timestamp |
+| `id` | UUID | PRIMARY KEY, FOREIGN KEY → auth.users(id) | User ID from Supabase Auth |
+| `email` | TEXT | NOT NULL, UNIQUE | User email |
+| `full_name` | TEXT | NULLABLE | User's full name |
+| `avatar_url` | TEXT | NULLABLE | Profile avatar URL |
+| `created_at` | TIMESTAMPTZ | DEFAULT NOW() | Account creation |
+| `updated_at` | TIMESTAMPTZ | DEFAULT NOW() | Last profile update |
 
 **Indexes**:
-- PRIMARY KEY on `transfer_pair_id`
-- FOREIGN KEY on `transfer_out_id`, `transfer_in_id`
+- PRIMARY KEY on `id`
+- UNIQUE index on `email`
+- INDEX on `email` for lookups
 
-**Constraints**:
-- Both transactions must be transfer types (TRF_OUT, TRF_IN)
-- Amount must match between paired transactions
+**RLS Policies**:
+- Users can read their own profile
+- Users can update their own profile
 
-**Created in**: Migration 019
+**Triggers**:
+- `on_auth_user_created`: Automatically creates user profile when auth user is created
+
+---
+
+### 13. `entity_users` (Migration 022)
+Junction table for multi-entity access with role-based permissions
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | SERIAL | PRIMARY KEY | Auto-incrementing ID |
+| `entity_id` | UUID | NOT NULL, FOREIGN KEY → entities(id) | Related entity |
+| `user_id` | UUID | NOT NULL, FOREIGN KEY → users(id) | Related user |
+| `role` | user_role | NOT NULL, DEFAULT 'viewer' | User role: 'owner', 'admin', 'editor', 'viewer' |
+| `created_at` | TIMESTAMPTZ | DEFAULT NOW() | Assignment timestamp |
+| `created_by_user_id` | UUID | NULLABLE, FOREIGN KEY → users(id) | User who created assignment |
+
+**Indexes**:
+- PRIMARY KEY on `id`
+- UNIQUE constraint on `(entity_id, user_id)` - user can only have one role per entity
+- INDEX on `entity_id`
+- INDEX on `user_id`
+
+**Enum Type**:
+```sql
+CREATE TYPE user_role AS ENUM ('owner', 'admin', 'editor', 'viewer');
+```
+
+**Role Hierarchy** (higher = more permissions):
+1. `viewer` - Read-only access
+2. `editor` - Can create/edit transactions and imports
+3. `admin` - Can manage accounts, settings (cannot delete accounts or manage users)
+4. `owner` - Full access including user management
+
+**RLS Policies** (Fixed in Migration 026):
+- Users can read their own entity memberships only
+- Service role can create entity memberships (for triggers)
+- Note: Previous recursive policies that caused infinite loops were removed
 
 ---
 

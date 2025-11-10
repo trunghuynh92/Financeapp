@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { verifyWritePermission } from '@/lib/permissions'
 
 // GET /api/transactions - List all transactions with filters
 export async function GET(request: NextRequest) {
@@ -140,6 +141,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Missing required fields: account_id, transaction_date' },
         { status: 400 }
+      )
+    }
+
+    // Get current user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    // Check write permissions
+    try {
+      await verifyWritePermission(supabase, user.id, body.account_id)
+    } catch (permError: any) {
+      return NextResponse.json(
+        { error: permError.message },
+        { status: 403 }
       )
     }
 

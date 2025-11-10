@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
 
     // Filters
+    const entityId = searchParams.get('entity_id')
     const accountId = searchParams.get('account_id')
     const transactionTypeId = searchParams.get('transaction_type_id')
     const categoryId = searchParams.get('category_id')
@@ -33,6 +34,25 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
 
+    // If entity_id filter is provided, get all account IDs for that entity first
+    let accountIdsForEntity: number[] = []
+    if (entityId && !accountId) {
+      const { data: entityAccounts } = await supabase
+        .from('accounts')
+        .select('account_id')
+        .eq('entity_id', entityId)
+
+      accountIdsForEntity = entityAccounts?.map(a => a.account_id) || []
+
+      // If entity has no accounts, return empty result
+      if (accountIdsForEntity.length === 0) {
+        return NextResponse.json({
+          data: [],
+          pagination: { page, limit, total: 0, totalPages: 0 }
+        })
+      }
+    }
+
     // Use the view for full details
     let query = supabase
       .from('main_transaction_details')
@@ -40,7 +60,11 @@ export async function GET(request: NextRequest) {
 
     // Apply filters
     if (accountId) {
+      // Specific account filter takes priority
       query = query.eq('account_id', accountId)
+    } else if (entityId && accountIdsForEntity.length > 0) {
+      // Filter by entity's accounts
+      query = query.in('account_id', accountIdsForEntity)
     }
 
     if (transactionTypeId) {
@@ -92,7 +116,11 @@ export async function GET(request: NextRequest) {
       .select('*', { count: 'exact', head: true })
 
     // Apply same filters to count query
-    if (accountId) countQuery = countQuery.eq('account_id', accountId)
+    if (accountId) {
+      countQuery = countQuery.eq('account_id', accountId)
+    } else if (entityId && accountIdsForEntity.length > 0) {
+      countQuery = countQuery.in('account_id', accountIdsForEntity)
+    }
     if (transactionTypeId) countQuery = countQuery.eq('transaction_type_id', transactionTypeId)
     if (categoryId) countQuery = countQuery.eq('category_id', categoryId)
     if (branchId) countQuery = countQuery.eq('branch_id', branchId)
