@@ -273,11 +273,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Step 5: Create LOAN_SETTLE transaction on loan_receivable account (asset increases)
+    // Step 5: Create second LOAN_GIVE transaction on loan_receivable account (asset increases)
     const random2 = Math.random().toString(36).substring(2, 9)
     const raw_transaction_id_2 = `TXN-${timestamp}-${random2}`
 
-    const { data: loanSettleOriginal, error: settleOriginalError } = await supabase
+    const { data: loanReceivableOriginal, error: receivableOriginalError } = await supabase
       .from('original_transaction')
       .insert([{
         raw_transaction_id: raw_transaction_id_2,
@@ -293,57 +293,39 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
-    if (settleOriginalError) {
-      console.error('Error creating loan settle original transaction:', settleOriginalError)
+    if (receivableOriginalError) {
+      console.error('Error creating loan receivable transaction:', receivableOriginalError)
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
       await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
 
       return NextResponse.json(
-        { error: 'Failed to create loan settle transaction: ' + settleOriginalError.message },
+        { error: 'Failed to create loan receivable transaction: ' + receivableOriginalError.message },
         { status: 500 }
       )
     }
 
-    // Step 6: Get LOAN_SETTLE transaction type
-    const { data: loanSettleType, error: loanSettleError } = await supabase
-      .from('transaction_types')
-      .select('transaction_type_id')
-      .eq('type_code', 'LOAN_SETTLE')
-      .single()
-
-    if (loanSettleError || !loanSettleType) {
-      console.error('Error finding LOAN_SETTLE type:', loanSettleError)
-      // Rollback
-      await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
-      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
-      await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_2)
-
-      return NextResponse.json(
-        { error: 'LOAN_SETTLE transaction type not found. Ensure Migration 037 has been run.' },
-        { status: 500 }
-      )
-    }
-
-    // Step 7: Update loan settle main_transaction
-    const { error: settleMainError } = await supabase
+    // Step 6: Update loan receivable main_transaction - also use LOAN_GIVE type
+    // Both sides of loan disbursement use LOAN_GIVE
+    // (LOAN_SETTLE is only used when borrower pays back)
+    const { error: receivableMainError } = await supabase
       .from('main_transaction')
       .update({
-        transaction_type_id: loanSettleType.transaction_type_id,
+        transaction_type_id: loanGiveType.transaction_type_id, // Reuse LOAN_GIVE type
         loan_disbursement_id: disbursement.loan_disbursement_id,
         description: description,
       })
       .eq('raw_transaction_id', raw_transaction_id_2)
 
-    if (settleMainError) {
-      console.error('Error updating loan settle main transaction:', settleMainError)
+    if (receivableMainError) {
+      console.error('Error updating loan receivable main transaction:', receivableMainError)
       // Rollback
       await supabase.from('loan_disbursement').delete().eq('loan_disbursement_id', disbursement.loan_disbursement_id)
       await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_1)
       await supabase.from('original_transaction').delete().eq('raw_transaction_id', raw_transaction_id_2)
 
       return NextResponse.json(
-        { error: 'Failed to update loan settle main transaction: ' + settleMainError.message },
+        { error: 'Failed to update loan receivable main transaction: ' + receivableMainError.message },
         { status: 500 }
       )
     }
