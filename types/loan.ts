@@ -39,7 +39,8 @@ export interface LoanDisbursementWithAccount extends LoanDisbursement {
 }
 
 export interface CreateLoanDisbursementInput {
-  account_id: number
+  account_id: number  // Loan receivable account (destination - asset increases)
+  source_account_id: number  // Bank/cash account that disburses funds (source - decreases)
   partner_id: number  // Required: must select a business partner
   loan_category: LoanCategory
   principal_amount: number

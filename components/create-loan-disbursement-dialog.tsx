@@ -46,10 +46,12 @@ export function CreateLoanDisbursementDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [partners, setPartners] = useState<BusinessPartner[]>([])
+  const [sourceAccounts, setSourceAccounts] = useState<any[]>([])
   const [isCreatePartnerOpen, setIsCreatePartnerOpen] = useState(false)
 
   const [formData, setFormData] = useState<CreateLoanDisbursementInput>({
     account_id: accountId,
+    source_account_id: 0,
     partner_id: 0,
     loan_category: "short_term",
     principal_amount: 0,
@@ -60,10 +62,11 @@ export function CreateLoanDisbursementDialog({
     notes: null,
   })
 
-  // Fetch partners when dialog opens
+  // Fetch partners and source accounts when dialog opens
   useEffect(() => {
     if (open && currentEntity) {
       fetchPartners()
+      fetchSourceAccounts()
     }
   }, [open, currentEntity])
 
@@ -81,6 +84,24 @@ export function CreateLoanDisbursementDialog({
     }
   }
 
+  async function fetchSourceAccounts() {
+    if (!currentEntity) return
+
+    try {
+      const response = await fetch(`/api/accounts?entity_id=${currentEntity.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        // Filter to only show bank, cash accounts (sources for disbursement)
+        const validSources = (data.data || []).filter((acc: any) =>
+          ['bank', 'cash'].includes(acc.account_type)
+        )
+        setSourceAccounts(validSources)
+      }
+    } catch (error) {
+      console.error('Error fetching source accounts:', error)
+    }
+  }
+
   function handlePartnerCreated(partner: BusinessPartner) {
     setPartners([...partners, partner])
     setFormData({ ...formData, partner_id: partner.partner_id })
@@ -92,6 +113,7 @@ export function CreateLoanDisbursementDialog({
     if (!open) {
       setFormData({
         account_id: accountId,
+        source_account_id: 0,
         partner_id: 0,
         loan_category: "short_term",
         principal_amount: 0,
@@ -112,6 +134,10 @@ export function CreateLoanDisbursementDialog({
 
     try {
       // Validation
+      if (!formData.source_account_id) {
+        setError("Please select a source account")
+        return
+      }
       if (!formData.partner_id) {
         setError("Please select a borrower")
         return
@@ -194,6 +220,30 @@ export function CreateLoanDisbursementDialog({
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Select an existing contact or create a new one
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="source_account_id">Source Account (Disburse From) *</Label>
+                <Select
+                  value={formData.source_account_id ? formData.source_account_id.toString() : ""}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, source_account_id: parseInt(value) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select source account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sourceAccounts.map((account) => (
+                      <SelectItem key={account.account_id} value={account.account_id.toString()}>
+                        {account.account_name} ({account.account_type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  The bank or cash account that will disburse the loan funds
                 </p>
               </div>
             </div>
