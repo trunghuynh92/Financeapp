@@ -43,7 +43,15 @@ WHERE transaction_type_id = (
 DELETE FROM transaction_types WHERE type_code = 'LOAN_SETTLE';
 
 -- ==============================================================================
--- Step 2: Update DEBT transaction types
+-- Step 2: Update categories that reference old transaction types
+-- ==============================================================================
+
+-- Update categories that reference DEBT_ACQ to use DEBT_PAY instead
+-- (DEBT_ACQ categories like "Loan Received" should now use DEBT_TAKE once we create it)
+-- For now, we'll update them after creating DEBT_TAKE
+
+-- ==============================================================================
+-- Step 3: Update DEBT transaction types
 -- ==============================================================================
 
 -- Create DEBT_TAKE type (consolidates DEBT_ACQ + DEBT_DRAW)
@@ -54,6 +62,15 @@ SET
   type_name = EXCLUDED.type_name,
   type_display_name = EXCLUDED.type_display_name,
   description = EXCLUDED.description;
+
+-- Update categories that reference DEBT_ACQ to use DEBT_TAKE
+UPDATE categories
+SET transaction_type_id = (
+  SELECT transaction_type_id FROM transaction_types WHERE type_code = 'DEBT_TAKE'
+)
+WHERE transaction_type_id = (
+  SELECT transaction_type_id FROM transaction_types WHERE type_code = 'DEBT_ACQ'
+);
 
 -- Update all DEBT_ACQ transactions to use DEBT_TAKE
 UPDATE main_transaction
@@ -80,6 +97,15 @@ SET transaction_type_id = (
 )
 WHERE transaction_type_id = (
   SELECT transaction_type_id FROM transaction_types WHERE type_code = 'DEBT_SETTLE'
+);
+
+-- Update categories that reference DEBT_SETTLE to use DEBT_PAY
+UPDATE categories
+SET transaction_type_id = (
+  SELECT transaction_type_id FROM transaction_types WHERE type_code = 'DEBT_PAY'
+)
+WHERE transaction_type_id IN (
+  SELECT transaction_type_id FROM transaction_types WHERE type_code IN ('DEBT_SETTLE', 'DEBT_DRAW')
 );
 
 -- Delete old DEBT types (no longer needed)
