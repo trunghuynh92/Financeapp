@@ -30,8 +30,10 @@ import { useEntity } from "@/contexts/EntityContext"
 interface CreateLoanDisbursementDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  accountId: number
-  accountName: string
+  accountId?: number
+  accountName?: string
+  prefilledAmount?: number
+  prefilledDate?: string
   onSuccess: () => void
 }
 
@@ -40,6 +42,8 @@ export function CreateLoanDisbursementDialog({
   onOpenChange,
   accountId,
   accountName,
+  prefilledAmount,
+  prefilledDate,
   onSuccess,
 }: CreateLoanDisbursementDialogProps) {
   const { currentEntity } = useEntity()
@@ -47,28 +51,50 @@ export function CreateLoanDisbursementDialog({
   const [error, setError] = useState<string | null>(null)
   const [partners, setPartners] = useState<BusinessPartner[]>([])
   const [sourceAccounts, setSourceAccounts] = useState<any[]>([])
+  const [loanAccounts, setLoanAccounts] = useState<any[]>([])
   const [isCreatePartnerOpen, setIsCreatePartnerOpen] = useState(false)
 
   const [formData, setFormData] = useState<CreateLoanDisbursementInput>({
-    account_id: accountId,
+    account_id: accountId || 0,
     source_account_id: 0,
     partner_id: 0,
     loan_category: "short_term",
-    principal_amount: 0,
-    disbursement_date: new Date().toISOString().split('T')[0],
+    principal_amount: prefilledAmount || 0,
+    disbursement_date: prefilledDate || new Date().toISOString().split('T')[0],
     due_date: null,
     term_months: null,
     interest_rate: null,
     notes: null,
   })
 
-  // Fetch partners and source accounts when dialog opens
+  // Fetch partners, source accounts, and loan accounts when dialog opens
   useEffect(() => {
     if (open && currentEntity) {
       fetchPartners()
       fetchSourceAccounts()
+      fetchLoanAccounts()
     }
   }, [open, currentEntity])
+
+  // Update formData when accountId prop changes
+  useEffect(() => {
+    if (accountId) {
+      setFormData(prev => ({ ...prev, account_id: accountId }))
+    }
+  }, [accountId])
+
+  // Update formData when prefilled values change
+  useEffect(() => {
+    if (prefilledAmount) {
+      setFormData(prev => ({ ...prev, principal_amount: prefilledAmount }))
+    }
+  }, [prefilledAmount])
+
+  useEffect(() => {
+    if (prefilledDate) {
+      setFormData(prev => ({ ...prev, disbursement_date: prefilledDate }))
+    }
+  }, [prefilledDate])
 
   async function fetchPartners() {
     if (!currentEntity) return
@@ -99,6 +125,24 @@ export function CreateLoanDisbursementDialog({
       }
     } catch (error) {
       console.error('Error fetching source accounts:', error)
+    }
+  }
+
+  async function fetchLoanAccounts() {
+    if (!currentEntity) return
+
+    try {
+      const response = await fetch(`/api/accounts?entity_id=${currentEntity.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        // Filter to only show loan_receivable accounts
+        const validLoanAccounts = (data.data || []).filter((acc: any) =>
+          acc.account_type === 'loan_receivable'
+        )
+        setLoanAccounts(validLoanAccounts)
+      }
+    } catch (error) {
+      console.error('Error fetching loan accounts:', error)
     }
   }
 
@@ -173,7 +217,7 @@ export function CreateLoanDisbursementDialog({
         <DialogHeader>
           <DialogTitle>Create Loan Disbursement</DialogTitle>
           <DialogDescription>
-            Record a loan given to {accountName}
+            {accountName ? `Record a loan given from ${accountName}` : 'Record a new loan disbursement'}
           </DialogDescription>
         </DialogHeader>
 
@@ -184,6 +228,30 @@ export function CreateLoanDisbursementDialog({
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
+            )}
+
+            {/* Loan Account Selection - only show if accountId not provided */}
+            {!accountId && (
+              <div className="space-y-2">
+                <Label htmlFor="account_id">Loan Receivable Account *</Label>
+                <Select
+                  value={formData.account_id ? formData.account_id.toString() : ""}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, account_id: parseInt(value) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a loan receivable account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {loanAccounts.map((account) => (
+                      <SelectItem key={account.account_id} value={account.account_id.toString()}>
+                        {account.account_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
 
             {/* Borrower Information */}
