@@ -59,6 +59,8 @@ export interface MainTransaction {
   split_sequence: number
   transfer_matched_transaction_id: number | null
   loan_id: number | null
+  drawdown_id: number | null
+  loan_disbursement_id: number | null
   created_at: string
   updated_at: string
   created_by_user_id: number | null
