@@ -279,13 +279,13 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
                       <div>
                         <p className="text-sm text-muted-foreground">From</p>
                         <p className="text-lg font-medium">
-                          {formatDate(transactionDates.earliest_date)}
+                          {transactionDates.earliest_date ? formatDate(transactionDates.earliest_date) : 'N/A'}
                         </p>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">To</p>
                         <p className="text-lg font-medium">
-                          {formatDate(transactionDates.latest_date)}
+                          {transactionDates.latest_date ? formatDate(transactionDates.latest_date) : 'N/A'}
                         </p>
                       </div>
                       <div>
