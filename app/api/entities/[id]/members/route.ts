@@ -214,7 +214,7 @@ export async function POST(
 
     return NextResponse.json({
       data: {
-        ...newMember,
+        ...(newMember || {}),
         email: userDetails?.email || email,
         full_name: userDetails?.full_name || null,
         avatar_url: userDetails?.avatar_url || null,
