@@ -243,7 +243,15 @@ export async function POST(
     }
 
     // Check for duplicate transactions
-    const duplicateWarnings: Array<{ rowIndex: number; reason: string; existingTransaction: any }> = []
+    const duplicateWarnings: Array<{
+      importedTransaction: ImportedTransactionData
+      possibleDuplicate: {
+        transaction_id: string
+        transaction_date: string
+        description: string
+        amount: number
+      }
+    }> = []
     const transactionsToInsertAfterDupeCheck: any[] = []
 
     if (transactionsToInsert.length > 0) {
@@ -329,14 +337,18 @@ export async function POST(
 
         if (isDuplicate && matchedTx) {
           duplicateWarnings.push({
-            rowIndex,
-            reason: 'Duplicate transaction already exists',
-            existingTransaction: {
-              raw_transaction_id: matchedTx.raw_transaction_id,
+            importedTransaction: {
+              date: newTx.transaction_date,
+              description: newTx.description || '',
+              debit: newTx.debit_amount || 0,
+              credit: newTx.credit_amount || 0,
+              balance: newTx.balance,
+            },
+            possibleDuplicate: {
+              transaction_id: matchedTx.raw_transaction_id,
               transaction_date: matchedTx.transaction_date,
-              description: matchedTx.description,
-              debit_amount: matchedTx.debit_amount,
-              credit_amount: matchedTx.credit_amount,
+              description: matchedTx.description || '',
+              amount: matchedTx.debit_amount || matchedTx.credit_amount || 0,
             }
           })
           console.log(`⚠️ Skipping duplicate at row ${rowIndex}: ${newTx.description}`)
