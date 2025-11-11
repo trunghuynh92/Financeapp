@@ -399,7 +399,7 @@ export default function TransfersPage() {
         <CardContent className="space-y-2 text-sm">
           <p>1. Select one Transfer Out (money leaving an account) from the left table</p>
           <p>2. Select one Transfer In (money entering an account) from the right table</p>
-          <p>3. Click "Match Selected Transfers" to link them together</p>
+          <p>3. Click &quot;Match Selected Transfers&quot; to link them together</p>
           <p className="text-muted-foreground italic">
             Note: Transfers must have matching amounts and be from different accounts
           </p>

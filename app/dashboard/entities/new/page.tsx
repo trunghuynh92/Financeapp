@@ -148,7 +148,7 @@ export default function NewEntityPage() {
                 placeholder={
                   formData.type === 'company'
                     ? 'e.g., Acme Corporation'
-                    : 'e.g., John\'s Personal Finances'
+                    : "e.g., John's Personal Finances"
                 }
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
