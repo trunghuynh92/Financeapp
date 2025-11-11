@@ -37,6 +37,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { formatCurrency } from "@/lib/account-utils"
+import { Currency } from "@/types/account"
 
 interface Account {
   account_id: number
