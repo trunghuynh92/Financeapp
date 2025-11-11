@@ -75,23 +75,28 @@ export function QuickMatchTransferDialog({
 
       const data = await response.json()
 
-      // Filter to opposite type and exclude the source transaction
-      // Support both TRF_OUT/TRF_IN and DEBT_DRAW/DEBT_ACQ pairs
-      let oppositeType: string
+      // Filter to matching type and exclude the source transaction
+      // Support opposite types (TRF_OUT/TRF_IN) and same types (DEBT_PAY/DEBT_PAY, CC_PAY/CC_PAY)
+      let matchingTypes: string[]
+
       if (sourceTransaction.transaction_type_code === 'TRF_OUT') {
-        oppositeType = 'TRF_IN'
+        matchingTypes = ['TRF_IN']
       } else if (sourceTransaction.transaction_type_code === 'TRF_IN') {
-        oppositeType = 'TRF_OUT'
+        matchingTypes = ['TRF_OUT']
+      } else if (sourceTransaction.transaction_type_code === 'CC_PAY') {
+        matchingTypes = ['CC_PAY']  // CC_PAY matches CC_PAY (bank → credit card)
+      } else if (sourceTransaction.transaction_type_code === 'DEBT_PAY') {
+        matchingTypes = ['DEBT_PAY']  // Same type matching for debt payments
       } else if (sourceTransaction.transaction_type_code === 'DEBT_DRAW') {
-        oppositeType = 'DEBT_ACQ'
+        matchingTypes = ['DEBT_ACQ']
       } else if (sourceTransaction.transaction_type_code === 'DEBT_ACQ') {
-        oppositeType = 'DEBT_DRAW'
+        matchingTypes = ['DEBT_DRAW']
       } else {
-        oppositeType = ''
+        matchingTypes = []
       }
 
       const filtered = data.data.filter((t: MainTransactionDetails) =>
-        t.transaction_type_code === oppositeType &&
+        matchingTypes.includes(t.transaction_type_code) &&
         t.main_transaction_id !== sourceTransaction.main_transaction_id &&
         t.account_id !== sourceTransaction.account_id // Different account
       )

@@ -117,10 +117,17 @@ export function isCreditAccount(accountType: AccountType): boolean {
 }
 
 /**
- * Check if account type requires credit limit
+ * Check if account type requires credit limit (mandatory field)
  */
 export function requiresCreditLimit(accountType: AccountType): boolean {
   return ['credit_line', 'term_loan'].includes(accountType)
+}
+
+/**
+ * Check if account type supports credit limit (optional or required)
+ */
+export function supportsCreditLimit(accountType: AccountType): boolean {
+  return ['credit_card', 'credit_line', 'term_loan'].includes(accountType)
 }
 
 /**

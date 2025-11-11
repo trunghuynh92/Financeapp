@@ -25,7 +25,7 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { createSupabaseClient, type Entity } from "@/lib/supabase"
 import type { Account, AccountType, Currency, CreateAccountInput, UpdateAccountInput } from "@/types/account"
 import { ACCOUNT_TYPE_CONFIG, CURRENCIES } from "@/types/account"
-import { requiresBankInfo, requiresCreditLimit, validateAccountNumber } from "@/lib/account-utils"
+import { requiresBankInfo, requiresCreditLimit, supportsCreditLimit, validateAccountNumber } from "@/lib/account-utils"
 
 interface AccountFormDialogProps {
   open: boolean
@@ -423,10 +423,12 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
                 </div>
               )}
 
-              {requiresCreditLimit(formData.account_type) && (
+              {supportsCreditLimit(formData.account_type) && (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="credit_limit">Credit Limit *</Label>
+                    <Label htmlFor="credit_limit">
+                      Credit Limit {requiresCreditLimit(formData.account_type) ? '*' : '(optional)'}
+                    </Label>
                     <Input
                       id="credit_limit"
                       type="number"
@@ -437,21 +439,28 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
                     {errors.credit_limit && (
                       <p className="text-sm text-destructive">{errors.credit_limit}</p>
                     )}
+                    {formData.account_type === 'credit_card' && (
+                      <p className="text-sm text-muted-foreground">
+                        Optional: Set a credit limit to track utilization
+                      </p>
+                    )}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="loan_reference">Loan Reference</Label>
-                    <Input
-                      id="loan_reference"
-                      placeholder="e.g., LOAN-2024-001"
-                      value={formData.loan_reference}
-                      onChange={(e) => setFormData({ ...formData, loan_reference: e.target.value })}
-                    />
-                  </div>
+                  {requiresCreditLimit(formData.account_type) && (
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_reference">Loan Reference</Label>
+                      <Input
+                        id="loan_reference"
+                        placeholder="e.g., LOAN-2024-001"
+                        value={formData.loan_reference}
+                        onChange={(e) => setFormData({ ...formData, loan_reference: e.target.value })}
+                      />
+                    </div>
+                  )}
                 </>
               )}
 
-              {!requiresBankInfo(formData.account_type) && !requiresCreditLimit(formData.account_type) && formData.account_type !== "cash" && (
+              {!requiresBankInfo(formData.account_type) && !supportsCreditLimit(formData.account_type) && formData.account_type !== "cash" && (
                 <div className="text-center py-8 text-muted-foreground">
                   <p>No additional details required for this account type.</p>
                 </div>

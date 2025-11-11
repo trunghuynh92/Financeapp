@@ -1,8 +1,10 @@
 /**
  * API Route: /api/transfers/match
  * Purpose: Match transaction pairs:
- *  - TRF_OUT ↔ TRF_IN (transfers)
+ *  - TRF_OUT ↔ TRF_IN (regular transfers)
+ *  - CC_PAY ↔ CC_PAY (credit card payments - both sides use same type)
  *  - DEBT_TAKE ↔ DEBT_TAKE (debt drawdowns - both sides use same type)
+ *  - DEBT_PAY ↔ DEBT_PAY (debt repayments - both sides use same type)
  *  - LOAN_DISBURSE ↔ LOAN_DISBURSE (loan disbursements - both sides use same type)
  */
 
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate that transactions are valid pairs: TRF_OUT ↔ TRF_IN or DEBT_TAKE ↔ DEBT_TAKE or LOAN_DISBURSE ↔ LOAN_DISBURSE
+    // Validate that transactions are valid pairs
     const { data: types } = await supabase
       .from('transaction_types')
       .select('transaction_type_id, type_code')
@@ -70,12 +72,14 @@ export async function POST(request: NextRequest) {
 
     // Check for valid pairs
     const isTransferPair = (outType === 'TRF_OUT' && inType === 'TRF_IN')
-    const isDebtPair = (outType === 'DEBT_TAKE' && inType === 'DEBT_TAKE')
+    const isCreditCardPayment = (outType === 'CC_PAY' && inType === 'CC_PAY')
+    const isDebtTakePair = (outType === 'DEBT_TAKE' && inType === 'DEBT_TAKE')
+    const isDebtPayPair = (outType === 'DEBT_PAY' && inType === 'DEBT_PAY')
     const isLoanPair = (outType === 'LOAN_DISBURSE' && inType === 'LOAN_DISBURSE')
 
-    if (!isTransferPair && !isDebtPair && !isLoanPair) {
+    if (!isTransferPair && !isCreditCardPayment && !isDebtTakePair && !isDebtPayPair && !isLoanPair) {
       return NextResponse.json(
-        { error: 'Transactions must be matching pairs: TRF_OUT ↔ TRF_IN, DEBT_TAKE ↔ DEBT_TAKE, or LOAN_DISBURSE ↔ LOAN_DISBURSE' },
+        { error: 'Transactions must be matching pairs: TRF_OUT ↔ TRF_IN, CC_PAY ↔ CC_PAY, DEBT_TAKE ↔ DEBT_TAKE, DEBT_PAY ↔ DEBT_PAY, or LOAN_DISBURSE ↔ LOAN_DISBURSE' },
         { status: 400 }
       )
     }

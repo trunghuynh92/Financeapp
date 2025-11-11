@@ -7,6 +7,73 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 // ==============================================================================
+// POST - Create a new main transaction
+// ==============================================================================
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = createSupabaseServerClient()
+    const body = await request.json()
+
+    // Validate required fields
+    const {
+      raw_transaction_id,
+      account_id,
+      transaction_type_id,
+      amount,
+      transaction_direction,
+      transaction_date,
+      description,
+      category_id,
+      branch_id,
+      notes,
+    } = body
+
+    if (!raw_transaction_id || !account_id || !transaction_type_id ||
+        amount === undefined || !transaction_direction || !transaction_date) {
+      return NextResponse.json(
+        { error: 'Missing required fields: raw_transaction_id, account_id, transaction_type_id, amount, transaction_direction, transaction_date' },
+        { status: 400 }
+      )
+    }
+
+    // Create the transaction
+    const { data, error } = await supabase
+      .from('main_transaction')
+      .insert({
+        raw_transaction_id,
+        account_id,
+        transaction_type_id,
+        amount,
+        transaction_direction,
+        transaction_date,
+        description: description || null,
+        category_id: category_id || null,
+        branch_id: branch_id || null,
+        notes: notes || null,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error creating transaction:', error)
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ data }, { status: 201 })
+  } catch (error) {
+    console.error('Unexpected error:', error)
+    return NextResponse.json(
+      { error: 'An unexpected error occurred' },
+      { status: 500 }
+    )
+  }
+}
+
+// ==============================================================================
 // GET - List main transactions with filters and pagination
 // ==============================================================================
 

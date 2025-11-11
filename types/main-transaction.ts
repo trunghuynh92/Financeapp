@@ -184,10 +184,14 @@ export type TransactionDirection = 'debit' | 'credit'
 export type EntityType = 'business' | 'personal' | 'both'
 
 export type TransactionTypeCode =
-  | 'INC'       // Income
-  | 'EXP'       // Expense
-  | 'TRF_OUT'   // Transfer Out
-  | 'TRF_IN'    // Transfer In
-  | 'DEBT_ACQ'  // Debt Acquired
-  | 'DEBT_PAY'  // Debt Payback
-  | 'INV'       // Investment
+  | 'INC'        // Income
+  | 'EXP'        // Expense
+  | 'TRF_OUT'    // Transfer Out
+  | 'TRF_IN'     // Transfer In
+  | 'DEBT_TAKE'  // Debt Taken (borrowing)
+  | 'DEBT_PAY'   // Debt Payment (repaying)
+  | 'CC_CHARGE'  // Credit Card Charge (affects_cashflow=false)
+  | 'CC_PAY'     // Credit Card Payment (affects_cashflow=true)
+  | 'INV'        // Investment
+  | 'LOAN_DISBURSE'  // Loan Disbursement (lending)
+  | 'LOAN_COLLECT'   // Loan Collection (receiving repayment)

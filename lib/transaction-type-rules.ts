@@ -37,8 +37,8 @@ export const TRANSACTION_TYPE_RULES: TransactionTypeRule[] = [
   {
     account_types: ['bank', 'cash'],
     transaction_direction: 'debit',
-    allowed_type_codes: ['EXP', 'TRF_OUT', 'DEBT_PAY', 'INV', 'LOAN_DISBURSE'],
-    description: 'Bank/Cash - Money out: expenses, transfers out, paying debts, investments, lending to borrowers'
+    allowed_type_codes: ['EXP', 'TRF_OUT', 'DEBT_PAY', 'CC_PAY', 'INV', 'LOAN_DISBURSE'],
+    description: 'Bank/Cash - Money out: expenses, transfers out, paying debts, paying credit cards, investments, lending to borrowers'
   },
   {
     account_types: ['bank', 'cash'],
@@ -49,19 +49,23 @@ export const TRANSACTION_TYPE_RULES: TransactionTypeRule[] = [
 
   // ============================================================================
   // CREDIT CARD ACCOUNTS
-  // Hybrid of bank/cash and credit line - allows transfers for balance transfers
+  // CC_CHARGE/CC_PAY model: Clean separation from debt mechanics
+  // - Charges use CC_CHARGE (affects_cashflow=false) to track expenses + debt without cash impact
+  // - Payments use CC_PAY (affects_cashflow=true) to record payment received
+  // - Matches with bank TRF_OUT ↔ CC_PAY
+  // See CREDIT_CARD_MECHANICS.md for full explanation
   // ============================================================================
   {
     account_types: ['credit_card'],
     transaction_direction: 'debit',
-    allowed_type_codes: ['EXP', 'TRF_OUT'],
-    description: 'Credit Card - Charges: expenses charged to card, balance transfers out'
+    allowed_type_codes: ['CC_CHARGE', 'TRF_OUT'],
+    description: 'Credit Card - Charges: credit card purchases (CC_CHARGE), balance transfers out'
   },
   {
     account_types: ['credit_card'],
     transaction_direction: 'credit',
-    allowed_type_codes: ['DEBT_PAY', 'TRF_IN'],
-    description: 'Credit Card - Payments: paying off balance, balance transfers in, refunds'
+    allowed_type_codes: ['CC_PAY', 'TRF_IN'],
+    description: 'Credit Card - Payments: receiving payment (CC_PAY), balance transfers in, refunds'
   },
 
   // ============================================================================

@@ -16,6 +16,7 @@ import { BulkEditDialog } from "@/components/main-transactions/BulkEditDialog"
 import { QuickMatchTransferDialog } from "@/components/main-transactions/QuickMatchTransferDialog"
 import { QuickMatchDebtDialog } from "@/components/main-transactions/QuickMatchDebtDialog"
 import { QuickMatchLoanDialog } from "@/components/main-transactions/QuickMatchLoanDialog"
+import { QuickPayCreditCardDialog } from "@/components/main-transactions/QuickPayCreditCardDialog"
 import { SelectDrawdownDialog } from "@/components/main-transactions/SelectDrawdownDialog"
 import { InlineCombobox } from "@/components/main-transactions/InlineCombobox"
 import { useEntity } from "@/contexts/EntityContext"
@@ -79,6 +80,7 @@ export default function MainTransactionsPage() {
   const [quickMatchDialogOpen, setQuickMatchDialogOpen] = useState(false)
   const [quickMatchDebtDialogOpen, setQuickMatchDebtDialogOpen] = useState(false)
   const [quickMatchLoanDialogOpen, setQuickMatchLoanDialogOpen] = useState(false)
+  const [quickPayCreditCardDialogOpen, setQuickPayCreditCardDialogOpen] = useState(false)
   const [selectDrawdownDialogOpen, setSelectDrawdownDialogOpen] = useState(false)
 
   // Fetch transaction types, categories, branches, accounts on mount
@@ -795,6 +797,33 @@ export default function MainTransactionsPage() {
                                     Unmatched Payback
                                   </Badge>
                                 )}
+                                {/* Matched credit card payment */}
+                                {tx.transfer_matched_transaction_id && tx.transaction_type_code === 'CC_PAY' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200"
+                                    onClick={() => handleUnmatchTransfer(tx)}
+                                    title="Click to unmatch this credit card payment"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Matched CC Payment
+                                  </Badge>
+                                )}
+                                {/* Unmatched credit card payment */}
+                                {!tx.transfer_matched_transaction_id && tx.transaction_type_code === 'CC_PAY' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-yellow-100 text-yellow-800 border-yellow-200 cursor-pointer hover:bg-yellow-200"
+                                    onClick={() => {
+                                      setSelectedTransaction(tx)
+                                      setQuickPayCreditCardDialogOpen(true)
+                                    }}
+                                    title="Click to pay credit card"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Unmatched CC Payment
+                                  </Badge>
+                                )}
                                 {/* Matched loan disbursement */}
                                 {tx.transfer_matched_transaction_id && tx.transaction_type_code === 'LOAN_DISBURSE' && (
                                   <Badge
@@ -1061,6 +1090,13 @@ export default function MainTransactionsPage() {
       <QuickMatchLoanDialog
         open={quickMatchLoanDialogOpen}
         onOpenChange={setQuickMatchLoanDialogOpen}
+        sourceTransaction={selectedTransaction}
+        onSuccess={handleQuickMatchSuccess}
+      />
+
+      <QuickPayCreditCardDialog
+        open={quickPayCreditCardDialogOpen}
+        onOpenChange={setQuickPayCreditCardDialogOpen}
         sourceTransaction={selectedTransaction}
         onSuccess={handleQuickMatchSuccess}
       />

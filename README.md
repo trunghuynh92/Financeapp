@@ -16,11 +16,11 @@ A comprehensive multi-user financial management system for businesses and indivi
 
 **Transaction Type Rules by Account:**
 - **Bank/Cash Accounts**:
-  - Debit: EXP, TRF_OUT, DEBT_PAY, INV, LOAN_DISBURSE
+  - Debit: EXP, TRF_OUT, DEBT_PAY, CC_PAY, INV, LOAN_DISBURSE
   - Credit: INC, TRF_IN, DEBT_TAKE, LOAN_COLLECT
-- **Credit Card Accounts**:
-  - Debit: EXP, TRF_OUT (charges, balance transfers out)
-  - Credit: DEBT_PAY, TRF_IN (payments, balance transfers in)
+- **Credit Card Accounts** *(See [CREDIT_CARD_MECHANICS.md](./CREDIT_CARD_MECHANICS.md))*:
+  - Debit: CC_CHARGE, TRF_OUT (purchases with CC_CHARGE for proper cashflow tracking, balance transfers out)
+  - Credit: CC_PAY, TRF_IN (payments with CC_PAY, balance transfers in, refunds)
 - **Credit Line Accounts**:
   - Debit: DEBT_TAKE (drawing from line)
   - Credit: DEBT_PAY (repaying line)
@@ -49,20 +49,26 @@ A comprehensive multi-user financial management system for businesses and indivi
 2. `EXP` - Expense
 3. `TRF_OUT` - Transfer Out
 4. `TRF_IN` - Transfer In
-5. `DEBT_TAKE` - Debt Taken (borrowing)
-6. `DEBT_PAY` - Debt Payment (repaying)
-7. `LOAN_DISBURSE` - Loan Disbursement (lending)
-8. `LOAN_COLLECT` - Loan Collection (receiving repayment)
-9. `INV` - Investment
+5. `DEBT_TAKE` - Debt Taken (borrowing, for credit lines/term loans)
+6. `DEBT_PAY` - Debt Payment (repaying, for credit lines/term loans)
+7. `CC_CHARGE` - Credit Card Charge (affects_cashflow=false, expenses on credit)
+8. `CC_PAY` - Credit Card Payment (affects_cashflow=true, receiving payment)
+9. `LOAN_DISBURSE` - Loan Disbursement (lending)
+10. `LOAN_COLLECT` - Loan Collection (receiving repayment)
+11. `INV` - Investment
 
 #### 🗄️ Database Migrations (v4.3.0)
 - **Migration 041**: Fix validate_transfer_match function with new type codes
 - **Migration 042**: Simplify transaction types system (13→9 types)
 - **Migration 043**: Recalculate drawdown balances for consistency
+- **Migration 044**: Add CC_CHARGE transaction type for credit card purchases (cash basis accounting)
+- **Migration 045**: Add categories for CC_CHARGE (duplicated from EXP categories)
+- **Migration 046**: Add CC_PAY transaction type for credit card payments
 
 #### 📚 Enhanced Documentation
 - **Transaction Type Rules Library**: New `/lib/transaction-type-rules.ts` with comprehensive filtering logic
 - **SCHEMA.md Updates**: Complete documentation of simplified transaction type system
+- **Credit Card Mechanics**: New `CREDIT_CARD_MECHANICS.md` explaining CC_CHARGE and cash basis accounting
 - **Type Safety**: Full TypeScript support for account types and directions
 
 ---

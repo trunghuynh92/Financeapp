@@ -353,41 +353,53 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
             {formatCurrency(balance, account.currency)}
           </div>
 
-          {isCreditType && account.credit_limit && (
+          {isCreditType && (
             <div className="space-y-4">
-              <div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Credit Utilization</span>
-                  <span className="font-medium">{creditUtilization.toFixed(1)}%</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${
-                      creditUtilization > 80
-                        ? "bg-red-500"
-                        : creditUtilization > 50
-                        ? "bg-yellow-500"
-                        : "bg-green-500"
-                    }`}
-                    style={{ width: `${Math.min(creditUtilization, 100)}%` }}
-                  />
-                </div>
-              </div>
+              {account.credit_limit ? (
+                <>
+                  <div>
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="text-muted-foreground">Credit Utilization</span>
+                      <span className="font-medium">{creditUtilization.toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all ${
+                          creditUtilization > 80
+                            ? "bg-red-500"
+                            : creditUtilization > 50
+                            ? "bg-yellow-500"
+                            : "bg-green-500"
+                        }`}
+                        style={{ width: `${Math.min(creditUtilization, 100)}%` }}
+                      />
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-                <div>
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Credit Limit</p>
+                      <p className="text-xl font-medium">
+                        {formatCurrency(account.credit_limit, account.currency)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Available Credit</p>
+                      <p className="text-xl font-medium">
+                        {formatCurrency(availableCredit, account.currency)}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="pt-4 border-t">
                   <p className="text-sm text-muted-foreground">Credit Limit</p>
-                  <p className="text-xl font-medium">
-                    {formatCurrency(account.credit_limit, account.currency)}
+                  <p className="text-lg font-medium text-muted-foreground">Not set</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Edit account to add a credit limit
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Available Credit</p>
-                  <p className="text-xl font-medium">
-                    {formatCurrency(availableCredit, account.currency)}
-                  </p>
-                </div>
-              </div>
+              )}
 
               {account.loan_reference && (
                 <div className="pt-4 border-t">
