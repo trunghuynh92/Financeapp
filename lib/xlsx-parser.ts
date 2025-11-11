@@ -105,7 +105,7 @@ function parseXLSXData(rawData: (string | number | null)[][]): ParsedCSVData {
       // Convert value to string or null
       if (value === null || value === undefined || value === '') {
         row[header] = null
-      } else if (value instanceof Date || (typeof value === 'object' && value !== null && 'toISOString' in value)) {
+      } else if (typeof value === 'object' && value !== null && 'toISOString' in value && typeof (value as any).toISOString === 'function') {
         // Convert Date objects to ISO string
         row[header] = (value as Date).toISOString().split('T')[0]
       } else {
