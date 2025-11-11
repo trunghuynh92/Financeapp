@@ -75,7 +75,7 @@ export default function NewEntityPage() {
         <CardHeader>
           <CardTitle>Create New Entity</CardTitle>
           <CardDescription>
-            Create a new company or personal finance entity. You'll be automatically assigned as the owner.
+            Create a new company or personal finance entity. You&apos;ll be automatically assigned as the owner.
           </CardDescription>
         </CardHeader>
         <CardContent>

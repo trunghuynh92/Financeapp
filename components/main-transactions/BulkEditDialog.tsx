@@ -162,7 +162,7 @@ export function BulkEditDialog({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Leave as "No Change" to keep existing values
+              Leave as &quot;No Change&quot; to keep existing values
             </p>
           </div>
 
@@ -228,7 +228,7 @@ export function BulkEditDialog({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Leave as "No Change" to keep existing values
+              Leave as &quot;No Change&quot; to keep existing values
             </p>
           </div>
         </div>

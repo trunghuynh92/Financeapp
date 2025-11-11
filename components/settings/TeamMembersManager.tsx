@@ -500,7 +500,7 @@ export function TeamMembersManager() {
             <AlertDialogTitle>Remove Team Member</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to remove {selectedMember?.email} from{" "}
-              {currentEntity.name}? They will lose all access to this entity's
+              {currentEntity.name}? They will lose all access to this entity&apos;s
               data. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
