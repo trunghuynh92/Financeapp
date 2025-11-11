@@ -86,7 +86,7 @@ export function SplitTransactionDialog({
           const lastIndex = loadedSplits.length - 1
           const sumOfOthers = loadedSplits
             .slice(0, lastIndex)
-            .reduce((sum, split) => sum + (parseFloat(split.amount) || 0), 0)
+            .reduce((sum: number, split) => sum + (parseFloat(split.amount) || 0), 0)
 
           const remaining = totalAmount - sumOfOthers
           loadedSplits[lastIndex].amount = Math.max(0, remaining).toFixed(2)
