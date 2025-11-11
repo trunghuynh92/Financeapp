@@ -343,7 +343,7 @@ export function LoanDisbursementListCard({
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleRecordPayment(loan.loan_disbursement_id, loan.borrower_name)}
+                              onClick={() => handleRecordPayment(loan.loan_disbursement_id, loan.borrower_name || 'Unknown')}
                             >
                               Record Payment
                             </Button>
