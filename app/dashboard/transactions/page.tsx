@@ -55,8 +55,8 @@ interface Transaction {
   created_by_user_id: number | null
   updated_at: string | null
   updated_by_user_id: number | null
-  is_balance_adjustment: boolean
-  checkpoint_id: number | null
+  is_balance_adjustment?: boolean
+  checkpoint_id?: number
   account?: Account
 }
 
