@@ -59,11 +59,11 @@ export async function GET(
     }
 
     // Calculate totals
-    const totalInterest = payments?.filter(p => p.transaction_subtype === 'interest')
-      .reduce((sum, p) => sum + Number(p.amount), 0) || 0
+    const totalInterest = payments?.filter((p: any) => p.transaction_subtype === 'interest')
+      .reduce((sum: number, p: any) => sum + Number(p.amount), 0) || 0
 
-    const totalFees = payments?.filter(p => ['fee', 'penalty'].includes(p.transaction_subtype))
-      .reduce((sum, p) => sum + Number(p.amount), 0) || 0
+    const totalFees = payments?.filter((p: any) => ['fee', 'penalty'].includes(p.transaction_subtype))
+      .reduce((sum: number, p: any) => sum + Number(p.amount), 0) || 0
 
     const paid_amount = Number(drawdown.original_amount) - Number(drawdown.remaining_balance)
 
