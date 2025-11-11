@@ -75,6 +75,7 @@ export interface MainTransactionDetails extends MainTransaction {
   account_name: string
   bank_name: string | null
   account_type: string
+  currency: string
 
   // Entity details
   entity_id: string
