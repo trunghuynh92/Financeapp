@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { MainTransactionDetails } from "@/types/main-transaction"
 import { formatCurrency } from "@/lib/account-utils"
+import { Currency } from "@/types/account"
 
 interface QuickPayCreditCardDialogProps {
   open: boolean
@@ -186,7 +187,7 @@ export function QuickPayCreditCardDialog({
         <DialogHeader>
           <DialogTitle>Pay Credit Card</DialogTitle>
           <DialogDescription>
-            Select which credit card to pay with {formatCurrency(sourceTransaction.amount, sourceTransaction.currency)}
+            Select which credit card to pay with {formatCurrency(sourceTransaction.amount, sourceTransaction.currency as Currency)}
           </DialogDescription>
         </DialogHeader>
 
@@ -202,7 +203,7 @@ export function QuickPayCreditCardDialog({
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Amount</p>
                 <p className="text-2xl font-bold text-red-600">
-                  {formatCurrency(sourceTransaction.amount, sourceTransaction.currency)}
+                  {formatCurrency(sourceTransaction.amount, sourceTransaction.currency as Currency)}
                 </p>
               </div>
             </div>
