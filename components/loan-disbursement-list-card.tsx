@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { formatCurrency, formatDate } from "@/lib/account-utils"
+import { Currency } from "@/types/account"
 import {
   LoanDisbursementWithAccount,
   LOAN_STATUS_LABELS,
@@ -187,7 +188,7 @@ export function LoanDisbursementListCard({
                 <div>
                   <p className="text-sm text-muted-foreground">Total Outstanding</p>
                   <p className="text-2xl font-bold">
-                    {formatCurrency(stats.total_outstanding, currency)}
+                    {formatCurrency(stats.total_outstanding, currency as Currency)}
                   </p>
                 </div>
               </div>
@@ -299,10 +300,10 @@ export function LoanDisbursementListCard({
                         </TableCell>
                         <TableCell>{formatDate(loan.disbursement_date)}</TableCell>
                         <TableCell className="font-medium">
-                          {formatCurrency(loan.principal_amount, currency)}
+                          {formatCurrency(loan.principal_amount, currency as Currency)}
                         </TableCell>
                         <TableCell className="font-medium">
-                          {formatCurrency(loan.remaining_balance, currency)}
+                          {formatCurrency(loan.remaining_balance, currency as Currency)}
                         </TableCell>
                         <TableCell>
                           <div className="space-y-1">
@@ -313,7 +314,7 @@ export function LoanDisbursementListCard({
                               />
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              {progress.toFixed(0)}% ({formatCurrency(paidAmount, currency)} received)
+                              {progress.toFixed(0)}% ({formatCurrency(paidAmount, currency as Currency)} received)
                             </div>
                           </div>
                         </TableCell>
