@@ -371,7 +371,7 @@ export function LoanDisbursementListCard({
                       {overdueDisbursements.length} loan{overdueDisbursements.length > 1 ? 's are' : ' is'} overdue.
                       Total overdue amount: {formatCurrency(
                         overdueDisbursements.reduce((sum, d) => sum + Number(d.remaining_balance), 0),
-                        currency
+                        currency as Currency
                       )}
                     </AlertDescription>
                   </Alert>
