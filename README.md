@@ -1,6 +1,63 @@
-# Finance SaaS v4.3.0
+# Finance SaaS v4.5.0
 
-A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, team collaboration, advanced transaction processing, debt management, loan receivables, business partners, intelligent transaction type filtering, balance checkpointing, and detailed financial reporting with complete entity isolation.
+A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, team collaboration, advanced transaction processing, credit card mechanics, debt management, loan receivables, business partners, intelligent transaction type filtering, balance checkpointing, and detailed financial reporting with complete entity isolation.
+
+## Version 4.5.0 - Enhanced UX & Transaction Management
+
+### What's New in v4.5.0
+
+#### 🎨 User-Friendly Transaction Dialog
+- **Streamlined Add Transaction**: New intuitive dialog for creating transactions from Main Transactions page
+- **Smart Field Ordering**: Account → Date/Time → Direction → Type → Amount → Category → Branch → Description
+- **Real-Time Defaults**: Date/Time defaults to current time for quick entry
+- **Visual Direction Toggle**: Clear red "(Money Out)" / green "(Money In)" indicators
+- **Smart Category Filtering**: Automatically shows only relevant categories based on transaction type
+- **Optional vs Required**: Clear visual indicators for required fields with asterisks
+- **Performance Optimized**: Single API call for instant transaction creation
+
+#### 🗑️ Advanced Delete Functionality
+- **Individual Transaction Delete**: Delete button in actions column with confirmation
+- **Bulk Delete**: Select multiple transactions and delete in one operation
+- **Split Transaction Protection**: Special warning dialog for split transactions
+  - Shows all related splits before deletion
+  - Displays split details (sequence, type, category, amount)
+  - Total amount calculation
+  - Prevents accidental partial deletion
+  - Bulk delete protection for splits
+- **Balance Adjustment Protection**: Cannot delete system-generated adjustments
+- **Confirmation Dialogs**: Clear warnings before permanent deletion
+
+#### 📊 Main Transactions as Primary Workspace
+- **All-in-One Interface**: Add, edit, split, and delete transactions without leaving the page
+- **Add Transaction Button**: Prominent button when no items selected
+- **Smart Button Switching**: Shows bulk actions when items selected, add button otherwise
+- **Complete Transaction Lifecycle**: Create → Categorize → Match → Delete all in one place
+
+## Version 4.4.0 - Credit Card Payment System
+
+### What's New in v4.4.0
+
+#### 💳 Comprehensive Credit Card Mechanics
+- **CC_CHARGE Transaction Type**: Credit card purchases that don't immediately affect cashflow
+  - `affects_cashflow: false` - Prevents double-counting in cashflow reports
+  - Uses same categories as EXP for unified expense reporting
+  - Creates debt without immediate cash impact
+- **CC_PAY Transaction Type**: Credit card payments with cashflow impact
+  - `affects_cashflow: true` - Records actual cash movement
+  - Same-type matching: CC_PAY ↔ CC_PAY between bank and credit card
+- **QuickPayCreditCardDialog**: Streamlined payment workflow
+  - Shows all credit cards with current balances and limits
+  - Auto-creates and matches CC_PAY transactions
+  - One-click payment from bank to credit card
+- **Optional Credit Limits**: Track credit limits and utilization for credit cards
+- **Match Badges**: Visual indicators for matched/unmatched CC_PAY transactions
+
+#### 📖 Cash Basis Accounting Documentation
+- **CREDIT_CARD_MECHANICS.md**: Comprehensive guide explaining:
+  - Why CC_CHARGE vs EXP matters for cashflow accuracy
+  - How CC_PAY matching works
+  - Reporting examples (expense, cashflow, debt reports)
+  - Comparison with other account types
 
 ## Version 4.3.0 - Transaction Type Intelligence & Simplification
 

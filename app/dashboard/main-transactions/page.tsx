@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ChevronLeft, ChevronRight, Edit, Search, Filter, X, Split, Check, Link2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Edit, Search, Filter, X, Split, Check, Link2, Plus, Trash2 } from "lucide-react"
 import { MainTransactionDetails, TransactionType, Category, Branch } from "@/types/main-transaction"
 import { EditTransactionDialog } from "@/components/main-transactions/EditTransactionDialog"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
@@ -19,6 +19,8 @@ import { QuickMatchLoanDialog } from "@/components/main-transactions/QuickMatchL
 import { QuickPayCreditCardDialog } from "@/components/main-transactions/QuickPayCreditCardDialog"
 import { SelectDrawdownDialog } from "@/components/main-transactions/SelectDrawdownDialog"
 import { InlineCombobox } from "@/components/main-transactions/InlineCombobox"
+import { AddTransactionDialog } from "@/components/main-transactions/AddTransactionDialog"
+import { DeleteSplitWarningDialog } from "@/components/main-transactions/DeleteSplitWarningDialog"
 import { useEntity } from "@/contexts/EntityContext"
 
 interface PaginationInfo {
@@ -82,6 +84,14 @@ export default function MainTransactionsPage() {
   const [quickMatchLoanDialogOpen, setQuickMatchLoanDialogOpen] = useState(false)
   const [quickPayCreditCardDialogOpen, setQuickPayCreditCardDialogOpen] = useState(false)
   const [selectDrawdownDialogOpen, setSelectDrawdownDialogOpen] = useState(false)
+
+  // Add transaction dialog state
+  const [addTransactionDialogOpen, setAddTransactionDialogOpen] = useState(false)
+
+  // Delete split warning dialog state
+  const [deleteSplitWarningOpen, setDeleteSplitWarningOpen] = useState(false)
+  const [splitTransactionsToDelete, setSplitTransactionsToDelete] = useState<MainTransactionDetails[]>([])
+  const [pendingDeleteRawId, setPendingDeleteRawId] = useState<string | null>(null)
 
   // Fetch transaction types, categories, branches, accounts on mount
   useEffect(() => {
@@ -360,6 +370,99 @@ export default function MainTransactionsPage() {
     fetchTransactions()
   }
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return
+
+    // Check if any selected transactions are splits
+    const selectedTransactions = transactions.filter(tx => selectedIds.has(tx.main_transaction_id))
+    const hasSplits = selectedTransactions.some(tx => tx.is_split)
+
+    if (hasSplits) {
+      alert('Cannot bulk delete split transactions. Please delete them individually to see all related splits.')
+      return
+    }
+
+    const confirmMessage = `Are you sure you want to delete ${selectedIds.size} transaction${selectedIds.size > 1 ? 's' : ''}? This will delete the original transaction and cannot be undone.`
+    if (!confirm(confirmMessage)) return
+
+    try {
+      setLoading(true)
+      const deletePromises = Array.from(selectedIds).map(async (txId) => {
+        const tx = transactions.find(t => t.main_transaction_id === txId)
+        if (!tx) return
+
+        // Delete the original transaction (this will cascade delete main transactions)
+        const response = await fetch(`/api/transactions/${tx.raw_transaction_id}`, {
+          method: 'DELETE',
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to delete transaction ${tx.raw_transaction_id}`)
+        }
+      })
+
+      await Promise.all(deletePromises)
+
+      // Clear selection and refresh
+      setSelectedIds(new Set())
+      setLastSelectedIndex(null)
+      await fetchTransactions()
+    } catch (error) {
+      console.error('Error deleting transactions:', error)
+      alert(error instanceof Error ? error.message : 'Failed to delete transactions')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteTransaction = async (tx: MainTransactionDetails) => {
+    // If it's a split transaction, show warning with all related splits
+    if (tx.is_split) {
+      // Find all transactions with the same raw_transaction_id
+      const relatedSplits = transactions.filter(t => t.raw_transaction_id === tx.raw_transaction_id)
+
+      if (relatedSplits.length > 1) {
+        // Show warning dialog with all splits
+        setSplitTransactionsToDelete(relatedSplits)
+        setPendingDeleteRawId(tx.raw_transaction_id)
+        setDeleteSplitWarningOpen(true)
+        return
+      }
+    }
+
+    // Not a split or only one transaction - show simple confirmation
+    const confirmMessage = `Are you sure you want to delete this transaction? This will delete the original transaction and cannot be undone.`
+    if (!confirm(confirmMessage)) return
+
+    await performDelete(tx.raw_transaction_id)
+  }
+
+  const performDelete = async (rawTransactionId: string) => {
+    try {
+      const response = await fetch(`/api/transactions/${rawTransactionId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete transaction')
+      }
+
+      await fetchTransactions()
+    } catch (error) {
+      console.error('Error deleting transaction:', error)
+      alert(error instanceof Error ? error.message : 'Failed to delete transaction')
+    }
+  }
+
+  const handleConfirmSplitDelete = () => {
+    if (pendingDeleteRawId) {
+      performDelete(pendingDeleteRawId)
+      setPendingDeleteRawId(null)
+      setSplitTransactionsToDelete([])
+    }
+  }
+
   const handleQuickMatchSuccess = () => {
     fetchTransactions()
   }
@@ -583,32 +686,51 @@ export default function MainTransactionsPage() {
                 Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} transactions
               </CardDescription>
             </div>
-            {selectedIds.size > 0 && (
-              <div className="flex items-center gap-3">
-                <Badge variant="secondary" className="text-sm">
-                  {selectedIds.size} selected
-                </Badge>
+            <div className="flex items-center gap-3">
+              {selectedIds.size > 0 ? (
+                <>
+                  <Badge variant="secondary" className="text-sm">
+                    {selectedIds.size} selected
+                  </Badge>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleBulkEdit}
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Selected
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleBulkDelete}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Selected
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedIds(new Set())
+                      setLastSelectedIndex(null)
+                    }}
+                  >
+                    <X className="h-4 w-4 mr-2" />
+                    Clear
+                  </Button>
+                </>
+              ) : (
                 <Button
                   variant="default"
                   size="sm"
-                  onClick={handleBulkEdit}
+                  onClick={() => setAddTransactionDialogOpen(true)}
                 >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Selected
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Transaction
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedIds(new Set())
-                    setLastSelectedIndex(null)
-                  }}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Clear Selection
-                </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -952,6 +1074,20 @@ export default function MainTransactionsPage() {
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteTransaction(tx)}
+                                disabled={isBalanceAdjustment}
+                                title={
+                                  isBalanceAdjustment
+                                    ? "Balance adjustment transactions cannot be deleted. Edit the checkpoint instead."
+                                    : "Delete transaction"
+                                }
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -1111,6 +1247,28 @@ export default function MainTransactionsPage() {
           onSuccess={handleQuickMatchSuccess}
         />
       )}
+
+      {/* Add Transaction Dialog */}
+      <AddTransactionDialog
+        open={addTransactionDialogOpen}
+        onOpenChange={setAddTransactionDialogOpen}
+        accounts={accounts}
+        transactionTypes={transactionTypes}
+        categories={categories}
+        branches={branches}
+        onSuccess={() => {
+          setAddTransactionDialogOpen(false)
+          fetchTransactions()
+        }}
+      />
+
+      {/* Delete Split Warning Dialog */}
+      <DeleteSplitWarningDialog
+        open={deleteSplitWarningOpen}
+        onOpenChange={setDeleteSplitWarningOpen}
+        splitTransactions={splitTransactionsToDelete}
+        onConfirmDelete={handleConfirmSplitDelete}
+      />
     </div>
   )
 }
