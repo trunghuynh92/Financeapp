@@ -22,6 +22,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { formatCurrency } from "@/lib/account-utils"
 import { formatDate } from "@/lib/account-utils"
+import { Currency } from "@/types/account"
 import {
   DrawdownListItem,
   DrawdownStats,
@@ -214,12 +215,12 @@ export function DrawdownListCard({
               </div>
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">Total Outstanding</p>
-                <p className="text-2xl font-bold">{formatCurrency(stats.total_outstanding, currency)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(stats.total_outstanding, currency as Currency)}</p>
               </div>
               {creditLimit && availableCredit !== null && (
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">Available Credit</p>
-                  <p className="text-2xl font-bold">{formatCurrency(availableCredit, currency)}</p>
+                  <p className="text-2xl font-bold">{formatCurrency(availableCredit, currency as Currency)}</p>
                 </div>
               )}
               {stats.average_interest_rate !== null && (
@@ -288,10 +289,10 @@ export function DrawdownListCard({
                         </TableCell>
                         <TableCell>{formatDate(drawdown.drawdown_date)}</TableCell>
                         <TableCell className="text-right">
-                          {formatCurrency(drawdown.original_amount, currency)}
+                          {formatCurrency(drawdown.original_amount, currency as Currency)}
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatCurrency(drawdown.remaining_balance, currency)}
+                          {formatCurrency(drawdown.remaining_balance, currency as Currency)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex flex-col gap-1">
