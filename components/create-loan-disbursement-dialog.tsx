@@ -158,7 +158,7 @@ export function CreateLoanDisbursementDialog({
   useEffect(() => {
     if (!open) {
       setFormData({
-        account_id: accountId,
+        account_id: accountId ?? 0,
         source_account_id: 0,
         partner_id: 0,
         loan_category: "short_term",
