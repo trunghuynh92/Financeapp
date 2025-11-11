@@ -69,7 +69,7 @@ export function DeleteSplitWarningDialog({
                       </span>
                     </div>
                     <p className="text-sm font-medium">
-                      {tx.type_display_name}
+                      {tx.transaction_type}
                       {tx.category_name && ` • ${tx.category_name}`}
                     </p>
                     {tx.description && (
