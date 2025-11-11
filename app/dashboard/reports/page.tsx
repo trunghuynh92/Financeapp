@@ -381,7 +381,7 @@ export default function ReportsPage() {
                     <TableCell>{account.entity?.name || '—'}</TableCell>
                     <TableCell className="text-right">
                       <span className={account.current_balance >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
-                        {formatCurrency(account.current_balance, account.currency)}
+                        {formatCurrency(account.current_balance, account.currency as Currency)}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
