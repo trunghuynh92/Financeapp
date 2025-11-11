@@ -61,7 +61,7 @@ export function useUserEntities() {
 
 export function useUserRole(entityId: number | string) {
   const { entities, loading } = useUserEntities()
-  const entity = entities.find(e => e.id === Number(entityId))
+  const entity = entities.find(e => e.id === String(entityId))
 
   return {
     role: entity?.user_role,
