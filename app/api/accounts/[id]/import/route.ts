@@ -338,11 +338,12 @@ export async function POST(
         if (isDuplicate && matchedTx) {
           duplicateWarnings.push({
             importedTransaction: {
-              date: newTx.transaction_date,
-              description: newTx.description || '',
-              debit: newTx.debit_amount || 0,
-              credit: newTx.credit_amount || 0,
+              transaction_date: new Date(newTx.transaction_date),
+              description: newTx.description,
+              debit_amount: newTx.debit_amount,
+              credit_amount: newTx.credit_amount,
               balance: newTx.balance,
+              bank_reference: newTx.bank_reference,
             },
             possibleDuplicate: {
               transaction_id: matchedTx.raw_transaction_id,
