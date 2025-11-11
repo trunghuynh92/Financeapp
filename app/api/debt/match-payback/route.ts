@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     // Fetch the drawdown
     const { data: drawdown, error: drawdownError } = await supabase
       .from('debt_drawdown')
-      .select('drawdown_id, account_id, original_amount, remaining_balance, drawdown_reference, drawdown_date')
+      .select('drawdown_id, account_id, original_amount, remaining_balance, drawdown_reference, drawdown_date, due_date')
       .eq('drawdown_id', drawdown_id)
       .single()
 
