@@ -27,7 +27,7 @@ import {
   LOAN_STATUS_LABELS,
   LOAN_STATUS_COLORS,
 } from "@/types/loan"
-import { PARTNER_TYPE_LABELS } from "@/types/business-partner"
+import { PARTNER_TYPE_LABELS, PartnerType } from "@/types/business-partner"
 import {
   Select,
   SelectContent,
@@ -294,7 +294,7 @@ export function LoanDisbursementListCard({
                         <TableCell>
                           {(loan as any).partner?.partner_type && (
                             <Badge variant="outline">
-                              {PARTNER_TYPE_LABELS[(loan as any).partner.partner_type] || (loan as any).partner.partner_type}
+                              {PARTNER_TYPE_LABELS[(loan as any).partner.partner_type as PartnerType] || (loan as any).partner.partner_type}
                             </Badge>
                           )}
                         </TableCell>
