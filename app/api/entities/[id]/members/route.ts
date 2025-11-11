@@ -55,7 +55,7 @@ export async function GET(
     }
 
     // Fetch user details for each member
-    const userIds = members.map(m => m.user_id)
+    const userIds = members.map((m: any) => m.user_id)
     const { data: users, error: usersError } = await supabase
       .from('users')
       .select('id, email, full_name, avatar_url')
@@ -66,8 +66,8 @@ export async function GET(
     }
 
     // Combine member and user data
-    const membersWithDetails = members.map(member => {
-      const userDetails = users?.find(u => u.id === member.user_id)
+    const membersWithDetails = members.map((member: any) => {
+      const userDetails = users?.find((u: any) => u.id === member.user_id)
       return {
         ...member,
         email: userDetails?.email || 'Unknown',
