@@ -135,8 +135,8 @@ export function AddTransactionDialog({
     return false
   })
 
-  // Check if category is required
-  const isCategoryRequired = selectedTransactionType?.requires_category || false
+  // Check if category is required (Income and Expense transactions require categories)
+  const isCategoryRequired = selectedTransactionType?.type_code === 'INC' || selectedTransactionType?.type_code === 'EXP'
 
   function validate(): boolean {
     const newErrors: Record<string, string> = {}
