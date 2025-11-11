@@ -126,8 +126,6 @@ export async function PATCH(
 
     // Build update object
     const updateData: any = {}
-    if (body.borrower_name !== undefined) updateData.borrower_name = body.borrower_name
-    if (body.borrower_type !== undefined) updateData.borrower_type = body.borrower_type
     if (body.loan_category !== undefined) updateData.loan_category = body.loan_category
     if (body.due_date !== undefined) updateData.due_date = body.due_date
     if (body.term_months !== undefined) updateData.term_months = body.term_months
