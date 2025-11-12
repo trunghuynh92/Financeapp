@@ -1,9 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, TrendingUp, TrendingDown, Calendar, BarChart3 } from "lucide-react"
+import { Loader2, TrendingUp, TrendingDown, DollarSign } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardContent,
@@ -12,14 +11,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -27,6 +18,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  BarChart,
+  Bar,
   LineChart,
   Line,
   XAxis,
@@ -35,132 +28,39 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ComposedChart,
 } from 'recharts'
 import { formatCurrency } from "@/lib/account-utils"
-import { Currency } from "@/types/account"
+import { useEntity } from "@/contexts/EntityContext"
 
-interface Account {
-  account_id: number
-  account_name: string
-  currency: string
-  entity: {
-    id: string
-    name: string
-  }
+interface IncomeExpenseData {
+  period: string
+  income: number
+  expense: number
+  net: number
 }
 
-interface AccountBalance {
-  account_id: number
-  account_name: string
-  currency: string
-  entity: {
-    id: string
-    name: string
-  }
-  current_balance: number
-  balance_change: number
-  balance_change_percent: number
-}
-
-interface BalanceHistoryPoint {
-  date: string
-  balance: number
-}
-
-interface AccountBalanceHistory {
-  account_id: number
-  account_name: string
-  currency: string
-  entity: {
-    id: string
-    name: string
-  }
-  history: BalanceHistoryPoint[]
-}
-
-type Granularity = 'day' | 'week' | 'month' | 'year'
-
-const COLORS = [
-  '#3b82f6', // blue
-  '#10b981', // green
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#06b6d4', // cyan
-  '#f97316', // orange
-]
+type Granularity = 'year' | 'month' | 'week'
+type DateRange = '1m' | '3m' | '6m' | '1y' | 'all'
 
 export default function ReportsPage() {
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [accountBalances, setAccountBalances] = useState<AccountBalance[]>([])
-  const [balanceHistory, setBalanceHistory] = useState<AccountBalanceHistory[]>([])
+  const { currentEntity, loading: entityLoading } = useEntity()
+  const [data, setData] = useState<IncomeExpenseData[]>([])
   const [loading, setLoading] = useState(true)
-  const [chartLoading, setChartLoading] = useState(false)
   const [granularity, setGranularity] = useState<Granularity>('month')
-  const [dateRange, setDateRange] = useState<'1m' | '3m' | '6m' | '1y' | 'all'>('1y')
+  const [dateRange, setDateRange] = useState<DateRange>('1y')
 
   useEffect(() => {
-    fetchAccounts()
-    fetchAccountBalances()
-  }, [])
-
-  useEffect(() => {
-    if (accounts.length > 0) {
-      fetchBalanceHistory()
+    if (currentEntity) {
+      fetchIncomeExpenseData()
     }
-  }, [accounts, granularity, dateRange])
+  }, [currentEntity?.id, granularity, dateRange])
 
-  async function fetchAccounts() {
-    try {
-      const response = await fetch('/api/accounts?limit=1000')
-      if (!response.ok) throw new Error('Failed to fetch accounts')
-      const result = await response.json()
-      setAccounts(result.data || [])
-    } catch (error) {
-      console.error("Error fetching accounts:", error)
-    }
-  }
+  async function fetchIncomeExpenseData() {
+    if (!currentEntity) return
 
-  async function fetchAccountBalances() {
     try {
       setLoading(true)
-      const response = await fetch('/api/accounts?limit=1000')
-      if (!response.ok) throw new Error('Failed to fetch accounts')
-
-      const result = await response.json()
-      const accountsData = result.data || []
-
-      // Calculate current balance and changes
-      const balances: AccountBalance[] = accountsData.map((account: any) => {
-        const balanceData = Array.isArray(account.balance) ? account.balance[0] : account.balance
-        const currentBalance = balanceData?.current_balance || 0
-        const entity = Array.isArray(account.entity) ? account.entity[0] : account.entity
-
-        // TODO: Calculate actual balance change from historical data
-        // For now, just show current balance
-        return {
-          account_id: account.account_id,
-          account_name: account.account_name,
-          currency: account.currency,
-          entity,
-          current_balance: currentBalance,
-          balance_change: 0, // Will be calculated from history
-          balance_change_percent: 0,
-        }
-      })
-
-      setAccountBalances(balances)
-    } catch (error) {
-      console.error("Error fetching account balances:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function fetchBalanceHistory() {
-    try {
-      setChartLoading(true)
 
       // Calculate date range
       const endDate = new Date()
@@ -185,36 +85,47 @@ export default function ReportsPage() {
       }
 
       const params = new URLSearchParams({
+        entity_id: currentEntity.id,
         start_date: startDate.toISOString(),
         end_date: endDate.toISOString(),
         granularity,
       })
 
-      const response = await fetch(`/api/reports/balance-history?${params.toString()}`)
-      if (!response.ok) throw new Error('Failed to fetch balance history')
+      const response = await fetch(`/api/reports/income-expense?${params.toString()}`)
+      if (!response.ok) throw new Error('Failed to fetch income/expense data')
 
       const result = await response.json()
-      setBalanceHistory(result.data || [])
+      setData(result.data || [])
     } catch (error) {
-      console.error("Error fetching balance history:", error)
+      console.error("Error fetching income/expense data:", error)
     } finally {
-      setChartLoading(false)
+      setLoading(false)
     }
   }
 
-  // Prepare chart data
-  const chartData = prepareChartData(balanceHistory)
+  // Calculate totals
+  const totals = data.reduce(
+    (acc, item) => ({
+      income: acc.income + item.income,
+      expense: acc.expense + item.expense,
+      net: acc.net + item.net,
+    }),
+    { income: 0, expense: 0, net: 0 }
+  )
 
-  // Calculate total balance
-  const totalBalance = accountBalances.reduce((sum, acc) => sum + acc.current_balance, 0)
+  // Format chart data for display
+  const chartData = data.map(item => ({
+    ...item,
+    expense: -item.expense, // Make expense negative for visual representation
+  }))
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Reports</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Financial Reports</h1>
         <p className="text-muted-foreground">
-          Balance reports and financial insights
+          Business operations income and expense analysis (excludes investment, loan, and credit line accounts)
         </p>
       </div>
 
@@ -222,64 +133,60 @@ export default function ReportsPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Balance</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalBalance, "VND")}</div>
-            <p className="text-xs text-muted-foreground">
-              Across {accountBalances.length} accounts
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Assets</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Income</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(
-                accountBalances.filter(a => a.current_balance > 0).reduce((sum, a) => sum + a.current_balance, 0),
-                "VND"
-              )}
+              {formatCurrency(totals.income, "VND")}
             </div>
             <p className="text-xs text-muted-foreground">
-              Positive balances
+              For selected period
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Liabilities</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
             <TrendingDown className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {formatCurrency(
-                Math.abs(accountBalances.filter(a => a.current_balance < 0).reduce((sum, a) => sum + a.current_balance, 0)),
-                "VND"
-              )}
+              {formatCurrency(totals.expense, "VND")}
             </div>
             <p className="text-xs text-muted-foreground">
-              Negative balances
+              For selected period
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Net Income</CardTitle>
+            <DollarSign className={`h-4 w-4 ${totals.net >= 0 ? 'text-green-500' : 'text-red-500'}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${totals.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatCurrency(totals.net, "VND")}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Income minus expenses
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Balance Chart */}
+      {/* Income/Expense Chart */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Balance Trend</CardTitle>
+              <CardTitle>Income vs Expenses</CardTitle>
               <CardDescription>
-                Balance over time by account
+                Income (bars up), Expenses (bars down), Net balance (line)
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Select value={dateRange} onValueChange={(value) => setDateRange(value as any)}>
+              <Select value={dateRange} onValueChange={(value) => setDateRange(value as DateRange)}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Date range" />
                 </SelectTrigger>
@@ -293,10 +200,9 @@ export default function ReportsPage() {
               </Select>
               <Select value={granularity} onValueChange={(value) => setGranularity(value as Granularity)}>
                 <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Granularity" />
+                  <SelectValue placeholder="Group by" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="day">Daily</SelectItem>
                   <SelectItem value="week">Weekly</SelectItem>
                   <SelectItem value="month">Monthly</SelectItem>
                   <SelectItem value="year">Yearly</SelectItem>
@@ -306,96 +212,74 @@ export default function ReportsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {chartLoading ? (
-            <div className="flex items-center justify-center h-[400px]">
+          {loading ? (
+            <div className="flex items-center justify-center h-[500px]">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : chartData.length === 0 ? (
-            <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+            <div className="flex items-center justify-center h-[500px] text-muted-foreground">
               No data available for the selected period
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={400}>
-              <LineChart data={chartData}>
+            <ResponsiveContainer width="100%" height={500}>
+              <ComposedChart
+                data={chartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
-                  dataKey="date"
-                  tickFormatter={(value) => formatChartDate(value, granularity)}
+                  dataKey="period"
+                  tickFormatter={(value) => formatPeriod(value, granularity)}
                 />
                 <YAxis
-                  tickFormatter={(value) => formatCurrency(value, "VND", true)}
+                  tickFormatter={(value) => formatCurrency(Math.abs(value), "VND", true)}
                 />
                 <Tooltip
-                  formatter={(value: any) => formatCurrency(value, "VND")}
-                  labelFormatter={(label) => formatChartDate(label, granularity, true)}
+                  formatter={(value: any, name: string) => {
+                    const absValue = Math.abs(value)
+                    if (name === 'income') return [formatCurrency(absValue, "VND"), 'Income']
+                    if (name === 'expense') return [formatCurrency(absValue, "VND"), 'Expenses']
+                    if (name === 'net') return [formatCurrency(value, "VND"), 'Net Balance']
+                    return [formatCurrency(value, "VND"), name]
+                  }}
+                  labelFormatter={(label) => formatPeriod(label, granularity, true)}
                 />
-                <Legend />
-                {balanceHistory.map((account, index) => (
-                  <Line
-                    key={account.account_id}
-                    type="monotone"
-                    dataKey={`account_${account.account_id}`}
-                    name={account.account_name}
-                    stroke={COLORS[index % COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
+                <Legend
+                  formatter={(value) => {
+                    if (value === 'income') return 'Income'
+                    if (value === 'expense') return 'Expenses'
+                    if (value === 'net') return 'Net Balance'
+                    return value
+                  }}
+                />
 
-      {/* Account Balances Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Account Balances</CardTitle>
-          <CardDescription>
-            Current balance for each account
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : accountBalances.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No accounts found</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Account Name</TableHead>
-                  <TableHead>Entity</TableHead>
-                  <TableHead className="text-right">Current Balance</TableHead>
-                  <TableHead className="text-right">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {accountBalances.map((account) => (
-                  <TableRow key={account.account_id}>
-                    <TableCell className="font-medium">{account.account_name}</TableCell>
-                    <TableCell>{account.entity?.name || '—'}</TableCell>
-                    <TableCell className="text-right">
-                      <span className={account.current_balance >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
-                        {formatCurrency(account.current_balance, account.currency as Currency)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {account.current_balance >= 0 ? (
-                        <Badge className="bg-green-100 text-green-800">Asset</Badge>
-                      ) : (
-                        <Badge className="bg-red-100 text-red-800">Liability</Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                {/* Income bar (going up) */}
+                <Bar
+                  dataKey="income"
+                  fill="#10b981"
+                  radius={[4, 4, 0, 0]}
+                  name="income"
+                />
+
+                {/* Expense bar (going down) */}
+                <Bar
+                  dataKey="expense"
+                  fill="#ef4444"
+                  radius={[0, 0, 4, 4]}
+                  name="expense"
+                />
+
+                {/* Net balance line */}
+                <Line
+                  type="monotone"
+                  dataKey="net"
+                  stroke="#3b82f6"
+                  strokeWidth={3}
+                  dot={{ fill: '#3b82f6', r: 4 }}
+                  name="net"
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
@@ -404,59 +288,35 @@ export default function ReportsPage() {
 }
 
 /**
- * Prepare chart data from balance history
+ * Format period for display
  */
-function prepareChartData(balanceHistory: AccountBalanceHistory[]) {
-  if (balanceHistory.length === 0) return []
+function formatPeriod(period: string, granularity: Granularity, full: boolean = false): string {
+  if (granularity === 'year') {
+    return period
+  }
 
-  // Get all unique dates from all accounts
-  const allDates = new Set<string>()
-  balanceHistory.forEach(account => {
-    account.history.forEach(point => {
-      allDates.add(point.date)
-    })
-  })
+  if (granularity === 'week') {
+    const date = new Date(period)
+    if (full) {
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    }
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
 
-  // Sort dates
-  const sortedDates = Array.from(allDates).sort()
-
-  // Build chart data
-  return sortedDates.map(date => {
-    const dataPoint: any = { date }
-
-    balanceHistory.forEach(account => {
-      const point = account.history.find(h => h.date === date)
-      dataPoint[`account_${account.account_id}`] = point?.balance || 0
-    })
-
-    return dataPoint
-  })
-}
-
-/**
- * Format date for chart display
- */
-function formatChartDate(dateString: string, granularity: Granularity, full: boolean = false): string {
-  const date = new Date(dateString)
+  // month format: YYYY-MM
+  const [year, month] = period.split('-')
+  const date = new Date(parseInt(year), parseInt(month) - 1, 1)
 
   if (full) {
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
-      day: 'numeric',
     })
   }
 
-  switch (granularity) {
-    case 'day':
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    case 'week':
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    case 'month':
-      return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-    case 'year':
-      return date.toLocaleDateString('en-US', { year: 'numeric' })
-    default:
-      return date.toLocaleDateString('en-US')
-  }
+  return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
 }

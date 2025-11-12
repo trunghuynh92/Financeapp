@@ -2,13 +2,18 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ChevronLeft, ChevronRight, Edit, Search, Filter, X, Split, Check, Link2, Plus, Trash2 } from "lucide-react"
-import { MainTransactionDetails, TransactionType, Category, Branch } from "@/types/main-transaction"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { ChevronLeft, ChevronRight, Edit, Search, Filter, X, Split, Check, Link2, Plus, Trash2, Loader2, Info, CalendarIcon } from "lucide-react"
+import { MainTransactionDetails, TransactionType, Category, Branch, Project } from "@/types/main-transaction"
 import { EditTransactionDialog } from "@/components/main-transactions/EditTransactionDialog"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
 import { SplitTransactionDialog } from "@/components/main-transactions/SplitTransactionDialog"
@@ -22,6 +27,8 @@ import { InlineCombobox } from "@/components/main-transactions/InlineCombobox"
 import { AddTransactionDialog } from "@/components/main-transactions/AddTransactionDialog"
 import { DeleteSplitWarningDialog } from "@/components/main-transactions/DeleteSplitWarningDialog"
 import { useEntity } from "@/contexts/EntityContext"
+import { useDebounce } from "@/hooks/useDebounce"
+import { cn } from "@/lib/utils"
 
 interface PaginationInfo {
   page: number
@@ -38,6 +45,7 @@ export default function MainTransactionsPage() {
   const [transactionTypes, setTransactionTypes] = useState<TransactionType[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [branches, setBranches] = useState<Branch[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
   const [accounts, setAccounts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -46,10 +54,21 @@ export default function MainTransactionsPage() {
   const [selectedType, setSelectedType] = useState<string>("all")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedBranch, setSelectedBranch] = useState<string>("all")
+  const [selectedProject, setSelectedProject] = useState<string>("all")
   const [selectedDirection, setSelectedDirection] = useState<string>("all")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined })
   const [searchQuery, setSearchQuery] = useState("")
+  const [amountOperator, setAmountOperator] = useState<string>("all")
+  const [amountValue, setAmountValue] = useState<string>("")
+
+  // Debounce search query to avoid excessive API calls
+  const debouncedSearchQuery = useDebounce(searchQuery, 500)
+
+  // Column visibility state
+  const [showBranchColumn, setShowBranchColumn] = useState(false)
+  const [showProjectColumn, setShowProjectColumn] = useState(false)
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -68,6 +87,13 @@ export default function MainTransactionsPage() {
   // Split dialog state
   const [splitDialogOpen, setSplitDialogOpen] = useState(false)
   const [splitTransaction, setSplitTransaction] = useState<MainTransactionDetails | null>(null)
+
+  // Create category dialog state
+  const [createCategoryDialogOpen, setCreateCategoryDialogOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState("")
+  const [newCategoryType, setNewCategoryType] = useState("")
+  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [createCategoryContext, setCreateCategoryContext] = useState<{transactionId: number, transactionIndex: number} | null>(null)
 
   // Inline editing state
   const [editingCell, setEditingCell] = useState<{row: number, field: string} | null>(null)
@@ -93,6 +119,13 @@ export default function MainTransactionsPage() {
   const [splitTransactionsToDelete, setSplitTransactionsToDelete] = useState<MainTransactionDetails[]>([])
   const [pendingDeleteRawId, setPendingDeleteRawId] = useState<string | null>(null)
 
+  // Filter persistence state
+  const [filtersSaved, setFiltersSaved] = useState(false)
+  const [savedPresets, setSavedPresets] = useState<Array<{name: string, filters: any}>>([])
+  const [savePresetDialogOpen, setSavePresetDialogOpen] = useState(false)
+  const [newPresetName, setNewPresetName] = useState("")
+  const [selectedPreset, setSelectedPreset] = useState<string>("")
+
   // Fetch transaction types, categories, branches, accounts on mount
   useEffect(() => {
     if (!currentEntity) return
@@ -103,10 +136,11 @@ export default function MainTransactionsPage() {
         params.set('entity_id', currentEntity.id)
         params.set('limit', '1000')
 
-        const [typesRes, categoriesRes, branchesRes, accountsRes] = await Promise.all([
+        const [typesRes, categoriesRes, branchesRes, projectsRes, accountsRes] = await Promise.all([
           fetch("/api/transaction-types"),
-          fetch("/api/categories"),
+          fetch(`/api/categories?entity_id=${currentEntity.id}&include_custom=true`),
           fetch("/api/branches"),
+          fetch(`/api/projects?entity_id=${currentEntity.id}`),
           fetch(`/api/accounts?${params.toString()}`),
         ])
 
@@ -125,6 +159,11 @@ export default function MainTransactionsPage() {
           setBranches(branchesData.data || [])
         }
 
+        if (projectsRes.ok) {
+          const projectsData = await projectsRes.json()
+          setProjects(projectsData.data || [])
+        }
+
         if (accountsRes.ok) {
           const accountsData = await accountsRes.json()
           setAccounts(accountsData.data || [])
@@ -137,12 +176,46 @@ export default function MainTransactionsPage() {
     fetchMetadata()
   }, [currentEntity?.id])
 
+  // Load saved filter presets from localStorage on mount
+  useEffect(() => {
+    if (!currentEntity) return
+
+    try {
+      const savedPresetsData = localStorage.getItem(`filter_presets_${currentEntity.id}`)
+      if (savedPresetsData) {
+        const presets = JSON.parse(savedPresetsData)
+        setSavedPresets(presets)
+        console.log('Loaded filter presets from localStorage:', presets)
+      }
+    } catch (error) {
+      console.error('Error loading filter presets:', error)
+    }
+  }, [currentEntity?.id])
+
+  // Sync dateRange with startDate/endDate
+  useEffect(() => {
+    if (dateRange.from) {
+      setStartDate(dateRange.from.toISOString().split('T')[0])
+    } else {
+      setStartDate("")
+    }
+
+    if (dateRange.to) {
+      setEndDate(dateRange.to.toISOString().split('T')[0])
+    } else {
+      setEndDate("")
+    }
+
+    setCurrentPage(1)
+  }, [dateRange])
+
   // Fetch transactions when filters or pagination change
+  // Use debouncedSearchQuery instead of searchQuery to reduce API calls
   useEffect(() => {
     if (currentEntity) {
       fetchTransactions()
     }
-  }, [currentEntity?.id, currentPage, itemsPerPage, selectedAccount, selectedType, selectedCategory, selectedBranch, selectedDirection, startDate, endDate, searchQuery])
+  }, [currentEntity?.id, currentPage, itemsPerPage, selectedAccount, selectedType, selectedCategory, selectedBranch, selectedProject, selectedDirection, startDate, endDate, debouncedSearchQuery, amountOperator, amountValue])
 
   const fetchTransactions = async () => {
     setLoading(true)
@@ -160,10 +233,15 @@ export default function MainTransactionsPage() {
       if (selectedType !== "all") params.append("transaction_type_id", selectedType)
       if (selectedCategory !== "all") params.append("category_id", selectedCategory)
       if (selectedBranch !== "all") params.append("branch_id", selectedBranch)
+      if (selectedProject !== "all") params.append("project_id", selectedProject)
       if (selectedDirection !== "all") params.append("transaction_direction", selectedDirection)
       if (startDate) params.append("start_date", startDate)
       if (endDate) params.append("end_date", endDate)
-      if (searchQuery) params.append("search", searchQuery)
+      if (debouncedSearchQuery) params.append("search", debouncedSearchQuery)
+      if (amountOperator !== "all" && amountValue) {
+        params.append("amount_operator", amountOperator)
+        params.append("amount_value", amountValue)
+      }
 
       const response = await fetch(`/api/main-transactions?${params.toString()}`)
 
@@ -196,11 +274,109 @@ export default function MainTransactionsPage() {
     setSelectedType("all")
     setSelectedCategory("all")
     setSelectedBranch("all")
+    setSelectedProject("all")
     setSelectedDirection("all")
     setStartDate("")
     setEndDate("")
+    setDateRange({ from: undefined, to: undefined })
     setSearchQuery("")
+    setAmountOperator("all")
+    setAmountValue("")
     setCurrentPage(1)
+    setSelectedPreset("")
+  }
+
+  const saveCurrentFiltersAsPreset = () => {
+    if (!currentEntity || !newPresetName.trim()) {
+      alert("Please enter a preset name")
+      return
+    }
+
+    const filterData = {
+      selectedAccount,
+      selectedType,
+      selectedCategory,
+      selectedBranch,
+      selectedProject,
+      selectedDirection,
+      startDate,
+      endDate,
+      searchQuery,
+      amountOperator,
+      amountValue,
+      showBranchColumn,
+      showProjectColumn,
+    }
+
+    const newPreset = { name: newPresetName.trim(), filters: filterData }
+    const updatedPresets = [...savedPresets, newPreset]
+    setSavedPresets(updatedPresets)
+
+    try {
+      localStorage.setItem(`filter_presets_${currentEntity.id}`, JSON.stringify(updatedPresets))
+      setFiltersSaved(true)
+      setSavePresetDialogOpen(false)
+      setNewPresetName("")
+      setSelectedPreset(newPresetName.trim())
+      console.log('Saved filter preset:', newPresetName)
+    } catch (error) {
+      console.error('Error saving preset:', error)
+      alert('Failed to save preset')
+    }
+  }
+
+  const loadPreset = (presetName: string) => {
+    const preset = savedPresets.find(p => p.name === presetName)
+    if (!preset) return
+
+    const { filters } = preset
+    setSelectedAccount(filters.selectedAccount || 'all')
+    setSelectedType(filters.selectedType || 'all')
+    setSelectedCategory(filters.selectedCategory || 'all')
+    setSelectedBranch(filters.selectedBranch || 'all')
+    setSelectedProject(filters.selectedProject || 'all')
+    setSelectedDirection(filters.selectedDirection || 'all')
+    setStartDate(filters.startDate || '')
+    setEndDate(filters.endDate || '')
+
+    // Restore date range from string dates
+    if (filters.startDate || filters.endDate) {
+      setDateRange({
+        from: filters.startDate ? new Date(filters.startDate) : undefined,
+        to: filters.endDate ? new Date(filters.endDate) : undefined,
+      })
+    } else {
+      setDateRange({ from: undefined, to: undefined })
+    }
+
+    setSearchQuery(filters.searchQuery || '')
+    setAmountOperator(filters.amountOperator || 'all')
+    setAmountValue(filters.amountValue || '')
+    setShowBranchColumn(filters.showBranchColumn || false)
+    setShowProjectColumn(filters.showProjectColumn || false)
+    setSelectedPreset(presetName)
+    setCurrentPage(1)
+    console.log('Loaded preset:', presetName)
+  }
+
+  const deletePreset = (presetName: string) => {
+    if (!currentEntity) return
+
+    if (!confirm(`Delete preset "${presetName}"?`)) return
+
+    const updatedPresets = savedPresets.filter(p => p.name !== presetName)
+    setSavedPresets(updatedPresets)
+
+    try {
+      localStorage.setItem(`filter_presets_${currentEntity.id}`, JSON.stringify(updatedPresets))
+      if (selectedPreset === presetName) {
+        setSelectedPreset("")
+      }
+      console.log('Deleted preset:', presetName)
+    } catch (error) {
+      console.error('Error deleting preset:', error)
+      alert('Failed to delete preset')
+    }
   }
 
   const handleEditTransaction = (transaction: MainTransactionDetails) => {
@@ -299,6 +475,20 @@ export default function MainTransactionsPage() {
             updated.branch_code = null
           }
 
+          // Update display fields for project
+          if (field === 'project_id' && updates.project_id) {
+            const project = projects.find(p => p.project_id === updates.project_id)
+            if (project) {
+              updated.project_name = project.project_name
+              updated.project_code = project.project_code
+              updated.project_status = project.status
+            }
+          } else if (field === 'project_id' && !updates.project_id) {
+            updated.project_name = null
+            updated.project_code = null
+            updated.project_status = null
+          }
+
           return updated
         }
         return tx
@@ -309,6 +499,71 @@ export default function MainTransactionsPage() {
     } finally {
       setSavingCell(null)
       setEditingCell(null)
+    }
+  }
+
+  const fetchCategories = async () => {
+    if (!currentEntity) return
+
+    try {
+      const response = await fetch(`/api/categories?entity_id=${currentEntity.id}&include_custom=true`)
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data.data || [])
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error)
+    }
+  }
+
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim() || !newCategoryType) {
+      alert("Please enter a category name and select a transaction type")
+      return
+    }
+
+    setCreatingCategory(true)
+    try {
+      const response = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entity_id: currentEntity?.id,
+          transaction_type_id: parseInt(newCategoryType),
+          category_name: newCategoryName.trim(),
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to create category')
+      }
+
+      const result = await response.json()
+      const newCategoryId = result.data?.category_id
+
+      // Refresh categories
+      await fetchCategories()
+
+      // If we have context (created from inline edit), apply the new category to that transaction
+      if (createCategoryContext && newCategoryId) {
+        await handleInlineUpdate(
+          createCategoryContext.transactionId,
+          'category_id',
+          newCategoryId.toString(),
+          createCategoryContext.transactionIndex
+        )
+      }
+
+      // Close dialog and reset
+      setCreateCategoryDialogOpen(false)
+      setNewCategoryName("")
+      setNewCategoryType("")
+      setCreateCategoryContext(null)
+    } catch (error) {
+      console.error('Error creating category:', error)
+      alert('Failed to create category')
+    } finally {
+      setCreatingCategory(false)
     }
   }
 
@@ -579,6 +834,7 @@ export default function MainTransactionsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="none">None (Uncategorized)</SelectItem>
                   {categories.map((category) => (
                     <SelectItem key={category.category_id} value={category.category_id.toString()}>
                       {category.category_name}
@@ -606,6 +862,24 @@ export default function MainTransactionsPage() {
               </Select>
             </div>
 
+            {/* Project */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Project</label>
+              <Select value={selectedProject} onValueChange={setSelectedProject}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Projects</SelectItem>
+                  {projects.map((project) => (
+                    <SelectItem key={project.project_id} value={project.project_id.toString()}>
+                      {project.project_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Direction */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Direction</label>
@@ -621,30 +895,178 @@ export default function MainTransactionsPage() {
               </Select>
             </div>
 
-            {/* Start Date */}
+            {/* Amount Filter */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Start Date</label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value)
-                  setCurrentPage(1)
-                }}
-              />
+              <label className="text-sm font-medium">Amount</label>
+              <div className="flex gap-2">
+                <Select value={amountOperator} onValueChange={setAmountOperator}>
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="eq">Equal (=)</SelectItem>
+                    <SelectItem value="gt">Greater (&gt;)</SelectItem>
+                    <SelectItem value="lt">Less (&lt;)</SelectItem>
+                    <SelectItem value="gte">Greater/Equal (≥)</SelectItem>
+                    <SelectItem value="lte">Less/Equal (≤)</SelectItem>
+                    <SelectItem value="neq">Not Equal (≠)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  placeholder="Enter amount"
+                  value={amountValue}
+                  onChange={(e) => {
+                    setAmountValue(e.target.value)
+                    setCurrentPage(1)
+                  }}
+                  disabled={amountOperator === "all"}
+                  className="flex-1"
+                />
+              </div>
             </div>
 
-            {/* End Date */}
+            {/* Date Range Picker */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">End Date</label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value)
-                  setCurrentPage(1)
-                }}
-              />
+              <label className="text-sm font-medium">Date Range</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !dateRange.from && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateRange.from ? (
+                      dateRange.to ? (
+                        <>
+                          {dateRange.from.toLocaleDateString()} - {dateRange.to.toLocaleDateString()}
+                        </>
+                      ) : (
+                        dateRange.from.toLocaleDateString()
+                      )
+                    ) : (
+                      <span>Pick a date range</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start" sideOffset={5}>
+                  <div className="flex flex-col">
+                    <div className="p-3">
+                      <Calendar
+                        mode="range"
+                        selected={dateRange}
+                        onSelect={(range) => {
+                          setDateRange(range || { from: undefined, to: undefined })
+                        }}
+                        numberOfMonths={2}
+                        initialFocus
+                        classNames={{
+                          months: "flex gap-4",
+                          month: "space-y-4",
+                          button_previous: cn(
+                            buttonVariants({ variant: "outline" }),
+                            "absolute left-0 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
+                          ),
+                          button_next: cn(
+                            buttonVariants({ variant: "outline" }),
+                            "absolute right-0 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
+                          )
+                        }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 border-t py-3 px-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => {
+                          const today = new Date()
+                          const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+                          setDateRange({ from: firstDay, to: today })
+                        }}
+                      >
+                        This Month
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => {
+                          const today = new Date()
+                          const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+                          const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0)
+                          setDateRange({ from: lastMonth, to: lastMonthEnd })
+                        }}
+                      >
+                        Last Month
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => {
+                          const today = new Date()
+                          const threeMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 3, today.getDate())
+                          setDateRange({ from: threeMonthsAgo, to: today })
+                        }}
+                      >
+                        Last 3 Months
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => {
+                          const today = new Date()
+                          const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, today.getDate())
+                          setDateRange({ from: sixMonthsAgo, to: today })
+                        }}
+                      >
+                        Last 6 Months
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => {
+                          const today = new Date()
+                          const firstDayOfYear = new Date(today.getFullYear(), 0, 1)
+                          setDateRange({ from: firstDayOfYear, to: today })
+                        }}
+                      >
+                        This Year
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs"
+                        onClick={() => {
+                          const today = new Date()
+                          const lastYear = new Date(today.getFullYear() - 1, 0, 1)
+                          const lastYearEnd = new Date(today.getFullYear() - 1, 11, 31)
+                          setDateRange({ from: lastYear, to: lastYearEnd })
+                        }}
+                      >
+                        Last Year
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs col-span-2"
+                        onClick={() => {
+                          setDateRange({ from: undefined, to: undefined })
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Search */}
@@ -665,11 +1087,92 @@ export default function MainTransactionsPage() {
             </div>
           </div>
 
-          <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={clearFilters}>
-              <X className="h-4 w-4 mr-2" />
-              Clear Filters
-            </Button>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="show-branch"
+                  checked={showBranchColumn}
+                  onCheckedChange={(checked) => setShowBranchColumn(checked as boolean)}
+                />
+                <label
+                  htmlFor="show-branch"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  Show Branch
+                </label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="show-project"
+                  checked={showProjectColumn}
+                  onCheckedChange={(checked) => setShowProjectColumn(checked as boolean)}
+                />
+                <label
+                  htmlFor="show-project"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  Show Project
+                </label>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Filter Presets Dropdown */}
+              <Select value={selectedPreset} onValueChange={loadPreset}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Load filter preset..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {savedPresets.length === 0 ? (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">No saved presets</div>
+                  ) : (
+                    savedPresets.map((preset) => (
+                      <SelectItem key={preset.name} value={preset.name}>
+                        <div className="flex items-center justify-between w-full">
+                          <span>{preset.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+
+              {/* Save Current Filters Button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSavePresetDialogOpen(true)}
+                    >
+                      <Check className="h-4 w-4 mr-2" />
+                      Save Preset
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Save current filters as a named preset</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {/* Delete Preset Button */}
+              {selectedPreset && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => deletePreset(selectedPreset)}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                <X className="h-4 w-4 mr-2" />
+                Clear Filters
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -679,8 +1182,9 @@ export default function MainTransactionsPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>
+              <CardTitle className="flex items-center gap-2">
                 Transactions ({pagination.total})
+                {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
               </CardTitle>
               <CardDescription>
                 Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} transactions
@@ -759,7 +1263,8 @@ export default function MainTransactionsPage() {
                       <th className="text-left py-3 px-4">Description</th>
                       <th className="text-left py-3 px-4">Type</th>
                       <th className="text-left py-3 px-4">Category</th>
-                      <th className="text-left py-3 px-4">Branch</th>
+                      {showBranchColumn && <th className="text-left py-3 px-4">Branch</th>}
+                      {showProjectColumn && <th className="text-left py-3 px-4">Project</th>}
                       <th className="text-right py-3 px-4">Amount</th>
                       <th className="text-center py-3 px-4">Actions</th>
                     </tr>
@@ -1015,30 +1520,65 @@ export default function MainTransactionsPage() {
                               )}
                               placeholder="Select category"
                               disabled={isBalanceAdjustment || (savingCell?.row === txIndex && savingCell?.field === 'category_id')}
+                              onCreate={(prefillName) => {
+                                if (prefillName) setNewCategoryName(prefillName)
+                                setCreateCategoryContext({
+                                  transactionId: tx.main_transaction_id,
+                                  transactionIndex: txIndex
+                                })
+                                setCreateCategoryDialogOpen(true)
+                              }}
+                              createLabel="Create new category"
                             />
                           </td>
 
                           {/* Branch - Inline editable */}
-                          <td className="py-3 px-4">
-                            <InlineCombobox
-                              value={tx.branch_id?.toString() || "none"}
-                              options={[
-                                { value: "none", label: "None" },
-                                ...filteredBranches.map((branch) => ({
-                                  value: branch.branch_id.toString(),
-                                  label: branch.branch_name,
-                                })),
-                              ]}
-                              onSelect={(value) => handleInlineUpdate(
-                                tx.main_transaction_id,
-                                'branch_id',
-                                value,
-                                txIndex
-                              )}
-                              placeholder="Select branch"
-                              disabled={isBalanceAdjustment || (savingCell?.row === txIndex && savingCell?.field === 'branch_id')}
-                            />
-                          </td>
+                          {showBranchColumn && (
+                            <td className="py-3 px-4">
+                              <InlineCombobox
+                                value={tx.branch_id?.toString() || "none"}
+                                options={[
+                                  { value: "none", label: "None" },
+                                  ...filteredBranches.map((branch) => ({
+                                    value: branch.branch_id.toString(),
+                                    label: branch.branch_name,
+                                  })),
+                                ]}
+                                onSelect={(value) => handleInlineUpdate(
+                                  tx.main_transaction_id,
+                                  'branch_id',
+                                  value,
+                                  txIndex
+                                )}
+                                placeholder="Select branch"
+                                disabled={isBalanceAdjustment || (savingCell?.row === txIndex && savingCell?.field === 'branch_id')}
+                              />
+                            </td>
+                          )}
+
+                          {/* Project - Inline editable */}
+                          {showProjectColumn && (
+                            <td className="py-3 px-4">
+                              <InlineCombobox
+                                value={tx.project_id?.toString() || "none"}
+                                options={[
+                                  { value: "none", label: "None" },
+                                  ...projects.filter(p => p.entity_id === tx.entity_id).map((project) => ({
+                                    value: project.project_id.toString(),
+                                    label: project.project_name,
+                                  })),
+                                ]}
+                                onSelect={(value) => handleInlineUpdate(
+                                  tx.main_transaction_id,
+                                  'project_id',
+                                  value,
+                                  txIndex
+                                )}
+                                placeholder="Select project"
+                                disabled={isBalanceAdjustment || (savingCell?.row === txIndex && savingCell?.field === 'project_id')}
+                              />
+                            </td>
+                          )}
 
                           <td className={`py-3 px-4 text-right font-mono font-medium ${getDirectionColor(tx.transaction_direction)}`}>
                             {formatAmount(tx.amount, tx.transaction_direction)}
@@ -1182,6 +1722,7 @@ export default function MainTransactionsPage() {
         transactionTypes={transactionTypes}
         categories={categories}
         branches={branches}
+        projects={projects}
       />
 
       {/* Split Transaction Dialog */}
@@ -1193,6 +1734,7 @@ export default function MainTransactionsPage() {
         transactionTypes={transactionTypes}
         categories={categories}
         branches={branches}
+        projects={projects}
       />
 
       {/* Bulk Edit Dialog */}
@@ -1256,6 +1798,7 @@ export default function MainTransactionsPage() {
         transactionTypes={transactionTypes}
         categories={categories}
         branches={branches}
+        projects={projects}
         onSuccess={() => {
           setAddTransactionDialogOpen(false)
           fetchTransactions()
@@ -1269,6 +1812,108 @@ export default function MainTransactionsPage() {
         splitTransactions={splitTransactionsToDelete}
         onConfirmDelete={handleConfirmSplitDelete}
       />
+
+      {/* Save Filter Preset Dialog */}
+      <Dialog open={savePresetDialogOpen} onOpenChange={setSavePresetDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Filter Preset</DialogTitle>
+            <DialogDescription>
+              Give your current filter configuration a name so you can quickly load it later.
+              <br />
+              <span className="text-xs text-muted-foreground mt-2 block">
+                ⚠️ Note: Presets are saved locally on this device/browser only.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="preset_name">Preset Name *</Label>
+              <Input
+                id="preset_name"
+                value={newPresetName}
+                onChange={(e) => setNewPresetName(e.target.value)}
+                placeholder="e.g., Monthly Expenses, Vendor Payments"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    saveCurrentFiltersAsPreset()
+                  }
+                }}
+              />
+            </div>
+            <div className="text-sm text-muted-foreground">
+              <p className="font-medium mb-1">Current filters:</p>
+              <ul className="list-disc list-inside space-y-1 text-xs">
+                {selectedAccount !== 'all' && <li>Account filter active</li>}
+                {selectedType !== 'all' && <li>Transaction type filter active</li>}
+                {selectedCategory !== 'all' && <li>Category filter active</li>}
+                {selectedBranch !== 'all' && <li>Branch filter active</li>}
+                {selectedProject !== 'all' && <li>Project filter active</li>}
+                {selectedDirection !== 'all' && <li>Direction filter active</li>}
+                {startDate && <li>Start date: {startDate}</li>}
+                {endDate && <li>End date: {endDate}</li>}
+                {searchQuery && <li>Search: "{searchQuery}"</li>}
+                {(showBranchColumn || showProjectColumn) && <li>Column visibility settings</li>}
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSavePresetDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={saveCurrentFiltersAsPreset} disabled={!newPresetName.trim()}>
+              Save Preset
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Category Dialog */}
+      <Dialog open={createCategoryDialogOpen} onOpenChange={setCreateCategoryDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Category</DialogTitle>
+            <DialogDescription>
+              Add a new category for your transactions
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="transaction_type">Transaction Type *</Label>
+              <Select value={newCategoryType} onValueChange={setNewCategoryType}>
+                <SelectTrigger id="transaction_type">
+                  <SelectValue placeholder="Select transaction type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {transactionTypes.map((type) => (
+                    <SelectItem key={type.transaction_type_id} value={type.transaction_type_id.toString()}>
+                      {type.type_display_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="category_name">Category Name *</Label>
+              <Input
+                id="category_name"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="Enter category name"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateCategoryDialogOpen(false)} disabled={creatingCategory}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateCategory} disabled={creatingCategory || !newCategoryName.trim() || !newCategoryType}>
+              {creatingCategory && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

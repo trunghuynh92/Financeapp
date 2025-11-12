@@ -25,6 +25,7 @@ export interface Category {
   parent_category_id: number | null
   transaction_type_id: number
   entity_type: 'business' | 'personal' | 'both'
+  entity_id: string | null  // NULL = global template, NOT NULL = entity-specific custom
   description: string | null
   is_active: boolean
   display_order: number
@@ -43,6 +44,21 @@ export interface Branch {
   updated_at: string
 }
 
+export interface Project {
+  project_id: number
+  entity_id: string
+  project_name: string
+  project_code: string | null
+  description: string | null
+  start_date: string | null
+  end_date: string | null
+  status: 'active' | 'completed' | 'on_hold' | 'cancelled'
+  budget_amount: number | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface MainTransaction {
   main_transaction_id: number
   raw_transaction_id: string
@@ -50,6 +66,7 @@ export interface MainTransaction {
   transaction_type_id: number
   category_id: number | null
   branch_id: number | null
+  project_id: number | null
   amount: number
   transaction_direction: 'debit' | 'credit'
   transaction_date: string
@@ -94,6 +111,11 @@ export interface MainTransactionDetails extends MainTransaction {
   // Branch details
   branch_name?: string
   branch_code?: string
+
+  // Project details
+  project_name?: string
+  project_code?: string
+  project_status?: 'active' | 'completed' | 'on_hold' | 'cancelled'
 
   // Original transaction fields
   is_balance_adjustment?: boolean
@@ -140,6 +162,7 @@ export interface UpdateMainTransactionRequest {
   transaction_type_id?: number
   category_id?: number | null
   branch_id?: number | null
+  project_id?: number | null
   description?: string
   notes?: string
 }
@@ -151,6 +174,7 @@ export interface SplitTransactionRequest {
     transaction_type_id: number
     category_id?: number
     branch_id?: number
+    project_id?: number
     description?: string
     notes?: string
   }[]

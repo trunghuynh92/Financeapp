@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronsUpDown } from "lucide-react"
+import { Check, ChevronsUpDown, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,6 +11,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandSeparator,
 } from "@/components/ui/command"
 import {
   Popover,
@@ -31,6 +32,8 @@ interface InlineComboboxProps {
   emptyText?: string
   disabled?: boolean
   className?: string
+  onCreate?: (prefillName?: string) => void
+  createLabel?: string
 }
 
 export function InlineCombobox({
@@ -41,10 +44,24 @@ export function InlineCombobox({
   emptyText = "No results found",
   disabled = false,
   className,
+  onCreate,
+  createLabel = "Create new...",
 }: InlineComboboxProps) {
   const [open, setOpen] = React.useState(false)
+  const [searchValue, setSearchValue] = React.useState("")
 
   const selectedOption = options.find((option) => option.value === value)
+
+  // Detect /create command
+  const createMatch = searchValue.match(/^\/create\s+(.+)$/i)
+  const isCreateCommand = createMatch !== null
+
+  // Reset search when closing
+  React.useEffect(() => {
+    if (!open) {
+      setSearchValue("")
+    }
+  }, [open])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -61,30 +78,74 @@ export function InlineCombobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[250px] p-0" align="start">
-        <Command>
-          <CommandInput placeholder={`Search...`} />
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder={onCreate ? `Search or type /create [name]` : `Search...`}
+            value={searchValue}
+            onValueChange={setSearchValue}
+          />
           <CommandList>
-            <CommandEmpty>{emptyText}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
+            {isCreateCommand && onCreate ? (
+              <CommandGroup>
                 <CommandItem
-                  key={option.value}
-                  value={option.label}
                   onSelect={() => {
-                    onSelect(option.value)
+                    onCreate(createMatch![1].trim())
                     setOpen(false)
                   }}
+                  className="text-primary"
                 >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  {option.label}
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create "{createMatch![1].trim()}"
                 </CommandItem>
-              ))}
-            </CommandGroup>
+              </CommandGroup>
+            ) : (
+              <>
+                <CommandEmpty>{emptyText}</CommandEmpty>
+                <CommandGroup>
+                  {options
+                    .filter((option) =>
+                      searchValue
+                        ? option.label.toLowerCase().includes(searchValue.toLowerCase())
+                        : true
+                    )
+                    .map((option) => (
+                      <CommandItem
+                        key={option.value}
+                        value={option.value}
+                        onSelect={() => {
+                          onSelect(option.value)
+                          setOpen(false)
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            value === option.value ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {option.label}
+                      </CommandItem>
+                    ))}
+                </CommandGroup>
+                {onCreate && (
+                  <>
+                    <CommandSeparator />
+                    <CommandGroup>
+                      <CommandItem
+                        onSelect={() => {
+                          onCreate()
+                          setOpen(false)
+                        }}
+                        className="text-primary"
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        {createLabel}
+                      </CommandItem>
+                    </CommandGroup>
+                  </>
+                )}
+              </>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

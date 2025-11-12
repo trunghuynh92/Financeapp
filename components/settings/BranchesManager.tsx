@@ -8,13 +8,17 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
+import { useEntity } from "@/contexts/EntityContext"
 
 export function BranchesManager() {
+  const { currentEntity } = useEntity()
   const [branches, setBranches] = useState<any[]>([])
   const [entities, setEntities] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [branchToDelete, setBranchToDelete] = useState<any>(null)
   const [newBranch, setNewBranch] = useState({
     entity_id: "",
     branch_name: "",
@@ -24,14 +28,18 @@ export function BranchesManager() {
   })
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    if (currentEntity) {
+      fetchData()
+    }
+  }, [currentEntity])
 
   const fetchData = async () => {
+    if (!currentEntity) return
+
     setLoading(true)
     try {
       const [branchesRes, entitiesRes] = await Promise.all([
-        fetch('/api/branches?active_only=false'),
+        fetch(`/api/branches?entity_id=${currentEntity.id}&active_only=false`),
         fetch('/api/entities'),
       ])
 
@@ -83,7 +91,7 @@ export function BranchesManager() {
       await fetchData()
       setDialogOpen(false)
       setNewBranch({
-        entity_id: "",
+        entity_id: currentEntity?.id || "",
         branch_name: "",
         branch_code: "",
         address: "",
@@ -92,6 +100,43 @@ export function BranchesManager() {
     } catch (error) {
       console.error('Error creating branch:', error)
       alert('Failed to create branch')
+    }
+  }
+
+  // Pre-fill entity_id when opening the dialog
+  const handleOpenDialog = () => {
+    setNewBranch({
+      entity_id: currentEntity?.id || "",
+      branch_name: "",
+      branch_code: "",
+      address: "",
+      phone: "",
+    })
+    setDialogOpen(true)
+  }
+
+  const handleDelete = async () => {
+    if (!branchToDelete) return
+
+    try {
+      const response = await fetch(`/api/branches/${branchToDelete.branch_id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) throw new Error('Failed to delete')
+
+      const result = await response.json()
+      await fetchData()
+      setDeleteDialogOpen(false)
+      setBranchToDelete(null)
+
+      // Show message if it was soft-deleted
+      if (result.message) {
+        alert(result.message)
+      }
+    } catch (error) {
+      console.error('Error deleting branch:', error)
+      alert('Failed to delete branch')
     }
   }
 
@@ -110,7 +155,7 @@ export function BranchesManager() {
                 Manage branch locations for your entities. Click on any field to edit.
               </CardDescription>
             </div>
-            <Button onClick={() => setDialogOpen(true)}>
+            <Button onClick={handleOpenDialog}>
               <Plus className="h-4 w-4 mr-2" />
               Add Branch
             </Button>
@@ -127,6 +172,7 @@ export function BranchesManager() {
                 <th className="text-left py-3 px-4">Address</th>
                 <th className="text-left py-3 px-4">Phone</th>
                 <th className="text-left py-3 px-4">Status</th>
+                <th className="text-right py-3 px-4">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -191,6 +237,20 @@ export function BranchesManager() {
                       <Badge variant={branch.is_active ? "default" : "secondary"}>
                         {branch.is_active ? "Active" : "Inactive"}
                       </Badge>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setBranchToDelete(branch)
+                            setDeleteDialogOpen(true)
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -267,6 +327,31 @@ export function BranchesManager() {
         <DialogFooter>
           <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleCreate} disabled={!newBranch.entity_id || !newBranch.branch_name}>Create</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Delete Confirmation Dialog */}
+    <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete Branch</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to delete &quot;{branchToDelete?.branch_name}&quot;?
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4">
+          <p className="text-sm text-muted-foreground">
+            If this branch is used by any transactions, it will be deactivated instead of deleted.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={handleDelete}>
+            Delete
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

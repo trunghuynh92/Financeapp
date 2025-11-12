@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
       transaction_type_id: split.transaction_type_id,
       category_id: split.category_id || null,
       branch_id: split.branch_id || null,
+      project_id: split.project_id || null,
       amount: split.amount,
       transaction_direction: transactionDirection,
       transaction_date: originalTransaction.transaction_date,

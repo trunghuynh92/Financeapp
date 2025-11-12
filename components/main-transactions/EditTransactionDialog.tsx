@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { MainTransactionDetails, TransactionType, Category, Branch } from "@/types/main-transaction"
+import { MainTransactionDetails, TransactionType, Category, Branch, Project } from "@/types/main-transaction"
 import { Loader2, AlertTriangle, Info } from "lucide-react"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
 
@@ -28,6 +28,7 @@ interface EditTransactionDialogProps {
   transactionTypes: TransactionType[]
   categories: Category[]
   branches: Branch[]
+  projects: Project[]
 }
 
 export function EditTransactionDialog({
@@ -38,6 +39,7 @@ export function EditTransactionDialog({
   transactionTypes,
   categories,
   branches,
+  projects,
 }: EditTransactionDialogProps) {
   const [loading, setLoading] = useState(false)
 
@@ -46,6 +48,7 @@ export function EditTransactionDialog({
     transaction_type_id: transaction?.transaction_type_id?.toString() || "",
     category_id: transaction?.category_id?.toString() || "none",
     branch_id: transaction?.branch_id?.toString() || "none",
+    project_id: transaction?.project_id?.toString() || "none",
     description: transaction?.description || "",
     notes: transaction?.notes || "",
   })
@@ -55,10 +58,17 @@ export function EditTransactionDialog({
   // Reset form when dialog opens or transaction changes
   useEffect(() => {
     if (transaction && open) {
+      console.log('EditTransactionDialog - transaction:', {
+        project_id: transaction.project_id,
+        project_name: transaction.project_name,
+        branch_id: transaction.branch_id,
+        branch_name: transaction.branch_name
+      })
       setFormData({
         transaction_type_id: transaction.transaction_type_id?.toString() || "",
         category_id: transaction.category_id?.toString() || "none",
         branch_id: transaction.branch_id?.toString() || "none",
+        project_id: transaction.project_id?.toString() || "none",
         description: transaction.description || "",
         notes: transaction.notes || "",
       })
@@ -118,8 +128,17 @@ export function EditTransactionDialog({
         updates.branch_id = null
       }
 
+      if (formData.project_id && formData.project_id !== "none") {
+        updates.project_id = parseInt(formData.project_id)
+      } else {
+        updates.project_id = null
+      }
+
       updates.description = formData.description || null
       updates.notes = formData.notes || null
+
+      console.log('EditTransactionDialog - Sending updates:', updates)
+      console.log('EditTransactionDialog - formData.project_id:', formData.project_id)
 
       const response = await fetch(`/api/main-transactions/${transaction.main_transaction_id}`, {
         method: "PATCH",
@@ -293,6 +312,27 @@ export function EditTransactionDialog({
                   {filteredBranches.map((branch) => (
                     <SelectItem key={branch.branch_id} value={branch.branch_id.toString()}>
                       {branch.branch_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Project */}
+            <div className="space-y-2">
+              <Label htmlFor="project_id">Project</Label>
+              <Select
+                value={formData.project_id || "none"}
+                onValueChange={(value) => setFormData({ ...formData, project_id: value })}
+              >
+                <SelectTrigger id="project_id">
+                  <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {projects.filter(p => p.is_active).map((project) => (
+                    <SelectItem key={project.project_id} value={project.project_id.toString()}>
+                      {project.project_name}
                     </SelectItem>
                   ))}
                 </SelectContent>

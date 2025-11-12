@@ -96,6 +96,8 @@ export async function GET(request: NextRequest) {
     const isSplit = searchParams.get('is_split')
     const isUnmatchedTransfer = searchParams.get('is_unmatched_transfer')
     const rawTransactionId = searchParams.get('raw_transaction_id')
+    const amountOperator = searchParams.get('amount_operator')
+    const amountValue = searchParams.get('amount_value')
 
     // Pagination
     const page = parseInt(searchParams.get('page') || '1')
@@ -139,7 +141,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (categoryId) {
-      query = query.eq('category_id', categoryId)
+      if (categoryId === 'none') {
+        // Filter for uncategorized transactions (category_id is NULL)
+        query = query.is('category_id', null)
+      } else {
+        query = query.eq('category_id', categoryId)
+      }
     }
 
     if (branchId) {
@@ -177,39 +184,40 @@ export async function GET(request: NextRequest) {
       query = query.eq('raw_transaction_id', rawTransactionId)
     }
 
-    // Get total count of FILTERED results
-    let countQuery = supabase
-      .from('main_transaction_details')
-      .select('*', { count: 'exact', head: true })
-
-    // Apply same filters to count query
-    if (accountId) {
-      countQuery = countQuery.eq('account_id', accountId)
-    } else if (entityId && accountIdsForEntity.length > 0) {
-      countQuery = countQuery.in('account_id', accountIdsForEntity)
+    // Amount filter
+    if (amountOperator && amountOperator !== 'all' && amountValue) {
+      const amount = parseFloat(amountValue)
+      if (!isNaN(amount)) {
+        switch (amountOperator) {
+          case 'eq':
+            query = query.eq('amount', amount)
+            break
+          case 'gt':
+            query = query.gt('amount', amount)
+            break
+          case 'lt':
+            query = query.lt('amount', amount)
+            break
+          case 'gte':
+            query = query.gte('amount', amount)
+            break
+          case 'lte':
+            query = query.lte('amount', amount)
+            break
+          case 'neq':
+            query = query.neq('amount', amount)
+            break
+        }
+      }
     }
-    if (transactionTypeId) countQuery = countQuery.eq('transaction_type_id', transactionTypeId)
-    if (categoryId) countQuery = countQuery.eq('category_id', categoryId)
-    if (branchId) countQuery = countQuery.eq('branch_id', branchId)
-    if (transactionDirection) countQuery = countQuery.eq('transaction_direction', transactionDirection)
-    if (startDate) countQuery = countQuery.gte('transaction_date', startDate)
-    if (endDate) countQuery = countQuery.lte('transaction_date', endDate)
-    if (search) countQuery = countQuery.or(`description.ilike.%${search}%,notes.ilike.%${search}%`)
-    if (isSplit !== null) countQuery = countQuery.eq('is_split', isSplit === 'true')
-    if (isUnmatchedTransfer === 'true') {
-      countQuery = countQuery
-        .in('transaction_type_code', ['TRF_OUT', 'TRF_IN'])
-        .is('transfer_matched_transaction_id', null)
-    }
-    if (rawTransactionId) countQuery = countQuery.eq('raw_transaction_id', rawTransactionId)
-
-    const { count: totalCount } = await countQuery
 
     // Apply pagination and sorting
     const from = (page - 1) * limit
     const to = from + limit - 1
 
-    const { data, error} = await query
+    // Single query with count for better performance
+    const { data, error, count: totalCount } = await query
+      .select('*', { count: 'exact' })
       .order('transaction_date', { ascending: false })
       .order('split_sequence', { ascending: false, nullsFirst: false }) // NULLs last, preserve CSV order
       .order('main_transaction_id', { ascending: false })

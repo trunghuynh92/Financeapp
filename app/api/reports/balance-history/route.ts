@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
  * GET /api/reports/balance-history
  * Fetch balance history for all accounts or specific accounts
  * Query params:
+ * - entity_id: UUID of entity (optional, defaults to all entities)
  * - account_ids: comma-separated account IDs (optional, defaults to all)
  * - start_date: ISO date string (optional, defaults to 1 year ago)
  * - end_date: ISO date string (optional, defaults to today)
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseServerClient()
     const searchParams = request.nextUrl.searchParams
+    const entityId = searchParams.get('entity_id')
     const accountIdsParam = searchParams.get('account_ids')
     const startDateParam = searchParams.get('start_date')
     const endDateParam = searchParams.get('end_date')
@@ -30,6 +32,10 @@ export async function GET(request: NextRequest) {
 
     // Fetch accounts to process
     let accountsQuery = supabase.from('accounts').select('account_id, account_name, currency, entity:entities(id, name)')
+
+    if (entityId) {
+      accountsQuery = accountsQuery.eq('entity_id', entityId)
+    }
 
     if (accountIds && accountIds.length > 0) {
       accountsQuery = accountsQuery.in('account_id', accountIds)

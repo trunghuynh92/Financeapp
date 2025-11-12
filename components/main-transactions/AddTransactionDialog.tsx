@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { TransactionType, Category, Branch } from "@/types/main-transaction"
+import { TransactionType, Category, Branch, Project } from "@/types/main-transaction"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
 
 interface Account {
@@ -39,6 +39,7 @@ interface AddTransactionDialogProps {
   transactionTypes: TransactionType[]
   categories: Category[]
   branches: Branch[]
+  projects: Project[]
   onSuccess: () => void
 }
 
@@ -49,6 +50,7 @@ export function AddTransactionDialog({
   transactionTypes,
   categories,
   branches,
+  projects,
   onSuccess,
 }: AddTransactionDialogProps) {
   const [loading, setLoading] = useState(false)
@@ -59,6 +61,7 @@ export function AddTransactionDialog({
     transaction_type_id: "",
     category_id: "",
     branch_id: "",
+    project_id: "",
     amount: "",
     description: "",
   })
@@ -81,6 +84,7 @@ export function AddTransactionDialog({
         transaction_type_id: "",
         category_id: "",
         branch_id: "",
+        project_id: "",
         amount: "",
         description: "",
       })
@@ -192,6 +196,10 @@ export function AddTransactionDialog({
 
       if (formData.branch_id) {
         transactionData.branch_id = parseInt(formData.branch_id)
+      }
+
+      if (formData.project_id) {
+        transactionData.project_id = parseInt(formData.project_id)
       }
 
       const createResponse = await fetch('/api/main-transactions/create', {
@@ -418,6 +426,31 @@ export function AddTransactionDialog({
                   {branches.map((branch) => (
                     <SelectItem key={branch.branch_id} value={branch.branch_id.toString()}>
                       {branch.branch_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Project (Optional) */}
+          {projects.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="project_id">Project (optional)</Label>
+              <Select
+                value={formData.project_id || "none"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, project_id: value === "none" ? "" : value })
+                }
+              >
+                <SelectTrigger id="project_id">
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {projects.map((project) => (
+                    <SelectItem key={project.project_id} value={project.project_id.toString()}>
+                      {project.project_name}
                     </SelectItem>
                   ))}
                 </SelectContent>

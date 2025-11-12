@@ -144,6 +144,7 @@ export async function PATCH(
       'transaction_type_id',
       'category_id',
       'branch_id',
+      'project_id',
       'description',
       'notes',
     ]

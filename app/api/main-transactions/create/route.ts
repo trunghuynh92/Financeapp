@@ -119,8 +119,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Step 3: Update main_transaction with type, category, branch if provided
-    if (body.transaction_type_id || body.category_id || body.branch_id) {
+    // Step 3: Update main_transaction with type, category, branch, project if provided
+    if (body.transaction_type_id || body.category_id || body.branch_id || body.project_id) {
       const updateData: any = {}
 
       if (body.transaction_type_id) {
@@ -131,6 +131,9 @@ export async function POST(request: NextRequest) {
       }
       if (body.branch_id) {
         updateData.branch_id = body.branch_id
+      }
+      if (body.project_id) {
+        updateData.project_id = body.project_id
       }
 
       updateData.updated_at = new Date().toISOString()
