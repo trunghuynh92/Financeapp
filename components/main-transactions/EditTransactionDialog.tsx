@@ -76,11 +76,13 @@ export function EditTransactionDialog({
   }, [transaction, open])
 
   // Filter transaction types based on account type and direction
-  const filteredTransactionTypes = getFilteredTransactionTypes(
-    transaction?.account_type as AccountType,
-    transaction?.transaction_direction as TransactionDirection,
-    transactionTypes
-  )
+  const filteredTransactionTypes = transaction?.account_type && transaction?.transaction_direction
+    ? getFilteredTransactionTypes(
+        transaction.account_type as AccountType,
+        transaction.transaction_direction as TransactionDirection,
+        transactionTypes
+      )
+    : transactionTypes
 
   // Check if transaction is locked (matched or linked to drawdown/loan)
   const isTransactionLocked = !!(
