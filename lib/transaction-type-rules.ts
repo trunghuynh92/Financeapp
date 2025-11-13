@@ -147,6 +147,12 @@ export function getFilteredTransactionTypes<T extends { type_code: string }>(
   allTypes: T[]
 ): T[] {
   // Find the matching rule
+  // Guard clause: if accountType or transactionDirection is not provided, return all types
+  if (!accountType || !transactionDirection) {
+    console.warn(`Missing accountType or transactionDirection: ${accountType} + ${transactionDirection}`)
+    return allTypes
+  }
+
   const rule = TRANSACTION_TYPE_RULES.find(
     r => r.account_types.includes(accountType) && r.transaction_direction === transactionDirection
   )

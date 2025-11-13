@@ -152,23 +152,34 @@ export async function PATCH(
     ]
 
     const updates: any = {}
-    for (const field of allowedFields) {
-      if (body[field] !== undefined) {
-        updates[field] = body[field]
-      }
-    }
 
-    // Handle flag-specific fields
+    // Handle flag-specific fields FIRST
     if (body.is_flagged !== undefined) {
+      updates.is_flagged = body.is_flagged
       if (body.is_flagged) {
         // Flagging the transaction
         updates.flagged_at = new Date().toISOString()
         updates.flagged_by = user.id
+        // Include flag_note if provided
+        if (body.flag_note !== undefined) {
+          updates.flag_note = body.flag_note
+        }
       } else {
-        // Unflagging the transaction
+        // Unflagging the transaction - explicitly clear all flag fields
         updates.flagged_at = null
         updates.flagged_by = null
         updates.flag_note = null
+      }
+    }
+
+    // Handle other allowed fields
+    for (const field of allowedFields) {
+      // Skip flag fields as they're already handled above
+      if (field === 'is_flagged' || field === 'flag_note') {
+        continue
+      }
+      if (body[field] !== undefined) {
+        updates[field] = body[field]
       }
     }
 
