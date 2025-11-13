@@ -89,6 +89,7 @@ export async function GET(request: NextRequest) {
     const transactionTypeId = searchParams.get('transaction_type_id')
     const categoryId = searchParams.get('category_id')
     const branchId = searchParams.get('branch_id')
+    const projectId = searchParams.get('project_id')
     const transactionDirection = searchParams.get('transaction_direction')
     const startDate = searchParams.get('start_date')
     const endDate = searchParams.get('end_date')
@@ -102,6 +103,10 @@ export async function GET(request: NextRequest) {
     // Pagination
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
+
+    // Sorting
+    const sortField = searchParams.get('sort_field') || 'transaction_date'
+    const sortDirection = searchParams.get('sort_direction') || 'desc'
 
     // If entity_id filter is provided, get all account IDs for that entity first
     let accountIdsForEntity: number[] = []
@@ -127,6 +132,10 @@ export async function GET(request: NextRequest) {
       .from('main_transaction_details')
       .select('*')
 
+    // IMPORTANT: Exclude balance adjustment transactions (system-generated)
+    // Balance adjustments should only be viewed/edited through checkpoints
+    query = query.or('is_balance_adjustment.is.null,is_balance_adjustment.eq.false')
+
     // Apply filters
     if (accountId) {
       // Specific account filter takes priority
@@ -151,6 +160,15 @@ export async function GET(request: NextRequest) {
 
     if (branchId) {
       query = query.eq('branch_id', branchId)
+    }
+
+    if (projectId) {
+      if (projectId === 'none') {
+        // Filter for transactions without a project (project_id is NULL)
+        query = query.is('project_id', null)
+      } else {
+        query = query.eq('project_id', projectId)
+      }
     }
 
     if (transactionDirection) {
@@ -215,26 +233,102 @@ export async function GET(request: NextRequest) {
     const from = (page - 1) * limit
     const to = from + limit - 1
 
-    // Single query with count for better performance
-    const { data, error, count: totalCount } = await query
-      .select('*', { count: 'exact' })
-      .order('transaction_date', { ascending: false })
-      .order('split_sequence', { ascending: false, nullsFirst: false }) // NULLs last, preserve CSV order
-      .order('main_transaction_id', { ascending: false })
-      .range(from, to)
+    // Clone the query for count (before adding order/range)
+    const countQuery = supabase
+      .from('main_transaction_details')
+      .select('*', { count: 'exact', head: true })
+
+    // IMPORTANT: Exclude balance adjustment transactions from count
+    countQuery.or('is_balance_adjustment.is.null,is_balance_adjustment.eq.false')
+
+    // Apply same filters to count query
+    if (accountId) {
+      countQuery.eq('account_id', accountId)
+    } else if (entityId && accountIdsForEntity.length > 0) {
+      countQuery.in('account_id', accountIdsForEntity)
+    }
+    if (transactionTypeId) countQuery.eq('transaction_type_id', transactionTypeId)
+    if (categoryId) {
+      if (categoryId === 'none') {
+        countQuery.is('category_id', null)
+      } else {
+        countQuery.eq('category_id', categoryId)
+      }
+    }
+    if (branchId) countQuery.eq('branch_id', branchId)
+    if (projectId) {
+      if (projectId === 'none') {
+        countQuery.is('project_id', null)
+      } else {
+        countQuery.eq('project_id', projectId)
+      }
+    }
+    if (transactionDirection) countQuery.eq('transaction_direction', transactionDirection)
+    if (startDate) countQuery.gte('transaction_date', startDate)
+    if (endDate) countQuery.lte('transaction_date', endDate)
+    if (search) countQuery.or(`description.ilike.%${search}%,notes.ilike.%${search}%`)
+    if (isSplit !== null) countQuery.eq('is_split', isSplit === 'true')
+    if (isUnmatchedTransfer === 'true') {
+      countQuery.in('transaction_type_code', ['TRF_OUT', 'TRF_IN']).is('transfer_matched_transaction_id', null)
+    }
+    if (rawTransactionId) countQuery.eq('raw_transaction_id', rawTransactionId)
+    if (amountOperator && amountOperator !== 'all' && amountValue) {
+      const amount = parseFloat(amountValue)
+      if (!isNaN(amount)) {
+        switch (amountOperator) {
+          case 'eq': countQuery.eq('amount', amount); break
+          case 'gt': countQuery.gt('amount', amount); break
+          case 'lt': countQuery.lt('amount', amount); break
+          case 'gte': countQuery.gte('amount', amount); break
+          case 'lte': countQuery.lte('amount', amount); break
+          case 'neq': countQuery.neq('amount', amount); break
+        }
+      }
+    }
+
+    // Validate sort field to prevent SQL injection
+    const allowedSortFields = [
+      'transaction_date',
+      'amount',
+      'description',
+      'category_name',
+      'branch_name',
+      'project_name',
+      'account_name'
+    ]
+    const validSortField = allowedSortFields.includes(sortField) ? sortField : 'transaction_date'
+    const isAscending = sortDirection === 'asc'
+
+    // Execute both queries in parallel
+    const [{ data, error }, { count: totalCount, error: countError }] = await Promise.all([
+      query
+        .select('*')
+        .order(validSortField, { ascending: isAscending, nullsFirst: false })
+        .order('split_sequence', { ascending: false, nullsFirst: false }) // Secondary sort for splits
+        .order('main_transaction_id', { ascending: false }) // Tertiary sort for consistency
+        .range(from, to),
+      countQuery
+    ])
 
     if (error) {
       console.error('Error fetching main transactions:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    if (countError) {
+      console.error('Error counting main transactions:', countError)
+    }
+
+    // Log for debugging
+    console.log(`API: Returning ${data?.length || 0} transactions, total count: ${totalCount}`)
+
     return NextResponse.json({
       data: data || [],
       pagination: {
         page,
         limit,
-        total: totalCount || 0,
-        totalPages: Math.ceil((totalCount || 0) / limit),
+        total: totalCount ?? 0,
+        totalPages: Math.ceil((totalCount ?? 0) / limit),
       },
     })
   } catch (error) {

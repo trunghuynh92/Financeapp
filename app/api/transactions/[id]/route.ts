@@ -231,10 +231,10 @@ export async function DELETE(
       )
     }
 
-    // Check if transaction exists and get is_balance_adjustment flag
+    // Check if transaction exists and get full data for potential undo
     const { data: existingTransaction, error: fetchError } = await supabase
       .from('original_transaction')
-      .select('raw_transaction_id, description, is_balance_adjustment, checkpoint_id, account_id')
+      .select('*')
       .eq('raw_transaction_id', transactionId)
       .single()
 
@@ -282,7 +282,10 @@ export async function DELETE(
       return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
-    return NextResponse.json({ message: 'Transaction deleted successfully' })
+    return NextResponse.json({
+      message: 'Transaction deleted successfully',
+      deletedTransaction: existingTransaction // Return deleted data for undo
+    })
   } catch (error) {
     console.error('Unexpected error:', error)
     return NextResponse.json(

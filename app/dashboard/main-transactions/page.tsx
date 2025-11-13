@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { ChevronLeft, ChevronRight, Edit, Search, Filter, X, Split, Check, Link2, Plus, Trash2, Loader2, Info, CalendarIcon, Flag } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit, Search, Filter, X, Split, Check, Link2, Plus, Trash2, Loader2, Info, CalendarIcon, Flag } from "lucide-react"
 import { MainTransactionDetails, TransactionType, Category, Branch, Project } from "@/types/main-transaction"
 import { EditTransactionDialog } from "@/components/main-transactions/EditTransactionDialog"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
@@ -28,6 +28,7 @@ import { AddTransactionDialog } from "@/components/main-transactions/AddTransact
 import { DeleteSplitWarningDialog } from "@/components/main-transactions/DeleteSplitWarningDialog"
 import { useEntity } from "@/contexts/EntityContext"
 import { useDebounce } from "@/hooks/useDebounce"
+import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 
 interface PaginationInfo {
@@ -39,6 +40,7 @@ interface PaginationInfo {
 
 export default function MainTransactionsPage() {
   const { currentEntity, loading: entityLoading } = useEntity()
+  const { toast } = useToast()
 
   // Data state
   const [transactions, setTransactions] = useState<MainTransactionDetails[]>([])
@@ -79,6 +81,10 @@ export default function MainTransactionsPage() {
     total: 0,
     totalPages: 0,
   })
+
+  // Sorting state
+  const [sortField, setSortField] = useState<string>('transaction_date')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -209,13 +215,13 @@ export default function MainTransactionsPage() {
     setCurrentPage(1)
   }, [dateRange])
 
-  // Fetch transactions when filters or pagination change
+  // Fetch transactions when filters or pagination or sorting change
   // Use debouncedSearchQuery instead of searchQuery to reduce API calls
   useEffect(() => {
     if (currentEntity) {
       fetchTransactions()
     }
-  }, [currentEntity?.id, currentPage, itemsPerPage, selectedAccount, selectedType, selectedCategory, selectedBranch, selectedProject, selectedDirection, startDate, endDate, debouncedSearchQuery, amountOperator, amountValue])
+  }, [currentEntity?.id, currentPage, itemsPerPage, selectedAccount, selectedType, selectedCategory, selectedBranch, selectedProject, selectedDirection, startDate, endDate, debouncedSearchQuery, amountOperator, amountValue, sortField, sortDirection])
 
   const fetchTransactions = async () => {
     setLoading(true)
@@ -228,6 +234,10 @@ export default function MainTransactionsPage() {
 
       // CRITICAL: Always filter by current entity
       params.append("entity_id", currentEntity.id)
+
+      // Sorting
+      params.append("sort_field", sortField)
+      params.append("sort_direction", sortDirection)
 
       if (selectedAccount !== "all") params.append("account_id", selectedAccount)
       if (selectedType !== "all") params.append("transaction_type_id", selectedType)
@@ -267,6 +277,17 @@ export default function MainTransactionsPage() {
   const handleItemsPerPageChange = (value: string) => {
     setItemsPerPage(parseInt(value))
     setCurrentPage(1)
+  }
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      // Toggle direction if clicking the same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // Set new field with default descending order
+      setSortField(field)
+      setSortDirection('desc')
+    }
   }
 
   const clearFilters = () => {
@@ -686,7 +707,7 @@ export default function MainTransactionsPage() {
     }
 
     // Not a split or only one transaction - show simple confirmation
-    const confirmMessage = `Are you sure you want to delete this transaction? This will delete the original transaction and cannot be undone.`
+    const confirmMessage = `Are you sure you want to delete this transaction?`
     if (!confirm(confirmMessage)) return
 
     await performDelete(tx.raw_transaction_id)
@@ -694,19 +715,85 @@ export default function MainTransactionsPage() {
 
   const performDelete = async (rawTransactionId: string) => {
     try {
+      // Optimistically remove from UI
+      const deletedTransactions = transactions.filter(t => t.raw_transaction_id === rawTransactionId)
+      setTransactions(prev => prev.filter(t => t.raw_transaction_id !== rawTransactionId))
+
       const response = await fetch(`/api/transactions/${rawTransactionId}`, {
         method: 'DELETE',
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to delete transaction')
+        // Revert optimistic update on error
+        setTransactions(prev => [...prev, ...deletedTransactions])
+        throw new Error(data.error || 'Failed to delete transaction')
       }
 
-      await fetchTransactions()
+      // Show success toast with undo button
+      const deletedTransaction = data.deletedTransaction
+      const description = deletedTransactions[0]?.description || 'Transaction'
+
+      toast({
+        title: "Transaction deleted",
+        description: `${description} has been deleted`,
+        action: (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleUndoDelete(deletedTransaction)}
+          >
+            Undo
+          </Button>
+        ),
+        duration: 10000, // 10 seconds to undo
+      })
     } catch (error) {
       console.error('Error deleting transaction:', error)
-      alert(error instanceof Error ? error.message : 'Failed to delete transaction')
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : 'Failed to delete transaction',
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleUndoDelete = async (deletedTransaction: any) => {
+    try {
+      console.log('Attempting to restore transaction:', deletedTransaction)
+
+      const response = await fetch('/api/transactions/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transaction: deletedTransaction,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error('Restore failed with data:', data)
+        throw new Error(data.error || 'Failed to restore transaction')
+      }
+
+      // Refresh transactions to show restored transaction
+      await fetchTransactions()
+
+      toast({
+        title: "Transaction restored",
+        description: "The transaction has been restored successfully",
+      })
+    } catch (error) {
+      console.error('Error restoring transaction:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : 'Failed to restore transaction',
+        variant: "destructive",
+      })
     }
   }
 
@@ -749,6 +836,13 @@ export default function MainTransactionsPage() {
   const handleToggleFlag = async (transaction: MainTransactionDetails) => {
     const newFlagStatus = !transaction.is_flagged
 
+    // Optimistic UI update - update immediately for instant feedback
+    setTransactions(prev => prev.map(tx =>
+      tx.main_transaction_id === transaction.main_transaction_id
+        ? { ...tx, is_flagged: newFlagStatus, flagged_at: newFlagStatus ? new Date().toISOString() : null }
+        : tx
+    ))
+
     try {
       const response = await fetch(`/api/main-transactions/${transaction.main_transaction_id}`, {
         method: "PATCH",
@@ -765,15 +859,14 @@ export default function MainTransactionsPage() {
       if (!response.ok) {
         throw new Error(data.error || "Failed to update flag")
       }
-
-      // Update local state
-      setTransactions(prev => prev.map(tx =>
-        tx.main_transaction_id === transaction.main_transaction_id
-          ? { ...tx, is_flagged: newFlagStatus, flagged_at: newFlagStatus ? new Date().toISOString() : null }
-          : tx
-      ))
     } catch (error: any) {
       console.error("Error toggling flag:", error)
+      // Revert the optimistic update on error
+      setTransactions(prev => prev.map(tx =>
+        tx.main_transaction_id === transaction.main_transaction_id
+          ? { ...tx, is_flagged: !newFlagStatus, flagged_at: transaction.flagged_at }
+          : tx
+      ))
       alert(error.message || "Failed to update flag. Please try again.")
     }
   }
@@ -1219,7 +1312,11 @@ export default function MainTransactionsPage() {
                 {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
               </CardTitle>
               <CardDescription>
-                Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} transactions
+                {pagination.total > 0 ? (
+                  <>Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} transactions</>
+                ) : (
+                  <>No transactions found</>
+                )}
               </CardDescription>
             </div>
             <div className="flex items-center gap-3">
@@ -1291,13 +1388,79 @@ export default function MainTransactionsPage() {
                           aria-label="Select all"
                         />
                       </th>
-                      <th className="text-left py-3 px-4">Date</th>
-                      <th className="text-left py-3 px-4">Description</th>
-                      <th className="text-left py-3 px-4">Type</th>
-                      <th className="text-left py-3 px-4">Category</th>
-                      {showBranchColumn && <th className="text-left py-3 px-4">Branch</th>}
-                      {showProjectColumn && <th className="text-left py-3 px-4">Project</th>}
-                      <th className="text-right py-3 px-4">Amount</th>
+                      <th
+                        className="text-left py-3 px-4 cursor-pointer hover:bg-muted/50 select-none"
+                        onClick={() => handleSort('transaction_date')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Date
+                          {sortField === 'transaction_date' && (
+                            sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="text-left py-3 px-4 cursor-pointer hover:bg-muted/50 select-none"
+                        onClick={() => handleSort('description')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Description
+                          {sortField === 'description' && (
+                            sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-left py-3 px-4">
+                        Type
+                      </th>
+                      <th
+                        className="text-left py-3 px-4 cursor-pointer hover:bg-muted/50 select-none"
+                        onClick={() => handleSort('category_name')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Category
+                          {sortField === 'category_name' && (
+                            sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </th>
+                      {showBranchColumn && (
+                        <th
+                          className="text-left py-3 px-4 cursor-pointer hover:bg-muted/50 select-none"
+                          onClick={() => handleSort('branch_name')}
+                        >
+                          <div className="flex items-center gap-1">
+                            Branch
+                            {sortField === 'branch_name' && (
+                              sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                            )}
+                          </div>
+                        </th>
+                      )}
+                      {showProjectColumn && (
+                        <th
+                          className="text-left py-3 px-4 cursor-pointer hover:bg-muted/50 select-none"
+                          onClick={() => handleSort('project_name')}
+                        >
+                          <div className="flex items-center gap-1">
+                            Project
+                            {sortField === 'project_name' && (
+                              sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                            )}
+                          </div>
+                        </th>
+                      )}
+                      <th
+                        className="text-right py-3 px-4 cursor-pointer hover:bg-muted/50 select-none"
+                        onClick={() => handleSort('amount')}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Amount
+                          {sortField === 'amount' && (
+                            sortDirection === 'asc' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </th>
                       <th className="text-center py-3 px-4">Actions</th>
                     </tr>
                   </thead>
@@ -1700,74 +1863,80 @@ export default function MainTransactionsPage() {
               </div>
 
               {/* Pagination */}
-              {pagination.totalPages > 1 && (
-                <div className="flex items-center justify-between border-t pt-4 mt-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Show:</span>
-                    <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
-                      <SelectTrigger className="w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="50">50</SelectItem>
-                        <SelectItem value="100">100</SelectItem>
-                        <SelectItem value="200">200</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="text-sm text-muted-foreground">
-                    Page {pagination.page} of {pagination.totalPages}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      Previous
-                    </Button>
-
-                    <div className="flex gap-1">
-                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                        let pageNum: number
-                        if (pagination.totalPages <= 5) {
-                          pageNum = i + 1
-                        } else if (currentPage <= 3) {
-                          pageNum = i + 1
-                        } else if (currentPage >= pagination.totalPages - 2) {
-                          pageNum = pagination.totalPages - 4 + i
-                        } else {
-                          pageNum = currentPage - 2 + i
-                        }
-
-                        return (
-                          <Button
-                            key={pageNum}
-                            variant={currentPage === pageNum ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => handlePageChange(pageNum)}
-                            className="w-10"
-                          >
-                            {pageNum}
-                          </Button>
-                        )
-                      })}
+              {pagination.total > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4 mt-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Rows per page:</span>
+                      <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                        <SelectTrigger className="w-20">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="25">25</SelectItem>
+                          <SelectItem value="50">50</SelectItem>
+                          <SelectItem value="100">100</SelectItem>
+                          <SelectItem value="200">200</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={currentPage === pagination.totalPages}
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
+                    {pagination.total > 0 && (
+                      <div className="text-sm text-muted-foreground">
+                        Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} transactions
+                      </div>
+                    )}
                   </div>
+
+                  {pagination.totalPages > 1 && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Previous
+                      </Button>
+
+                      <div className="flex gap-1">
+                        {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                          let pageNum: number
+                          if (pagination.totalPages <= 5) {
+                            pageNum = i + 1
+                          } else if (currentPage <= 3) {
+                            pageNum = i + 1
+                          } else if (currentPage >= pagination.totalPages - 2) {
+                            pageNum = pagination.totalPages - 4 + i
+                          } else {
+                            pageNum = currentPage - 2 + i
+                          }
+
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={currentPage === pageNum ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => handlePageChange(pageNum)}
+                              className="w-10"
+                            >
+                              {pageNum}
+                            </Button>
+                          )
+                        })}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === pagination.totalPages}
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </>
