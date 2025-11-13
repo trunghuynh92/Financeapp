@@ -77,6 +77,10 @@ export interface MainTransaction {
   transfer_matched_transaction_id: number | null
   drawdown_id: number | null
   loan_disbursement_id: number | null
+  is_flagged: boolean
+  flagged_at: string | null
+  flagged_by: string | null
+  flag_note: string | null
   created_at: string
   updated_at: string
   created_by_user_id: number | null
@@ -122,7 +126,12 @@ export interface MainTransactionDetails extends MainTransaction {
   checkpoint_id?: number
   transaction_sequence?: number // CSV row order for same-date transactions
   import_batch_id?: number
+
+  // Flag fields
   is_flagged?: boolean
+  flagged_at?: string | null
+  flagged_by?: string | null
+  flag_note?: string | null
 }
 
 export interface UnmatchedTransfer {

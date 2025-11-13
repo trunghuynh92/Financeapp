@@ -147,12 +147,28 @@ export async function PATCH(
       'project_id',
       'description',
       'notes',
+      'is_flagged',
+      'flag_note',
     ]
 
     const updates: any = {}
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updates[field] = body[field]
+      }
+    }
+
+    // Handle flag-specific fields
+    if (body.is_flagged !== undefined) {
+      if (body.is_flagged) {
+        // Flagging the transaction
+        updates.flagged_at = new Date().toISOString()
+        updates.flagged_by = user.id
+      } else {
+        // Unflagging the transaction
+        updates.flagged_at = null
+        updates.flagged_by = null
+        updates.flag_note = null
       }
     }
 

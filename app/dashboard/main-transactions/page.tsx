@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { ChevronLeft, ChevronRight, Edit, Search, Filter, X, Split, Check, Link2, Plus, Trash2, Loader2, Info, CalendarIcon } from "lucide-react"
+import { ChevronLeft, ChevronRight, Edit, Search, Filter, X, Split, Check, Link2, Plus, Trash2, Loader2, Info, CalendarIcon, Flag } from "lucide-react"
 import { MainTransactionDetails, TransactionType, Category, Branch, Project } from "@/types/main-transaction"
 import { EditTransactionDialog } from "@/components/main-transactions/EditTransactionDialog"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
@@ -743,6 +743,38 @@ export default function MainTransactionsPage() {
     } catch (error: any) {
       console.error("Error unmatching transfer:", error)
       alert(error.message || "Failed to unmatch transfer. Please try again.")
+    }
+  }
+
+  const handleToggleFlag = async (transaction: MainTransactionDetails) => {
+    const newFlagStatus = !transaction.is_flagged
+
+    try {
+      const response = await fetch(`/api/main-transactions/${transaction.main_transaction_id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          is_flagged: newFlagStatus,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update flag")
+      }
+
+      // Update local state
+      setTransactions(prev => prev.map(tx =>
+        tx.main_transaction_id === transaction.main_transaction_id
+          ? { ...tx, is_flagged: newFlagStatus, flagged_at: newFlagStatus ? new Date().toISOString() : null }
+          : tx
+      ))
+    } catch (error: any) {
+      console.error("Error toggling flag:", error)
+      alert(error.message || "Failed to update flag. Please try again.")
     }
   }
 
@@ -1478,6 +1510,27 @@ export default function MainTransactionsPage() {
                                     Unmatched Loan
                                   </Badge>
                                 )}
+                                {/* Flagged transaction */}
+                                {tx.is_flagged && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge
+                                          variant="secondary"
+                                          className="bg-red-100 text-red-800 border-red-200 cursor-pointer hover:bg-red-200"
+                                          onClick={() => handleToggleFlag(tx)}
+                                        >
+                                          <Flag className="h-3 w-3 mr-1" />
+                                          Flagged
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Click to unflag</p>
+                                        {tx.flagged_at && <p className="text-xs text-muted-foreground">Flagged: {new Date(tx.flagged_at).toLocaleString()}</p>}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -1586,6 +1639,15 @@ export default function MainTransactionsPage() {
 
                           <td className="py-3 px-4 text-center">
                             <div className="flex items-center justify-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleToggleFlag(tx)}
+                                title={tx.is_flagged ? "Unflag transaction" : "Flag for investigation"}
+                                className={tx.is_flagged ? "text-red-600 hover:text-red-700 hover:bg-red-50" : ""}
+                              >
+                                <Flag className={`h-4 w-4 ${tx.is_flagged ? 'fill-red-600' : ''}`} />
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
