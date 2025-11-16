@@ -77,10 +77,11 @@ export function QuickMatchLoanDialog({
 
       const data = await response.json()
 
-      // Filter to same type (LOAN_DISBURSE matches with LOAN_DISBURSE on different account)
-      // Both sides of loan transaction use the same type in the new simplified system
+      // Filter to same type - match with same transaction type on different account
+      // LOAN_DISBURSE matches with LOAN_DISBURSE, LOAN_COLLECT matches with LOAN_COLLECT
+      const sourceTypeCode = sourceTransaction.transaction_type_code
       const filtered = data.data.filter((t: MainTransactionDetails) =>
-        t.transaction_type_code === 'LOAN_DISBURSE' &&
+        t.transaction_type_code === sourceTypeCode &&
         t.main_transaction_id !== sourceTransaction.main_transaction_id &&
         t.account_id !== sourceTransaction.account_id // Different account
       )
