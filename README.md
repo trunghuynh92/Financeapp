@@ -6,6 +6,19 @@ A comprehensive multi-user financial management system for businesses and indivi
 
 ### What's New in v5.0.0
 
+#### ✏️ Edit Functionality for Debt & Loans
+- **Drawdown Editing**: Edit drawdown details after creation
+  - Update reference numbers, due dates, interest rates, and notes
+  - Quick date presets (1/3/6 months) for due date adjustments
+  - Pencil icon in actions column for easy access
+  - Real-time validation and error handling
+- **Loan Disbursement Editing**: Modify loan terms as needed
+  - Adjust loan categories, due dates, term lengths, and interest rates
+  - Update notes for additional context
+  - Edit button with comprehensive form dialog
+- **API Endpoints**: PATCH endpoints for both drawdowns and loan disbursements
+- **Type Safety**: Full TypeScript support with proper interface definitions
+
 #### 🎯 Simple vs Advanced Mode
 - **Smart Transaction Filtering**: New toggle between Simple Mode (bank/cash only) and Advanced Mode (all accounts)
 - **Default Simple Mode**: Shows only bank and cash account transactions for non-accounting users
