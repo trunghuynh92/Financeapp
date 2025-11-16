@@ -522,8 +522,7 @@ export default function AccountsPage() {
             const liabilityAccounts = accounts.filter(a =>
               a.account_type === 'credit_card' ||
               a.account_type === 'credit_line' ||
-              a.account_type === 'term_loan' ||
-              a.account_type === 'debt_payable'
+              a.account_type === 'term_loan'
             )
             if (liabilityAccounts.length === 0) return null
 

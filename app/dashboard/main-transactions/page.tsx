@@ -1143,7 +1143,7 @@ export default function MainTransactionsPage() {
                         mode="range"
                         selected={dateRange}
                         onSelect={(range) => {
-                          setDateRange(range || { from: undefined, to: undefined })
+                          setDateRange(range ? { from: range.from, to: range.to } : { from: undefined, to: undefined })
                         }}
                         numberOfMonths={2}
                         initialFocus
@@ -2168,7 +2168,7 @@ export default function MainTransactionsPage() {
                 {selectedDirection !== 'all' && <li>Direction filter active</li>}
                 {startDate && <li>Start date: {startDate}</li>}
                 {endDate && <li>End date: {endDate}</li>}
-                {searchQuery && <li>Search: "{searchQuery}"</li>}
+                {searchQuery && <li>Search: &ldquo;{searchQuery}&rdquo;</li>}
                 {(showBranchColumn || showProjectColumn) && <li>Column visibility settings</li>}
               </ul>
             </div>

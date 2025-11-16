@@ -126,12 +126,6 @@ export interface MainTransactionDetails extends MainTransaction {
   checkpoint_id?: number
   transaction_sequence?: number // CSV row order for same-date transactions
   import_batch_id?: number
-
-  // Flag fields
-  is_flagged?: boolean
-  flagged_at?: string | null
-  flagged_by?: string | null
-  flag_note?: string | null
 }
 
 export interface UnmatchedTransfer {

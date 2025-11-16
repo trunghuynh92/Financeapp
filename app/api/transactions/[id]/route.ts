@@ -291,11 +291,11 @@ export async function DELETE(
 
     // If transaction was linked to a loan disbursement, recalculate the loan balance
     if (mainTransactions && mainTransactions.length > 0) {
-      const loanDisbursementIds = [...new Set(
+      const loanDisbursementIds = Array.from(new Set(
         mainTransactions
           .filter(mt => mt.loan_disbursement_id)
           .map(mt => mt.loan_disbursement_id)
-      )]
+      ))
 
       for (const loanId of loanDisbursementIds) {
         try {

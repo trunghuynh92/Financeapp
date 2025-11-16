@@ -386,7 +386,7 @@ export function LoanDisbursementListCard({
                               size="sm"
                               onClick={() => fetchLoanTransactions(
                                 loan.loan_disbursement_id,
-                                loan.loan_reference || `Loan to ${loan.borrower_name || 'Unknown'}`
+                                `Loan to ${loan.borrower_name || 'Unknown'}`
                               )}
                               disabled={loadingTransactions}
                             >

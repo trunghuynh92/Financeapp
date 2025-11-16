@@ -95,7 +95,7 @@ export function InlineCombobox({
                   className="text-primary"
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  Create "{createMatch![1].trim()}"
+                  Create &ldquo;{createMatch![1].trim()}&rdquo;
                 </CommandItem>
               </CommandGroup>
             ) : (

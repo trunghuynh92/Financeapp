@@ -32,6 +32,7 @@ import {
 } from 'recharts'
 import { formatCurrency } from "@/lib/account-utils"
 import { useEntity } from "@/contexts/EntityContext"
+import { Currency } from "@/types/account"
 
 interface IncomeExpenseData {
   period: string
@@ -385,7 +386,7 @@ export default function ReportsPage() {
                         </p>
                       </div>
                       <span className="font-medium text-red-600">
-                        {formatCurrency(Math.abs(account.current_balance), account.currency)}
+                        {formatCurrency(Math.abs(account.current_balance), account.currency as Currency)}
                       </span>
                     </div>
                   ))}
@@ -436,7 +437,7 @@ export default function ReportsPage() {
                         </p>
                       </div>
                       <span className="font-medium text-green-600">
-                        {formatCurrency(account.current_balance, account.currency)}
+                        {formatCurrency(account.current_balance, account.currency as Currency)}
                       </span>
                     </div>
                   ))}

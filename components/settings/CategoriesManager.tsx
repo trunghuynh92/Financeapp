@@ -105,6 +105,7 @@ export function CategoriesManager() {
         category_name: "",
         category_code: "",
         entity_type: "both",
+        cash_flow_type: "",
         description: "",
       })
     } catch (error) {
