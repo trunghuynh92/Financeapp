@@ -36,6 +36,11 @@ export async function POST(
     const body = await request.json()
     const { cash_transaction_id } = body
 
+    // Debug logging
+    console.log('=== Match Collection Request ===')
+    console.log('Disbursement ID:', disbursementId)
+    console.log('Cash Transaction ID:', cash_transaction_id)
+
     // Validation
     if (!cash_transaction_id) {
       return NextResponse.json(
@@ -49,17 +54,24 @@ export async function POST(
       .from('main_transaction')
       .select(`
         *,
-        account:accounts(account_id, account_name, account_type, entity_id)
+        account:accounts!main_transaction_account_id_fkey(account_id, account_name, account_type, entity_id)
       `)
       .eq('main_transaction_id', cash_transaction_id)
       .single()
 
     if (cashTxError || !cashTransaction) {
+      console.error('Error fetching cash transaction:', cashTxError)
+      console.log('Cash transaction data:', cashTransaction)
       return NextResponse.json(
-        { error: 'Cash transaction not found' },
+        {
+          error: 'Cash transaction not found',
+          details: cashTxError?.message || 'Transaction does not exist or access denied'
+        },
         { status: 404 }
       )
     }
+
+    console.log('Found cash transaction:', cashTransaction.main_transaction_id)
 
     // Verify it's a LOAN_COLLECT transaction
     const { data: loanCollectType } = await supabase
@@ -84,7 +96,7 @@ export async function POST(
       .from('loan_disbursement')
       .select(`
         *,
-        account:accounts(account_id, account_name, account_type, entity_id)
+        account:accounts!loan_disbursement_account_id_fkey(account_id, account_name, account_type, entity_id)
       `)
       .eq('loan_disbursement_id', disbursementId)
       .single()
