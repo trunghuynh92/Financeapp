@@ -146,7 +146,6 @@ export async function POST(
         debit_amount: cashTransaction.amount, // Debit decreases the receivable asset
         credit_amount: null,
         transaction_source: 'user_manual',
-        notes: `Matched to cash transaction #${cash_transaction_id}`,
       }])
       .select()
       .single()
