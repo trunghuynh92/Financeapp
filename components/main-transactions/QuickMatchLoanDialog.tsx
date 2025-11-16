@@ -369,19 +369,34 @@ export function QuickMatchLoanDialog({
             ) : availableLoans.length === 0 ? (
             <div className="text-center py-8 border rounded-lg">
               <p className="text-muted-foreground">No matching loan transactions available</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Make sure there&apos;s a {isSourceDisbursement ? 'Loan Acquired' : 'Loan Disbursement'} transaction from a different account
-              </p>
-              {!isSourceDisbursement && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => setCreateLoanDisbursementDialogOpen(true)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create New Disbursement
-                </Button>
+
+              {sourceTransaction.transaction_type_code === 'LOAN_COLLECT' ? (
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                    <div className="text-xs text-yellow-800 text-left">
+                      <p className="font-medium mb-1">No loan disbursement found</p>
+                      <p>To match this loan collection, please first create a loan disbursement in your credit/loan account.</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Make sure there&apos;s a {isSourceDisbursement ? 'Loan Acquired' : 'Loan Disbursement'} transaction from a different account
+                  </p>
+                  {!isSourceDisbursement && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => setCreateLoanDisbursementDialogOpen(true)}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create New Disbursement
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           ) : (
@@ -474,9 +489,11 @@ export function QuickMatchLoanDialog({
 
         <DialogFooter>
           <div className="flex w-full justify-between items-center">
-            {/* Left side: Create New Disbursement button (only for DEBT_ACQ source) */}
+            {/* Left side: Create New Disbursement button (only for DEBT_ACQ source, not for LOAN_COLLECT) */}
             <div>
-              {!isSourceDisbursement && (!currentMatch || showUnmatchConfirm) && (
+              {!isSourceDisbursement &&
+               sourceTransaction.transaction_type_code !== 'LOAN_COLLECT' &&
+               (!currentMatch || showUnmatchConfirm) && (
                 <Button
                   variant="outline"
                   onClick={() => setCreateLoanDisbursementDialogOpen(true)}
