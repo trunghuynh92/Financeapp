@@ -124,6 +124,7 @@ export interface DrawdownListItem {
   interest_rate: number | null
   total_interest_paid: number
   total_fees_paid: number
+  notes: string | null
 }
 
 export interface DrawdownStats {
