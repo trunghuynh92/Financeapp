@@ -32,17 +32,25 @@ export function QuickMatchLoanDialog({
   const [matching, setMatching] = useState(false)
   const [unmatching, setUnmatching] = useState(false)
   const [availableLoans, setAvailableLoans] = useState<MainTransactionDetails[]>([])
+  const [availableDisbursements, setAvailableDisbursements] = useState<any[]>([])
   const [selectedLoan, setSelectedLoan] = useState<number | null>(null)
+  const [selectedDisbursement, setSelectedDisbursement] = useState<number | null>(null)
   const [currentMatch, setCurrentMatch] = useState<MainTransactionDetails | null>(null)
   const [showUnmatchConfirm, setShowUnmatchConfirm] = useState(false)
   const [createDisbursementDialogOpen, setCreateLoanDisbursementDialogOpen] = useState(false)
 
+  const isLoanCollection = sourceTransaction?.transaction_type_code === 'LOAN_COLLECT'
+
   useEffect(() => {
     if (open && sourceTransaction) {
       fetchCurrentMatch()
-      fetchAvailableLoans()
+      if (isLoanCollection) {
+        fetchAvailableDisbursements()
+      } else {
+        fetchAvailableLoans()
+      }
     }
-  }, [open, sourceTransaction])
+  }, [open, sourceTransaction, isLoanCollection])
 
   const fetchCurrentMatch = async () => {
     if (!sourceTransaction?.transfer_matched_transaction_id) {
@@ -124,6 +132,65 @@ export function QuickMatchLoanDialog({
     }
   }
 
+  const fetchAvailableDisbursements = async () => {
+    if (!sourceTransaction) return
+
+    setLoading(true)
+    try {
+      // Fetch loan disbursements for the entity
+      const response = await fetch(`/api/loan-disbursements?entity_id=${sourceTransaction.entity_id}`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch loan disbursements")
+      }
+
+      const data = await response.json()
+
+      // Filter to active/unpaid disbursements only
+      const filtered = data.data.filter((d: any) =>
+        d.status !== 'repaid' &&
+        d.status !== 'written_off' &&
+        d.remaining_balance > 0
+      )
+
+      // Sort by best match (amount + date proximity)
+      filtered.sort((a: any, b: any) => {
+        // Calculate amount difference (compare with remaining balance)
+        const amountDiffA = Math.abs(a.remaining_balance - sourceTransaction.amount)
+        const amountDiffB = Math.abs(b.remaining_balance - sourceTransaction.amount)
+
+        // Calculate date difference in days
+        const sourceDateMs = new Date(sourceTransaction.transaction_date).getTime()
+        const dateDiffA = Math.abs(new Date(a.disbursement_date).getTime() - sourceDateMs) / (1000 * 60 * 60 * 24)
+        const dateDiffB = Math.abs(new Date(b.disbursement_date).getTime() - sourceDateMs) / (1000 * 60 * 60 * 24)
+
+        // Prioritize exact amount matches, then consider date
+        if (amountDiffA < 0.01 && amountDiffB < 0.01) {
+          // Both are exact amount matches - sort by date proximity
+          return dateDiffA - dateDiffB
+        } else if (amountDiffA < 0.01) {
+          // A is exact match - prioritize it
+          return -1
+        } else if (amountDiffB < 0.01) {
+          // B is exact match - prioritize it
+          return 1
+        } else {
+          // Neither is exact - use weighted score (amount is 80%, date is 20%)
+          const scoreA = (amountDiffA / sourceTransaction.amount) * 0.8 + (dateDiffA / 30) * 0.2
+          const scoreB = (amountDiffB / sourceTransaction.amount) * 0.8 + (dateDiffB / 30) * 0.2
+          return scoreA - scoreB
+        }
+      })
+
+      setAvailableDisbursements(filtered)
+    } catch (error) {
+      console.error("Error fetching available loan disbursements:", error)
+      alert("Failed to load available loan disbursements")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleUnmatch = async () => {
     if (!sourceTransaction) return
 
@@ -157,29 +224,56 @@ export function QuickMatchLoanDialog({
   }
 
   const handleMatch = async () => {
-    if (!selectedLoan || !sourceTransaction) return
+    if (!sourceTransaction) return
+    if (isLoanCollection && !selectedDisbursement) return
+    if (!isLoanCollection && !selectedLoan) return
 
     setMatching(true)
     try {
-      // Not needed anymore - both sides use LOAN_DISBURSE
-      const isSourceDisbursement = false // Legacy variable kept for compatibility
+      if (isLoanCollection) {
+        // For LOAN_COLLECT: Match to a loan disbursement
+        const response = await fetch(`/api/loan-disbursements/${selectedDisbursement}/match-collection`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cash_transaction_id: sourceTransaction.main_transaction_id,
+          }),
+        })
 
-      const response = await fetch("/api/transfers/match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transfer_out_id: isSourceDisbursement ? sourceTransaction.main_transaction_id : selectedLoan,
-          transfer_in_id: isSourceDisbursement ? selectedLoan : sourceTransaction.main_transaction_id,
-        }),
-      })
+        const data = await response.json()
 
-      const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to match loan collection")
+        }
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to match loan transactions")
+        // Show warning if overpayment
+        if (data.warning) {
+          alert(`⚠️ ${data.warning.message}\n\n${data.message}`)
+        } else {
+          alert("Loan collection matched successfully!")
+        }
+      } else {
+        // For LOAN_DISBURSE: Match with another LOAN_DISBURSE transaction
+        const isSourceDisbursement = false // Legacy variable kept for compatibility
+
+        const response = await fetch("/api/transfers/match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transfer_out_id: isSourceDisbursement ? sourceTransaction.main_transaction_id : selectedLoan,
+            transfer_in_id: isSourceDisbursement ? selectedLoan : sourceTransaction.main_transaction_id,
+          }),
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to match loan transactions")
+        }
+
+        alert("Loan transactions matched successfully!")
       }
 
-      alert("Loan transactions matched successfully!")
       onSuccess()
       onOpenChange(false)
     } catch (error: any) {
@@ -206,10 +300,16 @@ export function QuickMatchLoanDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{currentMatch ? 'Change Loan Match' : 'Match Loan Transaction'}</DialogTitle>
+          <DialogTitle>{currentMatch ? 'Change Loan Match' : isLoanCollection ? 'Match Loan Collection' : 'Match Loan Transaction'}</DialogTitle>
           <DialogDescription>
             {currentMatch && !showUnmatchConfirm ? (
               <>This loan transaction is currently matched. Click &quot;Change Match&quot; to unmatch and select a different transaction.</>
+            ) : isLoanCollection ? (
+              <>
+                Select a loan disbursement to match with this collection.
+                This will create the receivable-side transaction and update the loan balance.
+                Suggestions are sorted by best match (remaining balance + date proximity).
+              </>
             ) : (
               <>
                 Select a {isSourceDisbursement ? 'Loan Acquired' : 'Loan Disbursement'} transaction to match with this {isSourceDisbursement ? 'disbursement' : 'loan acquisition'}.
@@ -355,34 +455,132 @@ export function QuickMatchLoanDialog({
           </div>
         )}
 
-        {/* Available Loan Transactions */}
+        {/* Available Loan Transactions or Disbursements */}
         {(!currentMatch || showUnmatchConfirm) && (
           <div className="space-y-2">
             <div className="text-sm font-medium">
-              Available {isSourceDisbursement ? 'Loan Acquired' : 'Loan Disbursements'} ({availableLoans.length})
+              {isLoanCollection
+                ? `Available Loan Disbursements (${availableDisbursements.length})`
+                : `Available ${isSourceDisbursement ? 'Loan Acquired' : 'Loan Disbursements'} (${availableLoans.length})`
+              }
             </div>
 
             {loading ? (
               <div className="text-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Loading available loan transactions...</p>
+                <p className="text-sm text-muted-foreground">
+                  Loading available {isLoanCollection ? 'loan disbursements' : 'loan transactions'}...
+                </p>
               </div>
-            ) : availableLoans.length === 0 ? (
-            <div className="text-center py-8 border rounded-lg">
-              <p className="text-muted-foreground">No matching loan transactions available</p>
-
-              {sourceTransaction.transaction_type_code === 'LOAN_COLLECT' ? (
-                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5" />
-                    <div className="text-xs text-yellow-800 text-left">
-                      <p className="font-medium mb-1">No loan disbursement found</p>
-                      <p>To match this loan collection, please first create a loan disbursement in your credit/loan account.</p>
+            ) : isLoanCollection ? (
+              // Show disbursements for LOAN_COLLECT
+              availableDisbursements.length === 0 ? (
+                <div className="text-center py-8 border rounded-lg">
+                  <p className="text-muted-foreground">No loan disbursements available</p>
+                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                      <div className="text-xs text-yellow-800 text-left">
+                        <p className="font-medium mb-1">No active loan disbursements found</p>
+                        <p>To match this loan collection, please first create a loan disbursement in your loan receivable account.</p>
+                      </div>
                     </div>
                   </div>
                 </div>
               ) : (
-                <>
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="max-h-96 overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-muted sticky top-0">
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-3 w-8"></th>
+                          <th className="text-left py-2 px-3">Disbursement Date</th>
+                          <th className="text-left py-2 px-3">Borrower</th>
+                          <th className="text-left py-2 px-3">Principal</th>
+                          <th className="text-right py-2 px-3">Remaining Balance</th>
+                          <th className="text-center py-2 px-3">Match</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {availableDisbursements.map((disbursement: any) => {
+                          const isSelected = selectedDisbursement === disbursement.loan_disbursement_id
+                          const amountMatch = Math.abs(disbursement.remaining_balance - sourceTransaction.amount) < 0.01
+
+                          // Calculate date difference in days
+                          const sourceDateMs = new Date(sourceTransaction.transaction_date).getTime()
+                          const disbursementDateMs = new Date(disbursement.disbursement_date).getTime()
+                          const dateDiffDays = Math.abs(disbursementDateMs - sourceDateMs) / (1000 * 60 * 60 * 24)
+                          const sameDay = dateDiffDays < 1
+
+                          return (
+                            <tr
+                              key={disbursement.loan_disbursement_id}
+                              className={`border-b hover:bg-muted/50 cursor-pointer ${
+                                isSelected ? 'bg-primary/10 border-primary' : ''
+                              }`}
+                              onClick={() => setSelectedDisbursement(disbursement.loan_disbursement_id)}
+                            >
+                              <td className="py-2 px-3">
+                                <input
+                                  type="radio"
+                                  checked={isSelected}
+                                  onChange={() => setSelectedDisbursement(disbursement.loan_disbursement_id)}
+                                />
+                              </td>
+                              <td className="py-2 px-3 text-sm whitespace-nowrap">
+                                <div>{formatDate(disbursement.disbursement_date)}</div>
+                                {sameDay ? (
+                                  <div className="text-xs text-green-600 font-medium">Same day</div>
+                                ) : dateDiffDays < 3 ? (
+                                  <div className="text-xs text-blue-600">
+                                    {Math.round(dateDiffDays)} {Math.round(dateDiffDays) === 1 ? 'day' : 'days'} apart
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground">
+                                    {Math.round(dateDiffDays)} days apart
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-sm">
+                                <div className="font-medium">
+                                  {disbursement.partner?.partner_name || disbursement.borrower_name || 'Unknown'}
+                                </div>
+                                {disbursement.notes && (
+                                  <div className="text-xs text-muted-foreground truncate max-w-xs">
+                                    {disbursement.notes}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-sm font-mono">
+                                {formatAmount(disbursement.principal_amount)}
+                              </td>
+                              <td className="py-2 px-3 text-sm text-right font-mono font-medium">
+                                {formatAmount(disbursement.remaining_balance)}
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                {amountMatch ? (
+                                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                    Exact Match
+                                  </Badge>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">
+                                    Diff: {formatAmount(Math.abs(disbursement.remaining_balance - sourceTransaction.amount))}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            ) : (
+              // Show transactions for LOAN_DISBURSE
+              availableLoans.length === 0 ? (
+                <div className="text-center py-8 border rounded-lg">
+                  <p className="text-muted-foreground">No matching loan transactions available</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     Make sure there&apos;s a {isSourceDisbursement ? 'Loan Acquired' : 'Loan Disbursement'} transaction from a different account
                   </p>
@@ -397,94 +595,93 @@ export function QuickMatchLoanDialog({
                       Create New Disbursement
                     </Button>
                   )}
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <div className="max-h-96 overflow-y-auto">
-                <table className="w-full">
-                  <thead className="bg-muted sticky top-0">
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-3 w-8"></th>
-                      <th className="text-left py-2 px-3">Date</th>
-                      <th className="text-left py-2 px-3">Account</th>
-                      <th className="text-left py-2 px-3">Description</th>
-                      <th className="text-right py-2 px-3">Amount</th>
-                      <th className="text-center py-2 px-3">Match</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {availableLoans.map((loan) => {
-                      const isSelected = selectedLoan === loan.main_transaction_id
-                      const amountMatch = Math.abs(loan.amount - sourceTransaction.amount) < 0.01
-
-                      // Calculate date difference in days
-                      const sourceDateMs = new Date(sourceTransaction.transaction_date).getTime()
-                      const loanDateMs = new Date(loan.transaction_date).getTime()
-                      const dateDiffDays = Math.abs(loanDateMs - sourceDateMs) / (1000 * 60 * 60 * 24)
-                      const sameDay = dateDiffDays < 1
-
-                      return (
-                        <tr
-                          key={loan.main_transaction_id}
-                          className={`border-b hover:bg-muted/50 cursor-pointer ${
-                            isSelected ? 'bg-primary/10 border-primary' : ''
-                          }`}
-                          onClick={() => setSelectedLoan(loan.main_transaction_id)}
-                        >
-                          <td className="py-2 px-3">
-                            <input
-                              type="radio"
-                              checked={isSelected}
-                              onChange={() => setSelectedLoan(loan.main_transaction_id)}
-                            />
-                          </td>
-                          <td className="py-2 px-3 text-sm whitespace-nowrap">
-                            <div>{formatDate(loan.transaction_date)}</div>
-                            {sameDay ? (
-                              <div className="text-xs text-green-600 font-medium">Same day</div>
-                            ) : dateDiffDays < 3 ? (
-                              <div className="text-xs text-blue-600">
-                                {Math.round(dateDiffDays)} {Math.round(dateDiffDays) === 1 ? 'day' : 'days'} apart
-                              </div>
-                            ) : (
-                              <div className="text-xs text-muted-foreground">
-                                {Math.round(dateDiffDays)} days apart
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-sm">
-                            <div className="font-medium">{loan.account_name}</div>
-                            {loan.bank_name && (
-                              <div className="text-xs text-muted-foreground">{loan.bank_name}</div>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-sm">
-                            {loan.description || <span className="text-muted-foreground italic">No description</span>}
-                          </td>
-                          <td className="py-2 px-3 text-sm text-right font-mono font-medium">
-                            {formatAmount(loan.amount)}
-                          </td>
-                          <td className="py-2 px-3 text-center">
-                            {amountMatch ? (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                Exact Match
-                              </Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                Diff: {formatAmount(Math.abs(loan.amount - sourceTransaction.amount))}
-                              </span>
-                            )}
-                          </td>
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="max-h-96 overflow-y-auto">
+                    <table className="w-full">
+                      <thead className="bg-muted sticky top-0">
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-3 w-8"></th>
+                          <th className="text-left py-2 px-3">Date</th>
+                          <th className="text-left py-2 px-3">Account</th>
+                          <th className="text-left py-2 px-3">Description</th>
+                          <th className="text-right py-2 px-3">Amount</th>
+                          <th className="text-center py-2 px-3">Match</th>
                         </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+                      </thead>
+                      <tbody>
+                        {availableLoans.map((loan) => {
+                          const isSelected = selectedLoan === loan.main_transaction_id
+                          const amountMatch = Math.abs(loan.amount - sourceTransaction.amount) < 0.01
+
+                          // Calculate date difference in days
+                          const sourceDateMs = new Date(sourceTransaction.transaction_date).getTime()
+                          const loanDateMs = new Date(loan.transaction_date).getTime()
+                          const dateDiffDays = Math.abs(loanDateMs - sourceDateMs) / (1000 * 60 * 60 * 24)
+                          const sameDay = dateDiffDays < 1
+
+                          return (
+                            <tr
+                              key={loan.main_transaction_id}
+                              className={`border-b hover:bg-muted/50 cursor-pointer ${
+                                isSelected ? 'bg-primary/10 border-primary' : ''
+                              }`}
+                              onClick={() => setSelectedLoan(loan.main_transaction_id)}
+                            >
+                              <td className="py-2 px-3">
+                                <input
+                                  type="radio"
+                                  checked={isSelected}
+                                  onChange={() => setSelectedLoan(loan.main_transaction_id)}
+                                />
+                              </td>
+                              <td className="py-2 px-3 text-sm whitespace-nowrap">
+                                <div>{formatDate(loan.transaction_date)}</div>
+                                {sameDay ? (
+                                  <div className="text-xs text-green-600 font-medium">Same day</div>
+                                ) : dateDiffDays < 3 ? (
+                                  <div className="text-xs text-blue-600">
+                                    {Math.round(dateDiffDays)} {Math.round(dateDiffDays) === 1 ? 'day' : 'days'} apart
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground">
+                                    {Math.round(dateDiffDays)} days apart
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-sm">
+                                <div className="font-medium">{loan.account_name}</div>
+                                {loan.bank_name && (
+                                  <div className="text-xs text-muted-foreground">{loan.bank_name}</div>
+                                )}
+                              </td>
+                              <td className="py-2 px-3 text-sm">
+                                {loan.description || <span className="text-muted-foreground italic">No description</span>}
+                              </td>
+                              <td className="py-2 px-3 text-sm text-right font-mono font-medium">
+                                {formatAmount(loan.amount)}
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                {amountMatch ? (
+                                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                    Exact Match
+                                  </Badge>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">
+                                    Diff: {formatAmount(Math.abs(loan.amount - sourceTransaction.amount))}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            )}
           </div>
         )}
 
@@ -517,7 +714,7 @@ export function QuickMatchLoanDialog({
               {(!currentMatch || showUnmatchConfirm) && (
                 <Button
                   onClick={handleMatch}
-                  disabled={!selectedLoan || matching}
+                  disabled={isLoanCollection ? !selectedDisbursement : !selectedLoan || matching}
                 >
                   {matching ? (
                     <>
@@ -527,7 +724,7 @@ export function QuickMatchLoanDialog({
                   ) : (
                     <>
                       <Link2 className="mr-2 h-4 w-4" />
-                      Match Loan Transactions
+                      {isLoanCollection ? 'Match to Loan Disbursement' : 'Match Loan Transactions'}
                     </>
                   )}
                 </Button>
