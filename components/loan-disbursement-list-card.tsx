@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, DollarSign, Calendar, AlertCircle, TrendingUp, User, Receipt } from "lucide-react"
+import { Plus, DollarSign, Calendar, AlertCircle, TrendingUp, User, Receipt, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { CreateLoanDisbursementDialog } from "@/components/create-loan-disbursement-dialog"
+import { EditLoanDisbursementDialog } from "@/components/edit-loan-disbursement-dialog"
 import { RecordLoanPaymentDialog } from "@/components/record-loan-payment-dialog"
 import {
   Dialog,
@@ -70,7 +71,9 @@ export function LoanDisbursementListCard({
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
+  const [selectedLoan, setSelectedLoan] = useState<LoanDisbursementWithAccount | null>(null)
   const [selectedDisbursementId, setSelectedDisbursementId] = useState<number | null>(null)
   const [selectedBorrowerName, setSelectedBorrowerName] = useState<string>("")
   const [isTransactionsDialogOpen, setIsTransactionsDialogOpen] = useState(false)
@@ -139,10 +142,21 @@ export function LoanDisbursementListCard({
     onRefresh?.()
   }
 
+  function handleEditSuccess() {
+    fetchDisbursements()
+    setIsEditDialogOpen(false)
+    onRefresh?.()
+  }
+
   function handlePaymentSuccess() {
     fetchDisbursements()
     setIsPaymentDialogOpen(false)
     onRefresh?.()
+  }
+
+  function openEditDialog(loan: LoanDisbursementWithAccount) {
+    setSelectedLoan(loan)
+    setIsEditDialogOpen(true)
   }
 
   function handleRecordPayment(disbursementId: number, borrowerName: string) {
@@ -389,8 +403,17 @@ export function LoanDisbursementListCard({
                                 `Loan to ${loan.borrower_name || 'Unknown'}`
                               )}
                               disabled={loadingTransactions}
+                              title="View transactions"
                             >
                               <Receipt className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditDialog(loan)}
+                              title="Edit loan details"
+                            >
+                              <Pencil className="h-4 w-4" />
                             </Button>
                             {loan.status !== 'repaid' && loan.status !== 'written_off' && (
                               <Button
@@ -443,6 +466,13 @@ export function LoanDisbursementListCard({
         accountId={accountId}
         accountName={accountName}
         onSuccess={handleCreateSuccess}
+      />
+
+      <EditLoanDisbursementDialog
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        loan={selectedLoan}
+        onSuccess={handleEditSuccess}
       />
 
       {selectedDisbursementId && (

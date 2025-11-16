@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
-import { CreateDrawdownRequest } from '@/types/debt'
+import { CreateDrawdownRequest, UpdateDrawdownRequest } from '@/types/debt'
 
 // ==============================================================================
 // GET - List all drawdowns for an account
@@ -291,6 +291,93 @@ export async function POST(
     return NextResponse.json(
       {
         error: 'Failed to create drawdown',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}
+
+// ==============================================================================
+// PATCH - Update a specific drawdown
+// ==============================================================================
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = createSupabaseServerClient()
+    const accountId = parseInt(params.id, 10)
+
+    if (isNaN(accountId)) {
+      return NextResponse.json(
+        { error: 'Invalid account ID' },
+        { status: 400 }
+      )
+    }
+
+    // Get drawdown_id from query params
+    const searchParams = request.nextUrl.searchParams
+    const drawdownId = searchParams.get('drawdown_id')
+
+    if (!drawdownId) {
+      return NextResponse.json(
+        { error: 'Missing drawdown_id query parameter' },
+        { status: 400 }
+      )
+    }
+
+    const body: UpdateDrawdownRequest = await request.json()
+
+    // Verify drawdown exists and belongs to this account
+    const { data: existingDrawdown, error: fetchError } = await supabase
+      .from('debt_drawdown')
+      .select('drawdown_id, account_id')
+      .eq('drawdown_id', parseInt(drawdownId))
+      .eq('account_id', accountId)
+      .single()
+
+    if (fetchError || !existingDrawdown) {
+      return NextResponse.json(
+        { error: 'Drawdown not found for this account' },
+        { status: 404 }
+      )
+    }
+
+    // Build update object (only include fields that are provided)
+    const updateData: any = {}
+    if (body.drawdown_reference !== undefined) updateData.drawdown_reference = body.drawdown_reference
+    if (body.due_date !== undefined) updateData.due_date = body.due_date
+    if (body.interest_rate !== undefined) updateData.interest_rate = body.interest_rate
+    if (body.notes !== undefined) updateData.notes = body.notes
+    if (body.status !== undefined) updateData.status = body.status
+
+    // Update drawdown
+    const { data: updatedDrawdown, error: updateError } = await supabase
+      .from('debt_drawdown')
+      .update(updateData)
+      .eq('drawdown_id', parseInt(drawdownId))
+      .select()
+      .single()
+
+    if (updateError) {
+      console.error('Error updating drawdown:', updateError)
+      return NextResponse.json(
+        { error: updateError.message },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({
+      data: updatedDrawdown,
+      message: 'Drawdown updated successfully',
+    })
+  } catch (error) {
+    console.error('Unexpected error:', error)
+    return NextResponse.json(
+      {
+        error: 'Failed to update drawdown',
         message: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }

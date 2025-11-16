@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, DollarSign, Calendar, AlertCircle, TrendingDown, Link2, Receipt } from "lucide-react"
+import { Plus, DollarSign, Calendar, AlertCircle, TrendingDown, Link2, Receipt, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -33,6 +33,7 @@ import {
   isOverdue,
 } from "@/types/debt"
 import { CreateDrawdownDialog } from "@/components/create-drawdown-dialog"
+import { EditDrawdownDialog } from "@/components/edit-drawdown-dialog"
 import { RecordPaymentDialog } from "@/components/record-payment-dialog"
 import { AssignReceivingAccountDialog } from "@/components/assign-receiving-account-dialog"
 import {
@@ -71,9 +72,11 @@ export function DrawdownListCard({
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
   const [isTransactionsDialogOpen, setIsTransactionsDialogOpen] = useState(false)
+  const [selectedDrawdown, setSelectedDrawdown] = useState<DrawdownListItem | null>(null)
   const [selectedDrawdownId, setSelectedDrawdownId] = useState<number | null>(null)
   const [selectedDrawdownRef, setSelectedDrawdownRef] = useState<string>("")
   const [drawdownTransactions, setDrawdownTransactions] = useState<any[]>([])
@@ -163,10 +166,21 @@ export function DrawdownListCard({
     onRefresh?.()
   }
 
+  function handleEditSuccess() {
+    fetchDrawdowns()
+    fetchAvailableCredit()
+    onRefresh?.()
+  }
+
   function handlePaymentSuccess() {
     fetchDrawdowns()
     fetchAvailableCredit()
     onRefresh?.()
+  }
+
+  function openEditDialog(drawdown: DrawdownListItem) {
+    setSelectedDrawdown(drawdown)
+    setIsEditDialogOpen(true)
   }
 
   function openPaymentDialog(drawdownId: number) {
@@ -389,6 +403,14 @@ export function DrawdownListCard({
                             <Button
                               variant="outline"
                               size="sm"
+                              onClick={() => openEditDialog(drawdown)}
+                              title="Edit drawdown"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
                               onClick={() => openPaymentDialog(drawdown.drawdown_id)}
                             >
                               <DollarSign className="mr-1 h-3 w-3" />
@@ -414,6 +436,14 @@ export function DrawdownListCard({
         accountName={accountName}
         availableCredit={availableCredit}
         onSuccess={handleCreateSuccess}
+      />
+
+      <EditDrawdownDialog
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        accountId={accountId}
+        drawdown={selectedDrawdown}
+        onSuccess={handleEditSuccess}
       />
 
       {selectedDrawdownId && (
