@@ -16,15 +16,16 @@ export async function GET(request: NextRequest) {
     const supabase = createSupabaseServerClient()
     const searchParams = request.nextUrl.searchParams
     const accountId = searchParams.get('account_id')
+    const entityId = searchParams.get('entity_id')
 
-    if (!accountId) {
+    if (!accountId && !entityId) {
       return NextResponse.json(
-        { error: 'account_id query parameter is required' },
+        { error: 'Either account_id or entity_id query parameter is required' },
         { status: 400 }
       )
     }
 
-    const { data: disbursements, error } = await supabase
+    let query = supabase
       .from('loan_disbursement')
       .select(`
         *,
@@ -43,8 +44,40 @@ export async function GET(request: NextRequest) {
           phone
         )
       `)
-      .eq('account_id', parseInt(accountId, 10))
-      .order('disbursement_date', { ascending: false })
+
+    // Filter by account_id or entity_id
+    if (accountId) {
+      query = query.eq('account_id', parseInt(accountId, 10))
+    } else if (entityId) {
+      // For entity_id, we need to join through accounts table
+      // First get all loan_receivable account IDs for this entity
+      const { data: loanAccounts, error: accountError } = await supabase
+        .from('accounts')
+        .select('account_id')
+        .eq('entity_id', entityId)
+        .eq('account_type', 'loan_receivable')
+
+      if (accountError) {
+        console.error('Error fetching loan accounts:', accountError)
+        return NextResponse.json(
+          { error: accountError.message },
+          { status: 500 }
+        )
+      }
+
+      if (!loanAccounts || loanAccounts.length === 0) {
+        // No loan receivable accounts for this entity
+        return NextResponse.json({
+          data: [],
+          count: 0,
+        })
+      }
+
+      const accountIds = loanAccounts.map(acc => acc.account_id)
+      query = query.in('account_id', accountIds)
+    }
+
+    const { data: disbursements, error } = await query.order('disbursement_date', { ascending: false })
 
     if (error) {
       console.error('Error fetching loan disbursements:', error)
