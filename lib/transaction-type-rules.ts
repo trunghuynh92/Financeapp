@@ -106,14 +106,14 @@ export const TRANSACTION_TYPE_RULES: TransactionTypeRule[] = [
   {
     account_types: ['loan_receivable'],
     transaction_direction: 'debit',
-    allowed_type_codes: ['LOAN_DISBURSE'],
-    description: 'Loan Receivable - Disbursement: lending money to borrower (asset increases)'
+    allowed_type_codes: ['LOAN_DISBURSE', 'LOAN_COLLECT'],
+    description: 'Loan Receivable - Debit: loan disbursement (asset increases) or collection (asset decreases)'
   },
   {
     account_types: ['loan_receivable'],
     transaction_direction: 'credit',
-    allowed_type_codes: ['LOAN_COLLECT'],
-    description: 'Loan Receivable - Collection: receiving repayment from borrower (asset decreases)'
+    allowed_type_codes: ['LOAN_DISBURSE', 'LOAN_COLLECT'],
+    description: 'Loan Receivable - Credit: loan disbursement (asset increases) or collection (asset decreases)'
   },
 
   // ============================================================================

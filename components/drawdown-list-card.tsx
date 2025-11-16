@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, DollarSign, Calendar, AlertCircle, TrendingDown, Link2 } from "lucide-react"
+import { Plus, DollarSign, Calendar, AlertCircle, TrendingDown, Link2, Receipt } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -42,6 +42,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface DrawdownListCardProps {
   accountId: number
@@ -66,8 +73,11 @@ export function DrawdownListCard({
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
+  const [isTransactionsDialogOpen, setIsTransactionsDialogOpen] = useState(false)
   const [selectedDrawdownId, setSelectedDrawdownId] = useState<number | null>(null)
   const [selectedDrawdownRef, setSelectedDrawdownRef] = useState<string>("")
+  const [drawdownTransactions, setDrawdownTransactions] = useState<any[]>([])
+  const [loadingTransactions, setLoadingTransactions] = useState(false)
 
   useEffect(() => {
     fetchDrawdowns()
@@ -173,6 +183,36 @@ export function DrawdownListCard({
   function handleAssignSuccess() {
     fetchDrawdowns()
     onRefresh?.()
+  }
+
+  async function fetchDrawdownTransactions(drawdownId: number, drawdownRef: string) {
+    try {
+      setLoadingTransactions(true)
+      setSelectedDrawdownId(drawdownId)
+      setSelectedDrawdownRef(drawdownRef)
+
+      // Fetch all transactions for this drawdown from main_transaction_details view
+      const response = await fetch(`/api/main-transactions?drawdown_id=${drawdownId}`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch transactions")
+      }
+
+      const data = await response.json()
+
+      // Filter to only show bank/cash account transactions (actual money movements)
+      // Exclude term_loan and credit_line account transactions (liability bookkeeping)
+      const cashFlowTransactions = (data.data || []).filter((tx: any) =>
+        tx.account_type === 'bank' || tx.account_type === 'cash'
+      )
+
+      setDrawdownTransactions(cashFlowTransactions)
+      setIsTransactionsDialogOpen(true)
+    } catch (error) {
+      console.error("Error fetching drawdown transactions:", error)
+    } finally {
+      setLoadingTransactions(false)
+    }
   }
 
   return (
@@ -332,6 +372,15 @@ export function DrawdownListCard({
                             <Button
                               variant="outline"
                               size="sm"
+                              onClick={() => fetchDrawdownTransactions(drawdown.drawdown_id, drawdown.drawdown_reference)}
+                              title="View cash flow transactions"
+                              disabled={loadingTransactions}
+                            >
+                              <Receipt className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
                               onClick={() => openAssignDialog(drawdown.drawdown_id, drawdown.drawdown_reference)}
                               title="Assign receiving account"
                             >
@@ -387,6 +436,58 @@ export function DrawdownListCard({
           onSuccess={handleAssignSuccess}
         />
       )}
+
+      {/* Transactions Dialog */}
+      <Dialog open={isTransactionsDialogOpen} onOpenChange={setIsTransactionsDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Cash Flow Transactions - {selectedDrawdownRef}</DialogTitle>
+            <DialogDescription>
+              Showing only bank and cash account transactions (money in/out)
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingTransactions ? (
+            <div className="text-center py-8 text-muted-foreground">Loading transactions...</div>
+          ) : drawdownTransactions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No cash flow transactions found for this drawdown
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Account</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {drawdownTransactions.map((tx) => (
+                    <TableRow key={tx.main_transaction_id}>
+                      <TableCell>{formatDate(tx.transaction_date)}</TableCell>
+                      <TableCell className="font-medium">{tx.account_name}</TableCell>
+                      <TableCell>{tx.description || '—'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{tx.transaction_type || '—'}</Badge>
+                      </TableCell>
+                      <TableCell className={`text-right font-medium ${
+                        tx.transaction_direction === 'credit' ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {tx.transaction_direction === 'credit' ? '+' : '-'}
+                        {formatCurrency(tx.amount, currency as Currency)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

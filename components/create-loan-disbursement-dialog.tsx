@@ -193,9 +193,15 @@ export function CreateLoanDisbursementDialog({
         return
       }
 
-      const requestBody = {
+      // Prepare request body - omit account_id if it's 0 (auto-create)
+      const requestBody: any = {
         ...formData,
         existing_source_transaction_id: existingSourceTransactionId,
+      }
+
+      // If account_id is 0, omit it to trigger auto-creation
+      if (requestBody.account_id === 0) {
+        delete requestBody.account_id
       }
 
       console.log('=== CreateLoanDisbursementDialog - Submitting ===')
@@ -213,6 +219,31 @@ export function CreateLoanDisbursementDialog({
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to create loan disbursement")
+      }
+
+      // Check if we should auto-match the transactions
+      if (data.suggest_match && data.match_data) {
+        console.log('Auto-matching transactions:', data.match_data)
+        try {
+          // Auto-match the source and loan receivable transactions
+          const matchResponse = await fetch("/api/transfers/match", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transfer_out_id: data.match_data.main_transaction_id,
+              transfer_in_id: data.match_data.loan_receivable_transaction_id,
+            }),
+          })
+
+          if (matchResponse.ok) {
+            console.log('✓ Transactions auto-matched successfully')
+          } else {
+            console.warn('Auto-match failed, user can match manually later')
+          }
+        } catch (matchError) {
+          console.error('Error auto-matching:', matchError)
+          // Non-critical error - user can still match manually
+        }
       }
 
       onSuccess()
@@ -242,20 +273,23 @@ export function CreateLoanDisbursementDialog({
               </Alert>
             )}
 
-            {/* Loan Account Selection - only show if accountId not provided */}
+            {/* Loan Account Selection - optional, will auto-create if not provided */}
             {!accountId && (
               <div className="space-y-2">
-                <Label htmlFor="account_id">Loan Receivable Account *</Label>
+                <Label htmlFor="account_id">Loan Receivable Account (Optional)</Label>
                 <Select
-                  value={formData.account_id ? formData.account_id.toString() : ""}
+                  value={formData.account_id ? formData.account_id.toString() : "0"}
                   onValueChange={(value) =>
                     setFormData({ ...formData, account_id: parseInt(value) })
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a loan receivable account" />
+                    <SelectValue placeholder="Auto-create if not selected" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="0">
+                      <span className="text-muted-foreground">Auto-create Loan Receivable account</span>
+                    </SelectItem>
                     {loanAccounts.map((account) => (
                       <SelectItem key={account.account_id} value={account.account_id.toString()}>
                         {account.account_name}
@@ -263,6 +297,11 @@ export function CreateLoanDisbursementDialog({
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {formData.account_id === 0 || !formData.account_id
+                    ? "A 'Loan Receivable' account will be created automatically if needed"
+                    : "Using existing loan receivable account"}
+                </p>
               </div>
             )}
 

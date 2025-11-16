@@ -93,11 +93,11 @@ export async function POST(request: NextRequest) {
     console.log('account_id:', body.account_id)
     console.log('=========================================')
 
-    // Validation - now account_id is optional (will be auto-created)
-    if (!body.source_account_id || !body.partner_id ||
+    // Validation
+    if (!body.account_id || !body.source_account_id || !body.partner_id ||
         !body.loan_category || !body.principal_amount || !body.disbursement_date) {
       return NextResponse.json(
-        { error: 'Missing required fields: source_account_id, partner_id, loan_category, principal_amount, disbursement_date' },
+        { error: 'Missing required fields: account_id, source_account_id, partner_id, loan_category, principal_amount, disbursement_date' },
         { status: 400 }
       )
     }
@@ -109,7 +109,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get source account to determine entity_id
+    // Verify loan receivable account exists and is correct type
+    const { data: loanAccount, error: loanAccountError } = await supabase
+      .from('accounts')
+      .select('account_id, account_type, entity_id')
+      .eq('account_id', body.account_id)
+      .single()
+
+    if (loanAccountError || !loanAccount) {
+      return NextResponse.json(
+        { error: 'Loan receivable account not found' },
+        { status: 404 }
+      )
+    }
+
+    if (loanAccount.account_type !== 'loan_receivable') {
+      return NextResponse.json(
+        { error: 'Account must be of type loan_receivable' },
+        { status: 400 }
+      )
+    }
+
+    // Verify source account exists and is bank/cash
     const { data: sourceAccount, error: sourceAccountError } = await supabase
       .from('accounts')
       .select('account_id, account_type, entity_id')
@@ -130,88 +151,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Auto-create or find Loan Receivable account
-    let loanAccountId: number
-    let loanAccount: any
-
-    if (body.account_id) {
-      // If account_id provided, verify it exists and is correct type
-      const { data: existingAccount, error: existingError } = await supabase
-        .from('accounts')
-        .select('account_id, account_type, entity_id')
-        .eq('account_id', body.account_id)
-        .single()
-
-      if (existingError || !existingAccount) {
-        return NextResponse.json(
-          { error: 'Loan receivable account not found' },
-          { status: 404 }
-        )
-      }
-
-      if (existingAccount.account_type !== 'loan_receivable') {
-        return NextResponse.json(
-          { error: 'Account must be of type loan_receivable' },
-          { status: 400 }
-        )
-      }
-
-      if (existingAccount.entity_id !== sourceAccount.entity_id) {
-        return NextResponse.json(
-          { error: 'Loan receivable and source accounts must belong to the same entity' },
-          { status: 400 }
-        )
-      }
-
-      loanAccount = existingAccount
-      loanAccountId = existingAccount.account_id
-    } else {
-      // Auto-create logic: Check if entity already has a Loan Receivable account
-      const { data: existingLoanAccounts, error: searchError } = await supabase
-        .from('accounts')
-        .select('account_id, account_type, entity_id')
-        .eq('entity_id', sourceAccount.entity_id)
-        .eq('account_type', 'loan_receivable')
-        .limit(1)
-
-      if (searchError) {
-        return NextResponse.json(
-          { error: 'Error searching for loan receivable account: ' + searchError.message },
-          { status: 500 }
-        )
-      }
-
-      if (existingLoanAccounts && existingLoanAccounts.length > 0) {
-        // Use existing Loan Receivable account
-        loanAccount = existingLoanAccounts[0]
-        loanAccountId = existingLoanAccounts[0].account_id
-        console.log('Using existing Loan Receivable account:', loanAccountId)
-      } else {
-        // Create new Loan Receivable account
-        const { data: newLoanAccount, error: createError } = await supabase
-          .from('accounts')
-          .insert([{
-            entity_id: sourceAccount.entity_id,
-            account_name: 'Loan Receivable',
-            account_type: 'loan_receivable',
-            currency: 'VND',
-          }])
-          .select('account_id, account_type, entity_id')
-          .single()
-
-        if (createError || !newLoanAccount) {
-          return NextResponse.json(
-            { error: 'Failed to create Loan Receivable account: ' + (createError?.message || 'Unknown error') },
-            { status: 500 }
-          )
-        }
-
-        loanAccount = newLoanAccount
-        loanAccountId = newLoanAccount.account_id
-        console.log('Created new Loan Receivable account:', loanAccountId)
-      }
+    // Verify both accounts belong to same entity
+    if (loanAccount.entity_id !== sourceAccount.entity_id) {
+      return NextResponse.json(
+        { error: 'Source and loan accounts must belong to the same entity' },
+        { status: 400 }
+      )
     }
-
 
     // Verify partner exists
     const { data: partner, error: partnerError } = await supabase
@@ -231,7 +177,7 @@ export async function POST(request: NextRequest) {
     const { data: disbursement, error: insertError } = await supabase
       .from('loan_disbursement')
       .insert([{
-        account_id: loanAccountId,
+        account_id: body.account_id,
         partner_id: body.partner_id,
         loan_category: body.loan_category,
         principal_amount: body.principal_amount,
@@ -412,7 +358,7 @@ export async function POST(request: NextRequest) {
       .from('original_transaction')
       .insert([{
         raw_transaction_id: raw_transaction_id_2,
-        account_id: loanAccountId, // Loan receivable account
+        account_id: body.account_id, // Loan receivable account
         transaction_date: body.disbursement_date,
         description: description,
         credit_amount: body.principal_amount, // Credit = asset increases (loan receivable)
@@ -467,47 +413,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get the loan receivable main_transaction_id for potential auto-matching
-    const { data: loanReceivableMainTxn, error: getLoanMainError } = await supabase
-      .from('main_transaction')
-      .select('main_transaction_id')
-      .eq('raw_transaction_id', raw_transaction_id_2)
-      .single()
-
-    const loanReceivableMainTransactionId = loanReceivableMainTxn?.main_transaction_id || null
-
-    // When using existing_source_transaction_id, transactions are NOT auto-matched
-    // The user will be prompted to match them using QuickMatchLoanDialog
-    // Detect if we should proactively suggest matching
-    let suggestMatch = false
-    let sourceTransactionForMatch = null
-
-    if (body.existing_source_transaction_id) {
-      // When created from existing transaction, always suggest matching
-      suggestMatch = true
-      sourceTransactionForMatch = {
-        main_transaction_id: sourceMainTransactionId,
-        loan_receivable_transaction_id: loanReceivableMainTransactionId,
-      }
-    } else if (sourceMainTransactionId && loanReceivableMainTransactionId) {
-      // When both transactions are newly created, suggest matching them
-      suggestMatch = true
-      sourceTransactionForMatch = {
-        main_transaction_id: sourceMainTransactionId,
-        loan_receivable_transaction_id: loanReceivableMainTransactionId,
-      }
-    }
-
-    // Determine if account was auto-created
-    const accountAutoCreated = !body.account_id
+    // When using existing_source_transaction_id, the transactions are NOT auto-matched
+    // The user will manually match them using the QuickMatchLoanDialog
+    // This allows them to review both transactions before linking them
 
     return NextResponse.json({
       data: disbursement,
       message: 'Loan disbursement created successfully with accounting transactions',
-      loan_receivable_account_id: loanAccountId,
-      account_auto_created: accountAutoCreated,
-      suggest_match: suggestMatch,
-      match_data: sourceTransactionForMatch,
     }, { status: 201 })
   } catch (error) {
     console.error('Unexpected error:', error)

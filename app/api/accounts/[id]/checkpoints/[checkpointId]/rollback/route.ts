@@ -68,17 +68,43 @@ export async function POST(
     console.log(`📋 Found ${transactionCount || 0} transactions to delete`)
 
     if (transactionCount && transactionCount > 0) {
-      const { error: deleteError } = await supabase
-        .from('original_transaction')
-        .delete()
-        .eq('import_batch_id', importBatchId)
-        .eq('is_balance_adjustment', false)
+      // Delete in batches to avoid timeout for large imports
+      const BATCH_SIZE = 500
+      let deletedCount = 0
 
-      if (deleteError) {
-        throw new Error(`Failed to delete import transactions: ${deleteError.message}`)
+      while (deletedCount < transactionCount) {
+        // Get a batch of transaction IDs to delete
+        const { data: batch, error: fetchError } = await supabase
+          .from('original_transaction')
+          .select('raw_transaction_id')
+          .eq('import_batch_id', importBatchId)
+          .eq('is_balance_adjustment', false)
+          .limit(BATCH_SIZE)
+
+        if (fetchError) {
+          throw new Error(`Failed to fetch transactions for deletion: ${fetchError.message}`)
+        }
+
+        if (!batch || batch.length === 0) {
+          break
+        }
+
+        // Delete this batch
+        const ids = batch.map(t => t.raw_transaction_id)
+        const { error: deleteError } = await supabase
+          .from('original_transaction')
+          .delete()
+          .in('raw_transaction_id', ids)
+
+        if (deleteError) {
+          throw new Error(`Failed to delete transaction batch: ${deleteError.message}`)
+        }
+
+        deletedCount += batch.length
+        console.log(`📦 Deleted batch: ${deletedCount}/${transactionCount} transactions`)
       }
 
-      console.log(`✅ Deleted ${transactionCount} imported transactions`)
+      console.log(`✅ Deleted ${deletedCount} imported transactions`)
     }
 
     // Step 2: Delete the checkpoint (this will also delete the adjustment transaction and recalculate)

@@ -20,9 +20,9 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Entities", href: "/dashboard/entities", icon: Building2 },
   { name: "Accounts", href: "/dashboard/accounts", icon: Wallet },
-  { name: "Transactions", href: "/dashboard/transactions", icon: DollarSign },
+  // { name: "Transactions", href: "/dashboard/transactions", icon: DollarSign }, // Hidden - use Main Transactions instead
   { name: "Main Transactions", href: "/dashboard/main-transactions", icon: Tags },
-  { name: "Transfers", href: "/dashboard/transfers", icon: Link2 },
+  // { name: "Transfers", href: "/dashboard/transfers", icon: Link2 }, // Hidden - transfers are managed within Main Transactions
   { name: "Reports", href: "/dashboard/reports", icon: FileText },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ]

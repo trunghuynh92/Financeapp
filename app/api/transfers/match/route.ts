@@ -6,6 +6,7 @@
  *  - DEBT_TAKE ↔ DEBT_TAKE (debt drawdowns - both sides use same type)
  *  - DEBT_PAY ↔ DEBT_PAY (debt repayments - both sides use same type)
  *  - LOAN_DISBURSE ↔ LOAN_DISBURSE (loan disbursements - both sides use same type)
+ *  - LOAN_COLLECT ↔ LOAN_COLLECT (loan collections - both sides use same type)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -75,11 +76,12 @@ export async function POST(request: NextRequest) {
     const isCreditCardPayment = (outType === 'CC_PAY' && inType === 'CC_PAY')
     const isDebtTakePair = (outType === 'DEBT_TAKE' && inType === 'DEBT_TAKE')
     const isDebtPayPair = (outType === 'DEBT_PAY' && inType === 'DEBT_PAY')
-    const isLoanPair = (outType === 'LOAN_DISBURSE' && inType === 'LOAN_DISBURSE')
+    const isLoanDisbursePair = (outType === 'LOAN_DISBURSE' && inType === 'LOAN_DISBURSE')
+    const isLoanCollectPair = (outType === 'LOAN_COLLECT' && inType === 'LOAN_COLLECT')
 
-    if (!isTransferPair && !isCreditCardPayment && !isDebtTakePair && !isDebtPayPair && !isLoanPair) {
+    if (!isTransferPair && !isCreditCardPayment && !isDebtTakePair && !isDebtPayPair && !isLoanDisbursePair && !isLoanCollectPair) {
       return NextResponse.json(
-        { error: 'Transactions must be matching pairs: TRF_OUT ↔ TRF_IN, CC_PAY ↔ CC_PAY, DEBT_TAKE ↔ DEBT_TAKE, DEBT_PAY ↔ DEBT_PAY, or LOAN_DISBURSE ↔ LOAN_DISBURSE' },
+        { error: 'Transactions must be matching pairs: TRF_OUT ↔ TRF_IN, CC_PAY ↔ CC_PAY, DEBT_TAKE ↔ DEBT_TAKE, DEBT_PAY ↔ DEBT_PAY, LOAN_DISBURSE ↔ LOAN_DISBURSE, or LOAN_COLLECT ↔ LOAN_COLLECT' },
         { status: 400 }
       )
     }

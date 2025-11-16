@@ -23,6 +23,10 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { TransactionType, Category, Branch, Project } from "@/types/main-transaction"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
+import { BusinessPartner } from "@/types/business-partner"
+import { CreateBusinessPartnerDialog } from "@/components/create-business-partner-dialog"
+import { AccountFormDialog } from "@/components/account-form-dialog"
+import { useEntity } from "@/contexts/EntityContext"
 
 interface Account {
   account_id: number
@@ -53,6 +57,7 @@ export function AddTransactionDialog({
   projects,
   onSuccess,
 }: AddTransactionDialogProps) {
+  const { currentEntity } = useEntity()
   const [loading, setLoading] = useState(false)
 
   const [formData, setFormData] = useState({
@@ -64,11 +69,19 @@ export function AddTransactionDialog({
     project_id: "",
     amount: "",
     description: "",
+    partner_id: "",
+    loan_disbursement_id: "",
+    debt_account_id: "",
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
   const [transactionDirection, setTransactionDirection] = useState<TransactionDirection>("debit")
+  const [partners, setPartners] = useState<BusinessPartner[]>([])
+  const [isCreatePartnerOpen, setIsCreatePartnerOpen] = useState(false)
+  const [loanDisbursements, setLoanDisbursements] = useState<any[]>([])
+  const [debtAccounts, setDebtAccounts] = useState<Account[]>([])
+  const [isCreateAccountOpen, setIsCreateAccountOpen] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -87,12 +100,99 @@ export function AddTransactionDialog({
         project_id: "",
         amount: "",
         description: "",
+        partner_id: "",
+        loan_disbursement_id: "",
+        debt_account_id: "",
       })
       setErrors({})
       setSelectedAccount(null)
       setTransactionDirection("debit")
+      setLoanDisbursements([])
+      setDebtAccounts([])
+
+      // Fetch partners for loan operations
+      if (currentEntity) {
+        fetchPartners()
+        fetchDebtAccounts()
+      }
     }
-  }, [open])
+  }, [open, currentEntity])
+
+  async function fetchPartners() {
+    if (!currentEntity) return
+
+    try {
+      const response = await fetch(`/api/business-partners?entity_id=${currentEntity.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        setPartners(data.data || [])
+      }
+    } catch (error) {
+      console.error('Error fetching partners:', error)
+    }
+  }
+
+  async function fetchDebtAccounts() {
+    if (!currentEntity) return
+
+    try {
+      const response = await fetch(`/api/accounts?entity_id=${currentEntity.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        // Filter to only term_loan and credit_line accounts
+        const debtAccs = (data.data || []).filter((acc: Account) =>
+          acc.account_type === 'term_loan' || acc.account_type === 'credit_line'
+        )
+        setDebtAccounts(debtAccs)
+      }
+    } catch (error) {
+      console.error('Error fetching debt accounts:', error)
+    }
+  }
+
+  function handlePartnerCreated(partner: BusinessPartner) {
+    setPartners([...partners, partner])
+    setFormData({ ...formData, partner_id: partner.partner_id.toString() })
+    setIsCreatePartnerOpen(false)
+  }
+
+  async function handleAccountCreated() {
+    // Refresh debt accounts list
+    await fetchDebtAccounts()
+    setIsCreateAccountOpen(false)
+    // The newly created account will be in the list, but we don't auto-select it
+    // since the AccountFormDialog doesn't return the created account ID
+  }
+
+  async function fetchLoanDisbursements() {
+    if (!currentEntity || !formData.partner_id) return
+
+    try {
+      // Fetch all loan receivable accounts for this entity
+      const accountsResponse = await fetch(`/api/accounts?entity_id=${currentEntity.id}&account_type=loan_receivable`)
+      if (!accountsResponse.ok) return
+
+      const accountsData = await accountsResponse.json()
+      const loanAccounts = accountsData.data || []
+
+      // Fetch all active loan disbursements for this partner
+      const allLoans: any[] = []
+      for (const account of loanAccounts) {
+        const response = await fetch(`/api/loan-disbursements?account_id=${account.account_id}`)
+        if (response.ok) {
+          const data = await response.json()
+          const partnerLoans = (data.data || []).filter(
+            (loan: any) => loan.partner_id === parseInt(formData.partner_id) && loan.status === 'active' && loan.remaining_balance > 0
+          )
+          allLoans.push(...partnerLoans)
+        }
+      }
+
+      setLoanDisbursements(allLoans)
+    } catch (error) {
+      console.error('Error fetching loan disbursements:', error)
+    }
+  }
 
   // Update selected account when account_id changes
   useEffect(() => {
@@ -142,6 +242,27 @@ export function AddTransactionDialog({
   // Check if category is required (Income and Expense transactions require categories)
   const isCategoryRequired = selectedTransactionType?.type_code === 'INC' || selectedTransactionType?.type_code === 'EXP'
 
+  // Check if this is a loan disbursement (requires borrower)
+  const isLoanDisbursement = selectedTransactionType?.type_code === 'LOAN_DISBURSE'
+
+  // Check if this is a loan collection (requires borrower and loan selection)
+  const isLoanCollection = selectedTransactionType?.type_code === 'LOAN_COLLECT'
+
+  // Check if this is debt taken (requires debt account selection)
+  const isDebtTake = selectedTransactionType?.type_code === 'DEBT_TAKE'
+
+  // Fetch loan disbursements when partner is selected (for LOAN_COLLECT)
+  useEffect(() => {
+    if (isLoanCollection && formData.partner_id && currentEntity) {
+      fetchLoanDisbursements()
+    } else {
+      setLoanDisbursements([])
+      if (formData.loan_disbursement_id) {
+        setFormData(prev => ({ ...prev, loan_disbursement_id: "" }))
+      }
+    }
+  }, [formData.partner_id, isLoanCollection, currentEntity])
+
   function validate(): boolean {
     const newErrors: Record<string, string> = {}
 
@@ -156,6 +277,18 @@ export function AddTransactionDialog({
     }
     if (isCategoryRequired && !formData.category_id) {
       newErrors.category_id = "Category is required for this transaction type"
+    }
+    if (isLoanDisbursement && !formData.partner_id) {
+      newErrors.partner_id = "Borrower is required for loan disbursement"
+    }
+    if (isLoanCollection && !formData.partner_id) {
+      newErrors.partner_id = "Borrower is required for loan collection"
+    }
+    if (isLoanCollection && !formData.loan_disbursement_id) {
+      newErrors.loan_disbursement_id = "Please select which loan this payment is for"
+    }
+    if (isDebtTake && !formData.debt_account_id) {
+      newErrors.debt_account_id = "Please select which credit line/term loan this drawdown is from"
     }
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
       newErrors.amount = "Amount must be greater than 0"
@@ -200,6 +333,18 @@ export function AddTransactionDialog({
 
       if (formData.project_id) {
         transactionData.project_id = parseInt(formData.project_id)
+      }
+
+      if (formData.partner_id) {
+        transactionData.partner_id = parseInt(formData.partner_id)
+      }
+
+      if (formData.loan_disbursement_id) {
+        transactionData.loan_disbursement_id = parseInt(formData.loan_disbursement_id)
+      }
+
+      if (formData.debt_account_id) {
+        transactionData.debt_account_id = parseInt(formData.debt_account_id)
       }
 
       const createResponse = await fetch('/api/main-transactions/create', {
@@ -376,6 +521,176 @@ export function AddTransactionDialog({
             )}
           </div>
 
+          {/* Borrower (for Loan Disbursement) */}
+          {isLoanDisbursement && (
+            <div className="space-y-2">
+              <Label htmlFor="partner_id">
+                Borrower <span className="text-red-500">*</span>
+              </Label>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.partner_id || "none"}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, partner_id: value === "none" ? "" : value })
+                  }
+                >
+                  <SelectTrigger id="partner_id" className={`flex-1 ${errors.partner_id ? "border-red-500" : ""}`}>
+                    <SelectValue placeholder="Select borrower" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select a borrower</SelectItem>
+                    {partners.map((partner) => (
+                      <SelectItem key={partner.partner_id} value={partner.partner_id.toString()}>
+                        {partner.display_name || partner.partner_name} ({partner.partner_type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setIsCreatePartnerOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {errors.partner_id && (
+                <p className="text-sm text-red-500">{errors.partner_id}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Select who is borrowing the money
+              </p>
+            </div>
+          )}
+
+          {/* Debt Account Selection (for Debt Taken) */}
+          {isDebtTake && (
+            <div className="space-y-2">
+              <Label htmlFor="debt_account_id">
+                Which Credit Line/Term Loan? <span className="text-red-500">*</span>
+              </Label>
+              <div className="flex gap-2">
+                <Select
+                  value={formData.debt_account_id || "none"}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, debt_account_id: value === "none" ? "" : value })
+                  }
+                >
+                  <SelectTrigger id="debt_account_id" className={`flex-1 ${errors.debt_account_id ? "border-red-500" : ""}`}>
+                    <SelectValue placeholder="Select debt account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select an account</SelectItem>
+                    {debtAccounts.map((account) => (
+                      <SelectItem key={account.account_id} value={account.account_id.toString()}>
+                        {account.account_name} ({account.account_type === 'credit_line' ? 'Credit Line' : 'Term Loan'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setIsCreateAccountOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              {errors.debt_account_id && (
+                <p className="text-sm text-red-500">{errors.debt_account_id}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Select which credit line or term loan this drawdown is from
+              </p>
+            </div>
+          )}
+
+          {/* Borrower & Loan Selection (for Loan Collection) */}
+          {isLoanCollection && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="partner_id_collect">
+                  Borrower <span className="text-red-500">*</span>
+                </Label>
+                <div className="flex gap-2">
+                  <Select
+                    value={formData.partner_id || "none"}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, partner_id: value === "none" ? "" : value })
+                    }
+                  >
+                    <SelectTrigger id="partner_id_collect" className={`flex-1 ${errors.partner_id ? "border-red-500" : ""}`}>
+                      <SelectValue placeholder="Select borrower" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select a borrower</SelectItem>
+                      {partners.map((partner) => (
+                        <SelectItem key={partner.partner_id} value={partner.partner_id.toString()}>
+                          {partner.display_name || partner.partner_name} ({partner.partner_type})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setIsCreatePartnerOpen(true)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {errors.partner_id && (
+                  <p className="text-sm text-red-500">{errors.partner_id}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Who is paying back the loan?
+                </p>
+              </div>
+
+              {formData.partner_id && loanDisbursements.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="loan_disbursement_id">
+                    Which Loan? <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={formData.loan_disbursement_id || "none"}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, loan_disbursement_id: value === "none" ? "" : value })
+                    }
+                  >
+                    <SelectTrigger id="loan_disbursement_id" className={errors.loan_disbursement_id ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Select loan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select a loan</SelectItem>
+                      {loanDisbursements.map((loan) => (
+                        <SelectItem key={loan.loan_disbursement_id} value={loan.loan_disbursement_id.toString()}>
+                          {new Date(loan.disbursement_date).toLocaleDateString()} - {loan.principal_amount.toLocaleString()} VND
+                          (Remaining: {loan.remaining_balance.toLocaleString()})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.loan_disbursement_id && (
+                    <p className="text-sm text-red-500">{errors.loan_disbursement_id}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Select which loan this payment is for
+                  </p>
+                </div>
+              )}
+
+              {formData.partner_id && loanDisbursements.length === 0 && (
+                <div className="text-sm text-muted-foreground bg-muted p-3 rounded">
+                  No active loans found for this borrower
+                </div>
+              )}
+            </>
+          )}
+
           {/* Category */}
           {formData.transaction_type_id && (
             <div className="space-y-2">
@@ -483,6 +798,24 @@ export function AddTransactionDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {currentEntity && (
+        <>
+          <CreateBusinessPartnerDialog
+            open={isCreatePartnerOpen}
+            onOpenChange={setIsCreatePartnerOpen}
+            entityId={currentEntity.id}
+            onSuccess={handlePartnerCreated}
+            defaultPartnerType="borrower"
+          />
+          <AccountFormDialog
+            open={isCreateAccountOpen}
+            onOpenChange={setIsCreateAccountOpen}
+            onSuccess={handleAccountCreated}
+            allowedAccountTypes={['credit_line', 'term_loan']}
+          />
+        </>
+      )}
     </Dialog>
   )
 }

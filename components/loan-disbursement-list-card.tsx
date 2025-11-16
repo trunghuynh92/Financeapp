@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, DollarSign, Calendar, AlertCircle, TrendingUp, User } from "lucide-react"
+import { Plus, DollarSign, Calendar, AlertCircle, TrendingUp, User, Receipt } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -37,6 +37,13 @@ import {
 } from "@/components/ui/select"
 import { CreateLoanDisbursementDialog } from "@/components/create-loan-disbursement-dialog"
 import { RecordLoanPaymentDialog } from "@/components/record-loan-payment-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface LoanDisbursementListCardProps {
   accountId: number
@@ -66,6 +73,10 @@ export function LoanDisbursementListCard({
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
   const [selectedDisbursementId, setSelectedDisbursementId] = useState<number | null>(null)
   const [selectedBorrowerName, setSelectedBorrowerName] = useState<string>("")
+  const [isTransactionsDialogOpen, setIsTransactionsDialogOpen] = useState(false)
+  const [loanTransactions, setLoanTransactions] = useState<any[]>([])
+  const [loadingTransactions, setLoadingTransactions] = useState(false)
+  const [selectedLoanRef, setSelectedLoanRef] = useState<string>("")
 
   useEffect(() => {
     fetchDisbursements()
@@ -138,6 +149,36 @@ export function LoanDisbursementListCard({
     setSelectedDisbursementId(disbursementId)
     setSelectedBorrowerName(borrowerName)
     setIsPaymentDialogOpen(true)
+  }
+
+  async function fetchLoanTransactions(loanDisbursementId: number, loanRef: string) {
+    try {
+      setLoadingTransactions(true)
+      setSelectedDisbursementId(loanDisbursementId)
+      setSelectedLoanRef(loanRef)
+
+      // Fetch all transactions for this loan from main_transaction_details view
+      const response = await fetch(`/api/main-transactions?loan_disbursement_id=${loanDisbursementId}`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch transactions")
+      }
+
+      const data = await response.json()
+
+      // Filter to only show bank/cash account transactions (actual money movements)
+      // Exclude loan_receivable account transactions (asset bookkeeping)
+      const cashFlowTransactions = (data.data || []).filter((tx: any) =>
+        tx.account_type === 'bank' || tx.account_type === 'cash'
+      )
+
+      setLoanTransactions(cashFlowTransactions)
+      setIsTransactionsDialogOpen(true)
+    } catch (error) {
+      console.error("Error fetching loan transactions:", error)
+    } finally {
+      setLoadingTransactions(false)
+    }
   }
 
   function calculatePaymentProgress(principal: number, remaining: number): number {
@@ -339,15 +380,28 @@ export function LoanDisbursementListCard({
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          {loan.status !== 'repaid' && loan.status !== 'written_off' && (
+                          <div className="flex items-center justify-end gap-2">
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
-                              onClick={() => handleRecordPayment(loan.loan_disbursement_id, loan.borrower_name || 'Unknown')}
+                              onClick={() => fetchLoanTransactions(
+                                loan.loan_disbursement_id,
+                                loan.loan_reference || `Loan to ${loan.borrower_name || 'Unknown'}`
+                              )}
+                              disabled={loadingTransactions}
                             >
-                              Record Payment
+                              <Receipt className="h-4 w-4" />
                             </Button>
-                          )}
+                            {loan.status !== 'repaid' && loan.status !== 'written_off' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRecordPayment(loan.loan_disbursement_id, loan.borrower_name || 'Unknown')}
+                              >
+                                Record Payment
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
@@ -400,6 +454,58 @@ export function LoanDisbursementListCard({
           onSuccess={handlePaymentSuccess}
         />
       )}
+
+      {/* Transactions Dialog */}
+      <Dialog open={isTransactionsDialogOpen} onOpenChange={setIsTransactionsDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Cash Flow Transactions - {selectedLoanRef}</DialogTitle>
+            <DialogDescription>
+              Showing only bank and cash account transactions (money in/out)
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingTransactions ? (
+            <div className="text-center py-8 text-muted-foreground">Loading transactions...</div>
+          ) : loanTransactions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No cash flow transactions found for this loan
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Account</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loanTransactions.map((tx) => (
+                    <TableRow key={tx.main_transaction_id}>
+                      <TableCell>{formatDate(tx.transaction_date)}</TableCell>
+                      <TableCell className="font-medium">{tx.account_name}</TableCell>
+                      <TableCell>{tx.description || '—'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{tx.transaction_type || '—'}</Badge>
+                      </TableCell>
+                      <TableCell className={`text-right font-medium ${
+                        tx.transaction_direction === 'credit' ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {tx.transaction_direction === 'credit' ? '+' : '-'}
+                        {formatCurrency(tx.amount, currency as Currency)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

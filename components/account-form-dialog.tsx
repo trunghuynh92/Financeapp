@@ -32,9 +32,10 @@ interface AccountFormDialogProps {
   onOpenChange: (open: boolean) => void
   account?: Account | null
   onSuccess: () => void
+  allowedAccountTypes?: AccountType[] // Optional filter for account types
 }
 
-export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: AccountFormDialogProps) {
+export function AccountFormDialog({ open, onOpenChange, account, onSuccess, allowedAccountTypes }: AccountFormDialogProps) {
   const isEditing = !!account
 
   const [entities, setEntities] = useState<Entity[]>([])
@@ -77,10 +78,15 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
         })
       } else {
         // Reset form for adding
+        // Set default account type to first allowed type, or "bank" if no filter
+        const defaultAccountType = allowedAccountTypes && allowedAccountTypes.length > 0
+          ? allowedAccountTypes[0]
+          : "bank"
+
         setFormData({
           entity_id: "",
           account_name: "",
-          account_type: "bank",
+          account_type: defaultAccountType,
           currency: "VND",
           account_number: "",
           bank_name: "",
@@ -94,7 +100,7 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
       setStep(1)
       setErrors({})
     }
-  }, [open, account])
+  }, [open, account, allowedAccountTypes])
 
   async function fetchEntities() {
     try {
@@ -322,30 +328,32 @@ export function AccountFormDialog({ open, onOpenChange, account, onSuccess }: Ac
                   }
                   className="grid grid-cols-2 gap-4"
                 >
-                  {(Object.keys(ACCOUNT_TYPE_CONFIG) as AccountType[]).map((type) => {
-                    const config = ACCOUNT_TYPE_CONFIG[type]
-                    const Icon = accountTypeIcons[type]
-                    return (
-                      <div key={type}>
-                        <RadioGroupItem
-                          value={type}
-                          id={type}
-                          className="peer sr-only"
-                        />
-                        <Label
-                          htmlFor={type}
-                          className={`flex items-center gap-3 rounded-lg border-2 border-muted p-4 cursor-pointer hover:border-primary peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5`}
-                        >
-                          <div className={`flex items-center justify-center w-10 h-10 rounded-full ${config.bgColor}`}>
-                            <Icon className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <p className="font-medium">{config.label}</p>
-                          </div>
-                        </Label>
-                      </div>
-                    )
-                  })}
+                  {(Object.keys(ACCOUNT_TYPE_CONFIG) as AccountType[])
+                    .filter(type => !allowedAccountTypes || allowedAccountTypes.includes(type))
+                    .map((type) => {
+                      const config = ACCOUNT_TYPE_CONFIG[type]
+                      const Icon = accountTypeIcons[type]
+                      return (
+                        <div key={type}>
+                          <RadioGroupItem
+                            value={type}
+                            id={type}
+                            className="peer sr-only"
+                          />
+                          <Label
+                            htmlFor={type}
+                            className={`flex items-center gap-3 rounded-lg border-2 border-muted p-4 cursor-pointer hover:border-primary peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5`}
+                          >
+                            <div className={`flex items-center justify-center w-10 h-10 rounded-full ${config.bgColor}`}>
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <p className="font-medium">{config.label}</p>
+                            </div>
+                          </Label>
+                        </div>
+                      )
+                    })}
                 </RadioGroup>
                 {errors.account_type && (
                   <p className="text-sm text-destructive">{errors.account_type}</p>

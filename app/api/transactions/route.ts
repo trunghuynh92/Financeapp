@@ -101,9 +101,10 @@ export async function GET(request: NextRequest) {
     const { count: totalCount } = await countQuery
 
     // Execute query with pagination
-    // Sort by transaction_date first, then created_at for consistent ordering of same-day transactions
+    // Sort by transaction_date first, then transaction_sequence (preserves import order), then created_at
     const { data, error } = await query
       .order('transaction_date', { ascending: false })
+      .order('transaction_sequence', { ascending: true })
       .order('created_at', { ascending: false })
       .range(from, to)
 

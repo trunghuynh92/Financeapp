@@ -89,7 +89,6 @@ export async function GET(request: NextRequest) {
     const transactionTypeId = searchParams.get('transaction_type_id')
     const categoryId = searchParams.get('category_id')
     const branchId = searchParams.get('branch_id')
-    const projectId = searchParams.get('project_id')
     const transactionDirection = searchParams.get('transaction_direction')
     const startDate = searchParams.get('start_date')
     const endDate = searchParams.get('end_date')
@@ -97,19 +96,10 @@ export async function GET(request: NextRequest) {
     const isSplit = searchParams.get('is_split')
     const isUnmatchedTransfer = searchParams.get('is_unmatched_transfer')
     const rawTransactionId = searchParams.get('raw_transaction_id')
-    const drawdownId = searchParams.get('drawdown_id')
-    const loanDisbursementId = searchParams.get('loan_disbursement_id')
-    const amountOperator = searchParams.get('amount_operator')
-    const amountValue = searchParams.get('amount_value')
-    const accountTypes = searchParams.get('account_types') // e.g., "bank,cash"
 
     // Pagination
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
-
-    // Sorting
-    const sortField = searchParams.get('sort_field') || 'transaction_date'
-    const sortDirection = searchParams.get('sort_direction') || 'desc'
 
     // If entity_id filter is provided, get all account IDs for that entity first
     let accountIdsForEntity: number[] = []
@@ -135,10 +125,6 @@ export async function GET(request: NextRequest) {
       .from('main_transaction_details')
       .select('*')
 
-    // IMPORTANT: Exclude balance adjustment transactions (system-generated)
-    // Balance adjustments should only be viewed/edited through checkpoints
-    query = query.or('is_balance_adjustment.is.null,is_balance_adjustment.eq.false')
-
     // Apply filters
     if (accountId) {
       // Specific account filter takes priority
@@ -153,33 +139,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (categoryId) {
-      if (categoryId === 'none') {
-        // Filter for uncategorized transactions (category_id is NULL)
-        query = query.is('category_id', null)
-      } else {
-        query = query.eq('category_id', categoryId)
-      }
+      query = query.eq('category_id', categoryId)
     }
 
     if (branchId) {
       query = query.eq('branch_id', branchId)
-    }
-
-    if (projectId) {
-      if (projectId === 'none') {
-        // Filter for transactions without a project (project_id is NULL)
-        query = query.is('project_id', null)
-      } else {
-        query = query.eq('project_id', projectId)
-      }
-    }
-
-    if (drawdownId) {
-      query = query.eq('drawdown_id', drawdownId)
-    }
-
-    if (loanDisbursementId) {
-      query = query.eq('loan_disbursement_id', loanDisbursementId)
     }
 
     if (transactionDirection) {
@@ -213,143 +177,56 @@ export async function GET(request: NextRequest) {
       query = query.eq('raw_transaction_id', rawTransactionId)
     }
 
-    // Account type filter (e.g., only show bank and cash accounts)
-    if (accountTypes) {
-      const typesArray = accountTypes.split(',').map(t => t.trim())
-      query = query.in('account_type', typesArray)
-    }
+    // Get total count of FILTERED results
+    let countQuery = supabase
+      .from('main_transaction_details')
+      .select('*', { count: 'exact', head: true })
 
-    // Amount filter
-    if (amountOperator && amountOperator !== 'all' && amountValue) {
-      const amount = parseFloat(amountValue)
-      if (!isNaN(amount)) {
-        switch (amountOperator) {
-          case 'eq':
-            query = query.eq('amount', amount)
-            break
-          case 'gt':
-            query = query.gt('amount', amount)
-            break
-          case 'lt':
-            query = query.lt('amount', amount)
-            break
-          case 'gte':
-            query = query.gte('amount', amount)
-            break
-          case 'lte':
-            query = query.lte('amount', amount)
-            break
-          case 'neq':
-            query = query.neq('amount', amount)
-            break
-        }
-      }
+    // Apply same filters to count query
+    if (accountId) {
+      countQuery = countQuery.eq('account_id', accountId)
+    } else if (entityId && accountIdsForEntity.length > 0) {
+      countQuery = countQuery.in('account_id', accountIdsForEntity)
     }
+    if (transactionTypeId) countQuery = countQuery.eq('transaction_type_id', transactionTypeId)
+    if (categoryId) countQuery = countQuery.eq('category_id', categoryId)
+    if (branchId) countQuery = countQuery.eq('branch_id', branchId)
+    if (transactionDirection) countQuery = countQuery.eq('transaction_direction', transactionDirection)
+    if (startDate) countQuery = countQuery.gte('transaction_date', startDate)
+    if (endDate) countQuery = countQuery.lte('transaction_date', endDate)
+    if (search) countQuery = countQuery.or(`description.ilike.%${search}%,notes.ilike.%${search}%`)
+    if (isSplit !== null) countQuery = countQuery.eq('is_split', isSplit === 'true')
+    if (isUnmatchedTransfer === 'true') {
+      countQuery = countQuery
+        .in('transaction_type_code', ['TRF_OUT', 'TRF_IN'])
+        .is('transfer_matched_transaction_id', null)
+    }
+    if (rawTransactionId) countQuery = countQuery.eq('raw_transaction_id', rawTransactionId)
+
+    const { count: totalCount } = await countQuery
 
     // Apply pagination and sorting
     const from = (page - 1) * limit
     const to = from + limit - 1
 
-    // Clone the query for count (before adding order/range)
-    const countQuery = supabase
-      .from('main_transaction_details')
-      .select('*', { count: 'exact', head: true })
-
-    // IMPORTANT: Exclude balance adjustment transactions from count
-    countQuery.or('is_balance_adjustment.is.null,is_balance_adjustment.eq.false')
-
-    // Apply same filters to count query
-    if (accountId) {
-      countQuery.eq('account_id', accountId)
-    } else if (entityId && accountIdsForEntity.length > 0) {
-      countQuery.in('account_id', accountIdsForEntity)
-    }
-    if (transactionTypeId) countQuery.eq('transaction_type_id', transactionTypeId)
-    if (categoryId) {
-      if (categoryId === 'none') {
-        countQuery.is('category_id', null)
-      } else {
-        countQuery.eq('category_id', categoryId)
-      }
-    }
-    if (branchId) countQuery.eq('branch_id', branchId)
-    if (projectId) {
-      if (projectId === 'none') {
-        countQuery.is('project_id', null)
-      } else {
-        countQuery.eq('project_id', projectId)
-      }
-    }
-    if (transactionDirection) countQuery.eq('transaction_direction', transactionDirection)
-    if (startDate) countQuery.gte('transaction_date', startDate)
-    if (endDate) countQuery.lte('transaction_date', endDate)
-    if (search) countQuery.or(`description.ilike.%${search}%,notes.ilike.%${search}%`)
-    if (isSplit !== null) countQuery.eq('is_split', isSplit === 'true')
-    if (isUnmatchedTransfer === 'true') {
-      countQuery.in('transaction_type_code', ['TRF_OUT', 'TRF_IN']).is('transfer_matched_transaction_id', null)
-    }
-    if (rawTransactionId) countQuery.eq('raw_transaction_id', rawTransactionId)
-    if (accountTypes) {
-      const typesArray = accountTypes.split(',').map(t => t.trim())
-      countQuery.in('account_type', typesArray)
-    }
-    if (amountOperator && amountOperator !== 'all' && amountValue) {
-      const amount = parseFloat(amountValue)
-      if (!isNaN(amount)) {
-        switch (amountOperator) {
-          case 'eq': countQuery.eq('amount', amount); break
-          case 'gt': countQuery.gt('amount', amount); break
-          case 'lt': countQuery.lt('amount', amount); break
-          case 'gte': countQuery.gte('amount', amount); break
-          case 'lte': countQuery.lte('amount', amount); break
-          case 'neq': countQuery.neq('amount', amount); break
-        }
-      }
-    }
-
-    // Validate sort field to prevent SQL injection
-    const allowedSortFields = [
-      'transaction_date',
-      'amount',
-      'description',
-      'category_name',
-      'branch_name',
-      'project_name',
-      'account_name'
-    ]
-    const validSortField = allowedSortFields.includes(sortField) ? sortField : 'transaction_date'
-    const isAscending = sortDirection === 'asc'
-
-    // Execute both queries in parallel
-    const [{ data, error }, { count: totalCount, error: countError }] = await Promise.all([
-      query
-        .select('*')
-        .order(validSortField, { ascending: isAscending, nullsFirst: false })
-        .order('split_sequence', { ascending: false, nullsFirst: false }) // Secondary sort for splits
-        .order('main_transaction_id', { ascending: false }) // Tertiary sort for consistency
-        .range(from, to),
-      countQuery
-    ])
+    const { data, error} = await query
+      .order('transaction_date', { ascending: false })
+      .order('split_sequence', { ascending: false, nullsFirst: false }) // NULLs last, preserve CSV order
+      .order('main_transaction_id', { ascending: false })
+      .range(from, to)
 
     if (error) {
       console.error('Error fetching main transactions:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    if (countError) {
-      console.error('Error counting main transactions:', countError)
-    }
-
-    // Log for debugging
-    console.log(`API: Returning ${data?.length || 0} transactions, total count: ${totalCount}`)
-
     return NextResponse.json({
       data: data || [],
       pagination: {
         page,
         limit,
-        total: totalCount ?? 0,
-        totalPages: Math.ceil((totalCount ?? 0) / limit),
+        total: totalCount || 0,
+        totalPages: Math.ceil((totalCount || 0) / limit),
       },
     })
   } catch (error) {

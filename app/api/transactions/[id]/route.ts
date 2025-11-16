@@ -232,6 +232,7 @@ export async function DELETE(
     }
 
     // Check if transaction exists and get full data for potential undo
+    // Also get main_transaction data to check for loan_disbursement_id
     const { data: existingTransaction, error: fetchError } = await supabase
       .from('original_transaction')
       .select('*')
@@ -241,6 +242,12 @@ export async function DELETE(
     if (fetchError || !existingTransaction) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
     }
+
+    // Get main_transaction to check if it's linked to a loan disbursement
+    const { data: mainTransactions } = await supabase
+      .from('main_transaction')
+      .select('loan_disbursement_id, amount')
+      .eq('raw_transaction_id', transactionId)
 
     // Check write permissions for this transaction's account
     const entityId = await getAccountEntityId(supabase, existingTransaction.account_id)
@@ -280,6 +287,71 @@ export async function DELETE(
     if (deleteError) {
       console.error('Error deleting transaction:', deleteError)
       return NextResponse.json({ error: deleteError.message }, { status: 500 })
+    }
+
+    // If transaction was linked to a loan disbursement, recalculate the loan balance
+    if (mainTransactions && mainTransactions.length > 0) {
+      const loanDisbursementIds = [...new Set(
+        mainTransactions
+          .filter(mt => mt.loan_disbursement_id)
+          .map(mt => mt.loan_disbursement_id)
+      )]
+
+      for (const loanId of loanDisbursementIds) {
+        try {
+          console.log(`Recalculating balance for loan disbursement ${loanId} after transaction deletion...`)
+
+          // Get the loan disbursement details
+          const { data: disbursement } = await supabase
+            .from('loan_disbursement')
+            .select('principal_amount, account_id')
+            .eq('loan_disbursement_id', loanId)
+            .single()
+
+          if (!disbursement) continue
+
+          // Calculate total payments for this loan from all related transactions
+          const { data: loanTransactions } = await supabase
+            .from('main_transaction')
+            .select('amount, transaction_direction, transaction_type_id')
+            .eq('loan_disbursement_id', loanId)
+
+          // Get LOAN_COLLECT transaction type ID
+          const { data: loanCollectType } = await supabase
+            .from('transaction_types')
+            .select('transaction_type_id')
+            .eq('type_code', 'LOAN_COLLECT')
+            .single()
+
+          // Sum up all loan collection payments
+          let totalPaid = 0
+          if (loanTransactions && loanCollectType) {
+            totalPaid = loanTransactions
+              .filter(txn => txn.transaction_type_id === loanCollectType.transaction_type_id)
+              .reduce((sum, txn) => sum + Number(txn.amount || 0), 0)
+          }
+
+          // Calculate new remaining balance
+          const newRemainingBalance = Math.max(0, disbursement.principal_amount - totalPaid)
+          const newStatus = newRemainingBalance === 0 ? 'repaid' : 'active'
+
+          console.log(`Loan ${loanId}: Principal ${disbursement.principal_amount}, Paid ${totalPaid}, New Balance ${newRemainingBalance}`)
+
+          // Update the loan disbursement
+          await supabase
+            .from('loan_disbursement')
+            .update({
+              remaining_balance: newRemainingBalance,
+              status: newStatus
+            })
+            .eq('loan_disbursement_id', loanId)
+
+          console.log(`✓ Updated loan ${loanId} - Balance: ${newRemainingBalance}, Status: ${newStatus}`)
+        } catch (error) {
+          console.error(`Error updating loan disbursement ${loanId}:`, error)
+          // Don't fail the delete operation if loan update fails
+        }
+      }
     }
 
     return NextResponse.json({

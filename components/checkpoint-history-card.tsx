@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { format } from "date-fns"
-import { Calendar, CheckCircle, AlertCircle, Upload, Edit2, Trash2, Filter, RotateCcw, Info } from "lucide-react"
+import { Calendar, CheckCircle, AlertCircle, Upload, Edit2, Trash2, Filter, RotateCcw, Info, Search } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -45,9 +45,11 @@ import {
 } from "@/components/ui/alert-dialog"
 import { BalanceCheckpoint } from "@/types/checkpoint"
 import { EditCheckpointDialog } from "./edit-checkpoint-dialog"
+import { InvestigateDiscrepancyDialog } from "./InvestigateDiscrepancyDialog"
 
 interface CheckpointHistoryCardProps {
   accountId: number
+  accountName?: string
   checkpoints: BalanceCheckpoint[]
   onRefresh: () => void
 }
@@ -56,6 +58,7 @@ type FilterType = "all" | "manual" | "import" | "discrepancy"
 
 export function CheckpointHistoryCard({
   accountId,
+  accountName = "Account",
   checkpoints,
   onRefresh,
 }: CheckpointHistoryCardProps) {
@@ -65,6 +68,7 @@ export function CheckpointHistoryCard({
   const [isDeleting, setIsDeleting] = useState(false)
   const [rollingBackCheckpoint, setRollingBackCheckpoint] = useState<BalanceCheckpoint | null>(null)
   const [isRollingBack, setIsRollingBack] = useState(false)
+  const [investigateDialogOpen, setInvestigateDialogOpen] = useState(false)
 
   // Filter checkpoints
   const filteredCheckpoints = checkpoints.filter(cp => {
@@ -232,6 +236,15 @@ export function CheckpointHistoryCard({
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setInvestigateDialogOpen(true)}
+                className="gap-2"
+              >
+                <Search className="h-4 w-4" />
+                Investigate
+              </Button>
               <Filter className="h-4 w-4 text-muted-foreground" />
               <Select value={filter} onValueChange={(value) => setFilter(value as FilterType)}>
                 <SelectTrigger className="w-[180px]">
@@ -464,6 +477,15 @@ export function CheckpointHistoryCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Investigate Discrepancy Dialog */}
+      <InvestigateDiscrepancyDialog
+        open={investigateDialogOpen}
+        onOpenChange={setInvestigateDialogOpen}
+        accountId={accountId}
+        accountName={accountName}
+        checkpoints={checkpoints}
+      />
     </>
   )
 }

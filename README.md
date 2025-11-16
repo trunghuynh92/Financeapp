@@ -1,6 +1,62 @@
-# Finance SaaS v4.5.0
+# Finance SaaS v5.0.0
 
-A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, team collaboration, advanced transaction processing, credit card mechanics, debt management, loan receivables, business partners, intelligent transaction type filtering, balance checkpointing, and detailed financial reporting with complete entity isolation.
+A comprehensive multi-user financial management system for businesses and individuals, built with Next.js, TypeScript, and Supabase. Features role-based access control, team collaboration, advanced transaction processing, credit card mechanics, debt management, loan receivables, business partners, intelligent transaction type filtering, balance checkpointing, detailed financial reporting with complete entity isolation, and user-friendly interfaces for both accountants and non-accountants.
+
+## Version 5.0.0 - User-Friendly Financial Management
+
+### What's New in v5.0.0
+
+#### 🎯 Simple vs Advanced Mode
+- **Smart Transaction Filtering**: New toggle between Simple Mode (bank/cash only) and Advanced Mode (all accounts)
+- **Default Simple Mode**: Shows only bank and cash account transactions for non-accounting users
+- **Advanced Mode**: Full access to asset/liability accounts for accounting professionals
+- **Context-Aware Filtering**: Account dropdown and Add Transaction dialog respect current mode
+- **Auto-Reset Protection**: Automatically resets filters when switching modes to prevent confusion
+- **Informative Tooltips**: Clear explanations of what each mode shows
+
+#### 📊 Enhanced Reports Page
+- **Debt Position Card**: Complete overview of liabilities
+  - Total debt amount with visual prominence
+  - Breakdown by account type (Credit Cards, Credit Lines, Term Loans, Debt Payable)
+  - Individual account balances with hover effects
+  - Red theme for clear identification
+- **Asset Position Card**: Complete overview of assets
+  - Total assets amount with visual prominence
+  - Breakdown by account type (Loan Receivable, Investments)
+  - Individual account balances with hover effects
+  - Green theme for clear identification
+- **Complete Financial Picture**: Income/Expense + Debt + Assets = Full financial health view
+
+#### 🏦 Reorganized Accounts Page
+- **Account Grouping by Category**:
+  1. **Banks & Cash**: Primary operating accounts
+  2. **Assets**: Loans given and investments
+  3. **Liabilities**: Credit cards, loans, and debts owed
+- **Entity Tab Navigation**: Clean tab interface replacing filter dropdown
+- **Enhanced Visual Separation**: Thicker borders and increased spacing between groups
+- **Category Icons**: Wallet, TrendingUp, and CreditCard icons for visual clarity
+- **Responsive Layout**: Maintains functionality across all screen sizes
+
+#### 💰 Loan Disbursement Enhancements
+- **View Transactions Feature**: Receipt button to view cash flow for each loan
+- **Transaction Dialog**: Shows all bank/cash movements related to specific loan
+- **Smart Filtering**: Excludes loan_receivable bookkeeping entries, shows only actual money movements
+- **Comprehensive Display**: Date, Account, Description, Type, and Amount columns
+- **API Integration**: Efficient filtering by loan_disbursement_id
+
+#### 🎨 Streamlined Navigation
+- **Removed Redundant Pages**: Hidden "Transactions" and "Transfers" from sidebar
+- **Main Transactions as Hub**: Single page for all transaction management
+- **Cleaner Interface**: Reduced navigation clutter
+- **Direct URL Access**: Pages still accessible but not cluttering navigation
+
+#### 🔧 Technical Improvements
+- **API Enhancements**: Account type filtering support in main transactions API
+- **Efficient Data Fetching**: Leverages existing accounts API for position cards
+- **Type-Safe Implementations**: Full TypeScript support throughout
+- **Optimized Queries**: Reduced unnecessary data fetching with smart filters
+
+---
 
 ## Version 4.5.0 - Enhanced UX & Transaction Management
 

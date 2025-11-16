@@ -72,6 +72,9 @@ export default function MainTransactionsPage() {
   const [showBranchColumn, setShowBranchColumn] = useState(false)
   const [showProjectColumn, setShowProjectColumn] = useState(false)
 
+  // Advanced mode state - false = simple mode (bank/cash only), true = advanced mode (all account types)
+  const [advancedMode, setAdvancedMode] = useState(false)
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(50)
@@ -221,7 +224,7 @@ export default function MainTransactionsPage() {
     if (currentEntity) {
       fetchTransactions()
     }
-  }, [currentEntity?.id, currentPage, itemsPerPage, selectedAccount, selectedType, selectedCategory, selectedBranch, selectedProject, selectedDirection, startDate, endDate, debouncedSearchQuery, amountOperator, amountValue, sortField, sortDirection])
+  }, [currentEntity?.id, currentPage, itemsPerPage, selectedAccount, selectedType, selectedCategory, selectedBranch, selectedProject, selectedDirection, startDate, endDate, debouncedSearchQuery, amountOperator, amountValue, sortField, sortDirection, advancedMode])
 
   const fetchTransactions = async () => {
     setLoading(true)
@@ -251,6 +254,12 @@ export default function MainTransactionsPage() {
       if (amountOperator !== "all" && amountValue) {
         params.append("amount_operator", amountOperator)
         params.append("amount_value", amountValue)
+      }
+
+      // Simple mode: only show bank and cash accounts (user-friendly for non-accountants)
+      // Advanced mode: show all account types including asset/liability accounts
+      if (!advancedMode) {
+        params.append("account_types", "bank,cash")
       }
 
       const response = await fetch(`/api/main-transactions?${params.toString()}`)
@@ -897,11 +906,51 @@ export default function MainTransactionsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Main Transactions</h1>
-        <p className="text-muted-foreground">
-          {currentEntity ? `Managing main transactions for ${currentEntity.name}` : 'Categorized and analyzed transactions'}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Main Transactions</h1>
+          <p className="text-muted-foreground">
+            {currentEntity ? `Managing main transactions for ${currentEntity.name}` : 'Categorized and analyzed transactions'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={advancedMode ? "default" : "outline"}
+                  onClick={() => {
+                    const newMode = !advancedMode
+                    setAdvancedMode(newMode)
+                    setCurrentPage(1) // Reset to first page when toggling
+
+                    // If switching to simple mode and current selected account is not bank/cash, reset to "all"
+                    if (!newMode && selectedAccount !== "all") {
+                      const selectedAccountData = accounts.find(acc => acc.account_id.toString() === selectedAccount)
+                      if (selectedAccountData && selectedAccountData.account_type !== 'bank' && selectedAccountData.account_type !== 'cash') {
+                        setSelectedAccount("all")
+                      }
+                    }
+                  }}
+                  className="min-w-[140px]"
+                >
+                  <Info className="h-4 w-4 mr-2" />
+                  {advancedMode ? "Advanced Mode" : "Simple Mode"}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                <p className="font-medium mb-1">
+                  {advancedMode ? "Advanced Mode" : "Simple Mode"}
+                </p>
+                <p className="text-xs">
+                  {advancedMode
+                    ? "Showing all account types including asset/liability accounts (loan_receivable, debt_payable, etc.) - for users familiar with accounting"
+                    : "Showing only bank and cash account transactions (actual money movements) - recommended for most users"}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
 
       {/* Filters */}
@@ -923,11 +972,20 @@ export default function MainTransactionsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Accounts</SelectItem>
-                  {accounts.map((account) => (
-                    <SelectItem key={account.account_id} value={account.account_id.toString()}>
-                      {account.account_name}
-                    </SelectItem>
-                  ))}
+                  {accounts
+                    .filter((account) => {
+                      // In simple mode, only show bank and cash accounts
+                      if (!advancedMode) {
+                        return account.account_type === 'bank' || account.account_type === 'cash'
+                      }
+                      // In advanced mode, show all accounts
+                      return true
+                    })
+                    .map((account) => (
+                      <SelectItem key={account.account_id} value={account.account_id.toString()}>
+                        {account.account_name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1673,6 +1731,33 @@ export default function MainTransactionsPage() {
                                     Unmatched Loan
                                   </Badge>
                                 )}
+                                {/* Matched loan collection */}
+                                {tx.transfer_matched_transaction_id && tx.transaction_type_code === 'LOAN_COLLECT' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200"
+                                    onClick={() => handleUnmatchTransfer(tx)}
+                                    title="Click to unmatch this loan collection"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Matched Collection
+                                  </Badge>
+                                )}
+                                {/* Unmatched loan collection */}
+                                {!tx.transfer_matched_transaction_id && tx.transaction_type_code === 'LOAN_COLLECT' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-yellow-100 text-yellow-800 border-yellow-200 cursor-pointer hover:bg-yellow-200"
+                                    onClick={() => {
+                                      setSelectedTransaction(tx)
+                                      setQuickMatchLoanDialogOpen(true)
+                                    }}
+                                    title="Click to match with a collection transaction"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Unmatched Collection
+                                  </Badge>
+                                )}
                                 {/* Flagged transaction */}
                                 {tx.is_flagged && (
                                   <TooltipProvider>
@@ -2025,7 +2110,7 @@ export default function MainTransactionsPage() {
       <AddTransactionDialog
         open={addTransactionDialogOpen}
         onOpenChange={setAddTransactionDialogOpen}
-        accounts={accounts}
+        accounts={accounts.filter(acc => acc.account_type === 'bank' || acc.account_type === 'cash')}
         transactionTypes={transactionTypes}
         categories={categories}
         branches={branches}

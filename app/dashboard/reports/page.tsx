@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, TrendingUp, TrendingDown, DollarSign } from "lucide-react"
+import { Loader2, TrendingUp, TrendingDown, DollarSign, CreditCard, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -40,6 +40,14 @@ interface IncomeExpenseData {
   net: number
 }
 
+interface AccountBalance {
+  account_id: number
+  account_name: string
+  account_type: string
+  current_balance: number
+  currency: string
+}
+
 type Granularity = 'year' | 'month' | 'week'
 type DateRange = '1m' | '3m' | '6m' | '1y' | 'all'
 
@@ -50,9 +58,15 @@ export default function ReportsPage() {
   const [granularity, setGranularity] = useState<Granularity>('month')
   const [dateRange, setDateRange] = useState<DateRange>('1y')
 
+  // Debt and Asset positions
+  const [debtAccounts, setDebtAccounts] = useState<AccountBalance[]>([])
+  const [assetAccounts, setAssetAccounts] = useState<AccountBalance[]>([])
+  const [loadingPositions, setLoadingPositions] = useState(true)
+
   useEffect(() => {
     if (currentEntity) {
       fetchIncomeExpenseData()
+      fetchDebtAssetPositions()
     }
   }, [currentEntity?.id, granularity, dateRange])
 
@@ -103,6 +117,46 @@ export default function ReportsPage() {
     }
   }
 
+  async function fetchDebtAssetPositions() {
+    if (!currentEntity) return
+
+    try {
+      setLoadingPositions(true)
+
+      // Fetch liability accounts (debt position)
+      const debtResponse = await fetch(`/api/accounts?entity_id=${currentEntity.id}&account_type=credit_card,credit_line,term_loan,debt_payable&limit=1000`)
+      if (debtResponse.ok) {
+        const debtResult = await debtResponse.json()
+        const debtData = debtResult.data || []
+        setDebtAccounts(debtData.map((acc: any) => ({
+          account_id: acc.account_id,
+          account_name: acc.account_name,
+          account_type: acc.account_type,
+          current_balance: Array.isArray(acc.balance) ? (acc.balance[0]?.current_balance || 0) : (acc.balance?.current_balance || 0),
+          currency: acc.currency
+        })))
+      }
+
+      // Fetch asset accounts (asset position)
+      const assetResponse = await fetch(`/api/accounts?entity_id=${currentEntity.id}&account_type=loan_receivable,investment&limit=1000`)
+      if (assetResponse.ok) {
+        const assetResult = await assetResponse.json()
+        const assetData = assetResult.data || []
+        setAssetAccounts(assetData.map((acc: any) => ({
+          account_id: acc.account_id,
+          account_name: acc.account_name,
+          account_type: acc.account_type,
+          current_balance: Array.isArray(acc.balance) ? (acc.balance[0]?.current_balance || 0) : (acc.balance?.current_balance || 0),
+          currency: acc.currency
+        })))
+      }
+    } catch (error) {
+      console.error("Error fetching debt/asset positions:", error)
+    } finally {
+      setLoadingPositions(false)
+    }
+  }
+
   // Calculate totals
   const totals = data.reduce(
     (acc, item) => ({
@@ -112,6 +166,10 @@ export default function ReportsPage() {
     }),
     { income: 0, expense: 0, net: 0 }
   )
+
+  // Calculate debt and asset totals
+  const totalDebt = debtAccounts.reduce((sum, acc) => sum + Math.abs(acc.current_balance), 0)
+  const totalAssets = assetAccounts.reduce((sum, acc) => sum + acc.current_balance, 0)
 
   // Format chart data for display
   const chartData = data.map(item => ({
@@ -283,6 +341,111 @@ export default function ReportsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Debt and Asset Positions */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Debt Position */}
+        <Card className="border-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-red-500" />
+              Debt Position
+            </CardTitle>
+            <CardDescription>
+              Current liabilities and outstanding debts
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingPositions ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : debtAccounts.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No debt accounts
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-200">
+                  <span className="text-sm font-medium">Total Debt</span>
+                  <span className="text-2xl font-bold text-red-600">
+                    {formatCurrency(totalDebt, "VND")}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {debtAccounts.map((account) => (
+                    <div
+                      key={account.account_id}
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent transition-colors"
+                    >
+                      <div>
+                        <p className="font-medium text-sm">{account.account_name}</p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {account.account_type.replace('_', ' ')}
+                        </p>
+                      </div>
+                      <span className="font-medium text-red-600">
+                        {formatCurrency(Math.abs(account.current_balance), account.currency)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Asset Position */}
+        <Card className="border-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Wallet className="h-5 w-5 text-green-500" />
+              Asset Position
+            </CardTitle>
+            <CardDescription>
+              Loans given and investments
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingPositions ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : assetAccounts.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No asset accounts
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
+                  <span className="text-sm font-medium">Total Assets</span>
+                  <span className="text-2xl font-bold text-green-600">
+                    {formatCurrency(totalAssets, "VND")}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {assetAccounts.map((account) => (
+                    <div
+                      key={account.account_id}
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent transition-colors"
+                    >
+                      <div>
+                        <p className="font-medium text-sm">{account.account_name}</p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {account.account_type.replace('_', ' ')}
+                        </p>
+                      </div>
+                      <span className="font-medium text-green-600">
+                        {formatCurrency(account.current_balance, account.currency)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

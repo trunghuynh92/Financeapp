@@ -415,6 +415,7 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
       {/* Checkpoint History */}
       <CheckpointHistoryCard
         accountId={account.account_id}
+        accountName={account.account_name}
         checkpoints={checkpoints}
         onRefresh={() => {
           fetchCheckpoints()
