@@ -145,6 +145,7 @@ export async function PATCH(
       'category_id',
       'branch_id',
       'project_id',
+      'drawdown_id',
       'description',
       'notes',
       'is_flagged',

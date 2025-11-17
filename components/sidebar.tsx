@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Building2, FileText, Settings, DollarSign, Wallet, Tags, Link2, LogOut, User } from "lucide-react"
+import { Home, Building2, FileText, Settings, DollarSign, Wallet, Tags, Link2, LogOut, User, Flag } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { EntitySwitcher } from "./EntitySwitcher"
 import { useAuth } from "@/contexts/AuthContext"
@@ -22,6 +22,7 @@ const navigation = [
   { name: "Accounts", href: "/dashboard/accounts", icon: Wallet },
   // { name: "Transactions", href: "/dashboard/transactions", icon: DollarSign }, // Hidden - use Main Transactions instead
   { name: "Main Transactions", href: "/dashboard/main-transactions", icon: Tags },
+  { name: "Audit", href: "/dashboard/audit", icon: Flag },
   // { name: "Transfers", href: "/dashboard/transfers", icon: Link2 }, // Hidden - transfers are managed within Main Transactions
   { name: "Reports", href: "/dashboard/reports", icon: FileText },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },

@@ -17,8 +17,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { MainTransactionDetails, TransactionType, Category, Branch, Project } from "@/types/main-transaction"
-import { Loader2, AlertTriangle, Info } from "lucide-react"
+import { Loader2, AlertTriangle, Info, Link } from "lucide-react"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
+import { SelectDrawdownDialog } from "./SelectDrawdownDialog"
 
 interface EditTransactionDialogProps {
   transaction: MainTransactionDetails | null
@@ -42,6 +43,8 @@ export function EditTransactionDialog({
   projects,
 }: EditTransactionDialogProps) {
   const [loading, setLoading] = useState(false)
+  const [drawdownDialogOpen, setDrawdownDialogOpen] = useState(false)
+  const [selectedDrawdown, setSelectedDrawdown] = useState<any>(null)
 
   // Initialize formData from transaction if available
   const getInitialFormData = () => ({
@@ -51,6 +54,7 @@ export function EditTransactionDialog({
     project_id: transaction?.project_id?.toString() || "none",
     description: transaction?.description || "",
     notes: transaction?.notes || "",
+    drawdown_id: transaction?.drawdown_id?.toString() || "none",
   })
 
   const [formData, setFormData] = useState(getInitialFormData())
@@ -62,7 +66,8 @@ export function EditTransactionDialog({
         project_id: transaction.project_id,
         project_name: transaction.project_name,
         branch_id: transaction.branch_id,
-        branch_name: transaction.branch_name
+        branch_name: transaction.branch_name,
+        drawdown_id: transaction.drawdown_id
       })
       setFormData({
         transaction_type_id: transaction.transaction_type_id?.toString() || "",
@@ -71,7 +76,9 @@ export function EditTransactionDialog({
         project_id: transaction.project_id?.toString() || "none",
         description: transaction.description || "",
         notes: transaction.notes || "",
+        drawdown_id: transaction.drawdown_id?.toString() || "none",
       })
+      setSelectedDrawdown(null) // Reset selected drawdown
     }
   }, [transaction, open])
 
@@ -134,6 +141,12 @@ export function EditTransactionDialog({
         updates.project_id = parseInt(formData.project_id)
       } else {
         updates.project_id = null
+      }
+
+      if (formData.drawdown_id && formData.drawdown_id !== "none") {
+        updates.drawdown_id = parseInt(formData.drawdown_id)
+      } else {
+        updates.drawdown_id = null
       }
 
       updates.description = formData.description || null
@@ -297,6 +310,34 @@ export function EditTransactionDialog({
                   No categories available for this transaction type
                 </p>
               )}
+
+              {/* Show drawdown link badge when Interest Payment is selected */}
+              {(() => {
+                const selectedCategory = categories.find(c => c.category_id.toString() === formData.category_id)
+                return selectedCategory?.category_code === 'INTEREST_PAY' && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge
+                      variant="outline"
+                      className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                      onClick={() => setDrawdownDialogOpen(true)}
+                    >
+                      <Link className="h-3 w-3 mr-1" />
+                      {formData.drawdown_id !== "none" ? "Change Debt Drawdown" : "Link to Debt Drawdown"}
+                    </Badge>
+                    {formData.drawdown_id !== "none" && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setFormData({ ...formData, drawdown_id: "none" })}
+                        className="h-6 px-2"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Branch */}
@@ -376,6 +417,20 @@ export function EditTransactionDialog({
           </DialogFooter>
         </form>
       </DialogContent>
+
+      {/* Drawdown Selection Dialog for Interest Payments */}
+      {transaction && transaction.account_id && (
+        <SelectDrawdownDialog
+          open={drawdownDialogOpen}
+          onOpenChange={setDrawdownDialogOpen}
+          accountId={transaction.account_id}
+          onSelectDrawdown={(drawdown) => {
+            setSelectedDrawdown(drawdown)
+            setFormData({ ...formData, drawdown_id: drawdown.drawdown_id.toString() })
+            setDrawdownDialogOpen(false)
+          }}
+        />
+      )}
     </Dialog>
   )
 }

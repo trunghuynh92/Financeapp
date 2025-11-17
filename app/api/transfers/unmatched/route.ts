@@ -1,6 +1,6 @@
 /**
  * API Route: /api/transfers/unmatched
- * Purpose: Get all unmatched transfer transactions (TRF_OUT, TRF_IN, DEBT_TAKE, LOAN_DISBURSE without matches)
+ * Purpose: Get all unmatched transfer, debt, and loan transactions for audit purposes
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       .from('main_transaction_details')
       .select('*')
       .eq('entity_id', entityId) // CRITICAL: Filter by entity first
-      .in('transaction_type_code', ['TRF_OUT', 'TRF_IN', 'DEBT_TAKE', 'LOAN_DISBURSE'])
+      .in('transaction_type_code', ['TRF_OUT', 'TRF_IN', 'DEBT_TAKE', 'DEBT_PAY', 'LOAN_DISBURSE', 'LOAN_COLLECT'])
       .is('transfer_matched_transaction_id', null)
 
     // Filter by account if specified
@@ -50,15 +50,27 @@ export async function GET(request: NextRequest) {
     const transfersOut = data?.filter(t => t.transaction_type_code === 'TRF_OUT') || []
     const transfersIn = data?.filter(t => t.transaction_type_code === 'TRF_IN') || []
     const debtTake = data?.filter(t => t.transaction_type_code === 'DEBT_TAKE') || []
+    const debtPay = data?.filter(t => t.transaction_type_code === 'DEBT_PAY') || []
     const loanDisburse = data?.filter(t => t.transaction_type_code === 'LOAN_DISBURSE') || []
+    const loanCollect = data?.filter(t => t.transaction_type_code === 'LOAN_COLLECT') || []
+
+    // Calculate summary counts
+    const summary = {
+      total: data?.length || 0,
+      transfers: transfersOut.length + transfersIn.length,
+      debts: debtTake.length + debtPay.length,
+      loans: loanDisburse.length + loanCollect.length,
+    }
 
     return NextResponse.json({
       data: data || [],
       transfersOut,
       transfersIn,
       debtTake,
+      debtPay,
       loanDisburse,
-      total: data?.length || 0,
+      loanCollect,
+      summary,
     })
   } catch (error) {
     console.error('Unexpected error:', error)

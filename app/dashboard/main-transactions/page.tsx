@@ -1779,6 +1779,36 @@ export default function MainTransactionsPage() {
                                     </Tooltip>
                                   </TooltipProvider>
                                 )}
+                                {/* Interest Payment - Link to Drawdown */}
+                                {tx.category_code === 'INTEREST_PAY' && !tx.drawdown_id && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-orange-100 text-orange-800 border-orange-200 cursor-pointer hover:bg-orange-200"
+                                    onClick={() => {
+                                      setSelectedTransaction(tx)
+                                      setSelectDrawdownDialogOpen(true)
+                                    }}
+                                    title="Click to link this interest payment to a debt drawdown"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Link to Drawdown
+                                  </Badge>
+                                )}
+                                {/* Interest Payment - Already linked */}
+                                {tx.category_code === 'INTEREST_PAY' && tx.drawdown_id && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-blue-100 text-blue-800 border-blue-200 cursor-pointer hover:bg-blue-200"
+                                    onClick={() => {
+                                      setSelectedTransaction(tx)
+                                      setSelectDrawdownDialogOpen(true)
+                                    }}
+                                    title="Linked to drawdown - click to change"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Linked to Drawdown
+                                  </Badge>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -2095,14 +2125,51 @@ export default function MainTransactionsPage() {
         onSuccess={handleQuickMatchSuccess}
       />
 
-      {/* Select Drawdown Dialog for DEBT_PAYBACK */}
+      {/* Select Drawdown Dialog for DEBT_PAYBACK and Interest Payment linking */}
       {selectedTransaction && (
         <SelectDrawdownDialog
           open={selectDrawdownDialogOpen}
           onOpenChange={setSelectDrawdownDialogOpen}
-          paybackTransactionId={selectedTransaction.main_transaction_id}
-          paybackAmount={selectedTransaction.amount}
-          onSuccess={handleQuickMatchSuccess}
+          // For DEBT_PAY matching mode
+          {...(selectedTransaction.transaction_type_code === 'DEBT_PAY' && {
+            paybackTransactionId: selectedTransaction.main_transaction_id,
+            paybackAmount: selectedTransaction.amount,
+            onSuccess: handleQuickMatchSuccess,
+          })}
+          // For Interest Payment linking mode
+          {...(selectedTransaction.category_code === 'INTEREST_PAY' && {
+            accountId: selectedTransaction.account_id,
+            onSelectDrawdown: async (drawdown) => {
+              try {
+                // Update the transaction to link it to the drawdown
+                const response = await fetch(`/api/main-transactions/${selectedTransaction.main_transaction_id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    drawdown_id: drawdown.drawdown_id,
+                  }),
+                })
+
+                if (!response.ok) {
+                  throw new Error('Failed to link transaction to drawdown')
+                }
+
+                toast({
+                  title: "Success",
+                  description: `Interest payment linked to drawdown ${drawdown.drawdown_reference}`,
+                })
+
+                fetchTransactions() // Refresh the list
+              } catch (error) {
+                console.error('Error linking to drawdown:', error)
+                toast({
+                  title: "Error",
+                  description: error instanceof Error ? error.message : 'Failed to link to drawdown',
+                  variant: "destructive",
+                })
+              }
+            },
+          })}
         />
       )}
 

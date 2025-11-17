@@ -40,9 +40,13 @@ interface Drawdown {
 interface SelectDrawdownDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  paybackTransactionId: number
-  paybackAmount: number
-  onSuccess: () => void
+  // For DEBT_PAY matching mode
+  paybackTransactionId?: number
+  paybackAmount?: number
+  onSuccess?: () => void
+  // For Interest Payment linking mode
+  accountId?: number
+  onSelectDrawdown?: (drawdown: Drawdown) => void
 }
 
 export function SelectDrawdownDialog({
@@ -51,7 +55,12 @@ export function SelectDrawdownDialog({
   paybackTransactionId,
   paybackAmount,
   onSuccess,
+  accountId,
+  onSelectDrawdown,
 }: SelectDrawdownDialogProps) {
+  // Determine mode: if onSelectDrawdown is provided, we're in "link" mode for interest payments
+  // Otherwise we're in "match" mode for debt payback
+  const isLinkMode = !!onSelectDrawdown
   const [drawdowns, setDrawdowns] = useState<Drawdown[]>([])
   const [loading, setLoading] = useState(false)
   const [isMatching, setIsMatching] = useState(false)
@@ -126,30 +135,40 @@ export function SelectDrawdownDialog({
     setError(null)
 
     try {
-      const response = await fetch('/api/debt/match-payback', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          payback_transaction_id: paybackTransactionId,
-          drawdown_id: selectedDrawdownId,
-        }),
-      })
+      if (isLinkMode) {
+        // Link mode: just return the selected drawdown for interest payments
+        const selectedDrawdown = drawdowns.find(dd => dd.drawdown_id === selectedDrawdownId)
+        if (selectedDrawdown && onSelectDrawdown) {
+          onSelectDrawdown(selectedDrawdown)
+          handleClose()
+        }
+      } else {
+        // Match mode: match debt payback transaction
+        const response = await fetch('/api/debt/match-payback', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            payback_transaction_id: paybackTransactionId,
+            drawdown_id: selectedDrawdownId,
+          }),
+        })
 
-      const data = await response.json()
+        const data = await response.json()
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to match payback')
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to match payback')
+        }
+
+        // Show success message if overpaid
+        if (data.is_overpaid) {
+          alert(`Success! Overpayment detected: ${formatCurrency(data.overpayment_amount, 'VND')}. Credit memo created.`)
+        }
+
+        if (onSuccess) onSuccess()
+        handleClose()
       }
-
-      // Show success message if overpaid
-      if (data.is_overpaid) {
-        alert(`Success! Overpayment detected: ${formatCurrency(data.overpayment_amount, 'VND')}. Credit memo created.`)
-      }
-
-      onSuccess()
-      handleClose()
     } catch (err) {
       console.error('Error matching payback:', err)
       setError(err instanceof Error ? err.message : 'Failed to match payback')
@@ -159,16 +178,21 @@ export function SelectDrawdownDialog({
   }
 
   const selectedDrawdown = drawdowns.find(dd => dd.drawdown_id === selectedDrawdownId)
-  const willOverpay = selectedDrawdown && paybackAmount > selectedDrawdown.remaining_balance
-  const overpaymentAmount = willOverpay ? paybackAmount - selectedDrawdown.remaining_balance : 0
+  const willOverpay = !isLinkMode && selectedDrawdown && paybackAmount && paybackAmount > selectedDrawdown.remaining_balance
+  const overpaymentAmount = willOverpay ? paybackAmount! - selectedDrawdown.remaining_balance : 0
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Select Drawdown to Pay Back</DialogTitle>
+          <DialogTitle>
+            {isLinkMode ? 'Link to Drawdown' : 'Select Drawdown to Pay Back'}
+          </DialogTitle>
           <DialogDescription>
-            Choose which drawdown this payment of {formatCurrency(paybackAmount, 'VND')} should be applied to
+            {isLinkMode
+              ? 'Choose which drawdown this interest payment relates to'
+              : `Choose which drawdown this payment of ${formatCurrency(paybackAmount || 0, 'VND')} should be applied to`
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -295,7 +319,12 @@ export function SelectDrawdownDialog({
             disabled={isMatching || !selectedDrawdownId || loading}
           >
             {isMatching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {willOverpay ? 'Confirm Overpayment' : 'Match Payback'}
+            {isLinkMode
+              ? 'Link to Drawdown'
+              : willOverpay
+              ? 'Confirm Overpayment'
+              : 'Match Payback'
+            }
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -110,10 +110,10 @@ export async function POST(
     let categoryId = body.category_id || null
 
     if (!categoryId) {
-      // Auto-assign category based on subtype
+      // Auto-assign category based on subtype (using categories instead of transaction_subtype)
       const categoryMap: Record<string, string> = {
         'principal': 'LOAN_PAY',
-        'interest': 'INTEREST_INC', // Note: This is actually an expense, might need adjustment
+        'interest': 'INTEREST_PAY', // Fixed: Use expense category for interest payments
         'fee': 'PROF_SVC',
         'penalty': 'PROF_SVC',
       }
