@@ -299,9 +299,6 @@ export function CreateScheduledPaymentDialog({
                       availableCategories.map((category) => (
                         <SelectItem key={category.category_id} value={category.category_id.toString()}>
                           {category.category_name}
-                          {category.category_type !== "expense" && (
-                            <span className="text-xs text-muted-foreground ml-2">({category.category_type})</span>
-                          )}
                         </SelectItem>
                       ))
                     ) : (
@@ -312,8 +309,8 @@ export function CreateScheduledPaymentDialog({
                   </SelectContent>
                 </Select>
                 {expenseCategories.length === 0 && categories.length > 0 && (
-                  <p className="text-xs text-yellow-600">
-                    Note: Showing all categories (no expense categories found)
+                  <p className="text-xs text-muted-foreground">
+                    Note: Some categories shown may not be expense type
                   </p>
                 )}
               </div>
