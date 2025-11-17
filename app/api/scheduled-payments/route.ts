@@ -190,7 +190,15 @@ export async function POST(request: NextRequest) {
 
     // Generate payment instances if requested (default: true)
     const generateInstances = body.generate_instances !== false
-    const monthsAhead = body.months_ahead || 12
+
+    // Calculate months ahead based on end_date, or use provided value, or default to 36
+    let monthsAhead = body.months_ahead || 36
+    if (body.end_date) {
+      const start = new Date(body.start_date)
+      const end = new Date(body.end_date)
+      const monthsDiff = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1
+      monthsAhead = Math.min(monthsDiff, 120) // Cap at 120 months (10 years) for performance
+    }
 
     if (generateInstances) {
       const { data: instanceData, error: instanceError } = await supabase

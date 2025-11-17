@@ -100,6 +100,7 @@ export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListP
 
         {instances.map((instance, index) => {
           const isOverdue = isInstanceOverdue(instance)
+          const canMarkAsPaid = instance.status === "pending" || instance.status === "overdue" || isOverdue
 
           return (
             <div
@@ -140,10 +141,12 @@ export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListP
                     </div>
 
                     {/* Mark as Paid Button */}
-                    {instance.status === "pending" && (
+                    {canMarkAsPaid && (
                       <Button
                         size="sm"
                         onClick={() => setMarkingPaidInstance(instance)}
+                        variant={isOverdue ? "destructive" : "default"}
+                        className={isOverdue ? "bg-red-600 hover:bg-red-700" : ""}
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
                         Mark as Paid
