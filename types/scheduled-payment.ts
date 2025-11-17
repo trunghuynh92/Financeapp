@@ -25,6 +25,10 @@ export interface ScheduledPayment {
   entity_id: string
   category_id: number
 
+  // Contract Link (new in migration 060)
+  contract_id: number | null
+  payment_type: string | null  // 'primary', 'rent', 'utilities', etc.
+
   // Contract Details
   contract_name: string
   contract_type: ContractType
@@ -74,6 +78,11 @@ export interface ScheduledPaymentInstance {
   paid_date: string | null  // ISO date string
   paid_amount: number | null
   transaction_id: number | null
+
+  // Amendment Tracking (new in migration 060)
+  amendment_id: number | null
+  is_amended: boolean
+  original_amount: number | null  // Amount before amendment
 
   // Notes
   notes: string | null
