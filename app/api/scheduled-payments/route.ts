@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { CreateScheduledPaymentRequest, ScheduledPaymentOverview, ScheduledPaymentSummary } from '@/types/scheduled-payment'
 
 // GET /api/scheduled-payments - List all scheduled payments with optional filters
 export async function GET(request: NextRequest) {
-  const supabase = await createClient()
+  const supabase = createSupabaseServerClient()
   const searchParams = request.nextUrl.searchParams
 
   // Get query parameters
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/scheduled-payments - Create new scheduled payment
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
+  const supabase = createSupabaseServerClient()
 
   try {
     const body: CreateScheduledPaymentRequest = await request.json()

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { MarkAsPaidRequest } from '@/types/scheduled-payment'
 
 // POST /api/scheduled-payment-instances/[id]/mark-paid - Mark instance as paid
@@ -7,7 +7,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = await createClient()
+  const supabase = createSupabaseServerClient()
   const instanceId = parseInt(params.id)
 
   if (isNaN(instanceId)) {

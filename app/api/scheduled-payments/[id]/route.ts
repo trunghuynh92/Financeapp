@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { UpdateScheduledPaymentRequest } from '@/types/scheduled-payment'
 
 // GET /api/scheduled-payments/[id] - Get single scheduled payment with instances
@@ -7,7 +7,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = await createClient()
+  const supabase = createSupabaseServerClient()
   const scheduledPaymentId = parseInt(params.id)
 
   if (isNaN(scheduledPaymentId)) {
@@ -73,7 +73,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = await createClient()
+  const supabase = createSupabaseServerClient()
   const scheduledPaymentId = parseInt(params.id)
 
   if (isNaN(scheduledPaymentId)) {
@@ -199,7 +199,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = await createClient()
+  const supabase = createSupabaseServerClient()
   const scheduledPaymentId = parseInt(params.id)
 
   if (isNaN(scheduledPaymentId)) {
