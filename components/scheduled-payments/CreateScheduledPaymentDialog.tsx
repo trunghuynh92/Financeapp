@@ -205,6 +205,9 @@ export function CreateScheduledPaymentDialog({
   // Get expense categories only
   const expenseCategories = categories.filter(c => c.category_type === "expense")
 
+  // If no expense categories, show all categories as fallback
+  const availableCategories = expenseCategories.length > 0 ? expenseCategories : categories
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -292,13 +295,27 @@ export function CreateScheduledPaymentDialog({
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {expenseCategories.map((category) => (
-                      <SelectItem key={category.category_id} value={category.category_id.toString()}>
-                        {category.category_name}
-                      </SelectItem>
-                    ))}
+                    {availableCategories.length > 0 ? (
+                      availableCategories.map((category) => (
+                        <SelectItem key={category.category_id} value={category.category_id.toString()}>
+                          {category.category_name}
+                          {category.category_type !== "expense" && (
+                            <span className="text-xs text-muted-foreground ml-2">({category.category_type})</span>
+                          )}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                        No categories found. Please create categories first.
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
+                {expenseCategories.length === 0 && categories.length > 0 && (
+                  <p className="text-xs text-yellow-600">
+                    Note: Showing all categories (no expense categories found)
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
