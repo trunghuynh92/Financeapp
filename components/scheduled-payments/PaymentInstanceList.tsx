@@ -15,7 +15,7 @@ import {
 import { ScheduledPaymentInstance } from "@/types/scheduled-payment"
 import { formatCurrency } from "@/lib/account-utils"
 import { format, isPast, isFuture } from "date-fns"
-import { MarkAsPaidDialog } from "./MarkAsPaidDialog"
+import { MatchOrCreateTransactionDialog } from "./MatchOrCreateTransactionDialog"
 
 interface PaymentInstanceListProps {
   scheduledPaymentId: number
@@ -23,6 +23,7 @@ interface PaymentInstanceListProps {
 
 export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListProps) {
   const [instances, setInstances] = useState<ScheduledPaymentInstance[]>([])
+  const [scheduledPayment, setScheduledPayment] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [markingPaidInstance, setMarkingPaidInstance] = useState<ScheduledPaymentInstance | null>(null)
 
@@ -37,6 +38,7 @@ export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListP
       if (response.ok) {
         const data = await response.json()
         setInstances(data.data.instances || [])
+        setScheduledPayment(data.data)
       }
     } catch (error) {
       console.error('Error fetching payment instances:', error)
@@ -193,14 +195,15 @@ export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListP
         })}
       </div>
 
-      {/* Mark as Paid Dialog */}
-      {markingPaidInstance && (
-        <MarkAsPaidDialog
+      {/* Match or Create Transaction Dialog */}
+      {markingPaidInstance && scheduledPayment && (
+        <MatchOrCreateTransactionDialog
           open={!!markingPaidInstance}
           onOpenChange={(open) => {
             if (!open) setMarkingPaidInstance(null)
           }}
           instance={markingPaidInstance}
+          scheduledPayment={scheduledPayment}
           onSuccess={() => {
             fetchInstances()
             setMarkingPaidInstance(null)

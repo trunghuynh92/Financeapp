@@ -58,11 +58,11 @@ export async function POST(
       const scheduledPayment = instance.scheduled_payments as any
 
       // Create a new transaction for this payment
-      const { data: newTransaction, error: transactionError } = await supabase
+      const { data: newTransaction, error: transactionError} = await supabase
         .from('main_transaction')
         .insert([{
           entity_id: scheduledPayment.entity_id,
-          account_id: null, // Will need to be set by user or through account selection
+          account_id: body.account_id || null, // Account specified by user or null
           category_id: scheduledPayment.category_id,
           transaction_date: paidDate,
           amount: body.paid_amount,
