@@ -128,6 +128,16 @@ export function MatchOrCreateTransactionDialog({
     }
   }
 
+  const handleTransactionSelect = (transactionId: number) => {
+    setSelectedTransaction(transactionId)
+
+    // Auto-fill paid amount with the selected transaction's amount
+    const selectedTxn = matchingTransactions.find(txn => txn.main_transaction_id === transactionId)
+    if (selectedTxn) {
+      setPaidAmount(selectedTxn.amount.toString())
+    }
+  }
+
   const handleMatchExisting = async () => {
     if (!selectedTransaction) {
       setError("Please select a transaction to match")
@@ -321,13 +331,13 @@ export function MatchOrCreateTransactionDialog({
                             className={`border-b hover:bg-muted/50 cursor-pointer ${
                               isSelected ? 'bg-primary/10 border-primary' : ''
                             }`}
-                            onClick={() => setSelectedTransaction(txn.main_transaction_id)}
+                            onClick={() => handleTransactionSelect(txn.main_transaction_id)}
                           >
                             <td className="py-2 px-3">
                               <input
                                 type="radio"
                                 checked={isSelected}
-                                onChange={() => setSelectedTransaction(txn.main_transaction_id)}
+                                onChange={() => handleTransactionSelect(txn.main_transaction_id)}
                               />
                             </td>
                             <td className="py-2 px-3 text-sm whitespace-nowrap">
