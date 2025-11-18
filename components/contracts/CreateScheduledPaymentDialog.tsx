@@ -12,7 +12,7 @@ import { useEntity } from "@/contexts/EntityContext"
 import { ContractOverview } from "@/types/contract"
 
 interface CreateScheduledPaymentDialogProps {
-  contract: ContractOverview
+  contract?: ContractOverview | null  // Optional for standalone payments
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
@@ -62,8 +62,8 @@ export function CreateScheduledPaymentDialog({
         setStartDate(duplicateFrom.start_date || "")
         setEndDate(duplicateFrom.end_date || "")
         setNotes(duplicateFrom.notes || "")
-      } else {
-        // Pre-fill dates from contract
+      } else if (contract) {
+        // Pre-fill dates from contract (if contract exists)
         setStartDate(contract.effective_date || "")
         setEndDate(contract.expiration_date || "")
       }
@@ -91,8 +91,8 @@ export function CreateScheduledPaymentDialog({
     setPaymentAmount("")
     setFrequency("monthly")
     setPaymentDay("1")
-    setStartDate(contract.effective_date || "")
-    setEndDate(contract.expiration_date || "")
+    setStartDate(contract?.effective_date || "")
+    setEndDate(contract?.expiration_date || "")
     setNotes("")
     setError(null)
   }
@@ -142,12 +142,12 @@ export function CreateScheduledPaymentDialog({
     try {
       const body = {
         entity_id: currentEntity.id,
-        contract_id: contract.contract_id,
+        contract_id: contract?.contract_id || undefined,
         payment_type: paymentType.trim(),
         category_id: categoryId,
-        contract_name: contract.contract_name,
-        contract_type: contract.contract_type,
-        payee_name: contract.counterparty,
+        contract_name: contract?.contract_name || undefined,
+        contract_type: contract?.contract_type || undefined,
+        payee_name: contract?.counterparty || undefined,
         payment_amount: parseFloat(paymentAmount),
         schedule_type: "recurring",
         frequency: frequency,
@@ -185,12 +185,19 @@ export function CreateScheduledPaymentDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {duplicateFrom ? "Duplicate Payment Schedule" : "Add Payment Schedule"}
+            {duplicateFrom
+              ? "Duplicate Payment Schedule"
+              : contract
+                ? "Add Payment Schedule"
+                : "Add Standalone Payment"
+            }
           </DialogTitle>
           <DialogDescription>
             {duplicateFrom
-              ? `Creating a copy of "${duplicateFrom.payment_type}" for ${contract.contract_name}`
-              : `Create a payment schedule for ${contract.contract_name}`
+              ? `Creating a copy of "${duplicateFrom.payment_type}"${contract ? ` for ${contract.contract_name}` : ""}`
+              : contract
+                ? `Create a payment schedule for ${contract.contract_name}`
+                : "Create a recurring payment not linked to a contract"
             }
           </DialogDescription>
         </DialogHeader>
@@ -203,11 +210,13 @@ export function CreateScheduledPaymentDialog({
             </div>
           )}
 
-          {/* Contract Info (read-only display) */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <p className="text-sm font-medium text-blue-900">Contract: {contract.contract_name}</p>
-            <p className="text-sm text-blue-800">Counterparty: {contract.counterparty}</p>
-          </div>
+          {/* Contract Info (read-only display) - Only show if linked to contract */}
+          {contract && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm font-medium text-blue-900">Contract: {contract.contract_name}</p>
+              <p className="text-sm text-blue-800">Counterparty: {contract.counterparty}</p>
+            </div>
+          )}
 
           {/* Transaction Type */}
           <div className="space-y-2">

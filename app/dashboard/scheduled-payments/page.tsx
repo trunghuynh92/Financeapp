@@ -22,7 +22,7 @@ import { ScheduledPaymentOverview, ScheduledPaymentSummary, ContractType } from 
 import { Category } from "@/types/main-transaction"
 import { useEntity } from "@/contexts/EntityContext"
 import { formatCurrency } from "@/lib/account-utils"
-import { CreateScheduledPaymentDialog } from "@/components/scheduled-payments/CreateScheduledPaymentDialog"
+import { CreateScheduledPaymentDialog } from "@/components/contracts/CreateScheduledPaymentDialog"
 import { ScheduledPaymentList } from "@/components/scheduled-payments/ScheduledPaymentList"
 import { PaymentTimeline } from "@/components/scheduled-payments/PaymentTimeline"
 
@@ -388,6 +388,7 @@ export default function ScheduledPaymentsPage() {
 
       {/* Create/Edit Dialog */}
       <CreateScheduledPaymentDialog
+        contract={null}
         open={createDialogOpen}
         onOpenChange={(open) => {
           setCreateDialogOpen(open)
@@ -396,8 +397,7 @@ export default function ScheduledPaymentsPage() {
           }
         }}
         onSuccess={fetchPayments}
-        categories={categories}
-        editingPayment={editingPayment}
+        duplicateFrom={editingPayment}
       />
     </div>
   )
