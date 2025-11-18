@@ -146,12 +146,12 @@ export default function ScheduledPaymentsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Scheduled Payments</h1>
           <p className="text-muted-foreground">
-            Track contractual payment obligations
+            Track payment obligations (contract-based and standalone)
           </p>
         </div>
         <Button onClick={() => setCreateDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
-          Create Contract
+          Add Standalone Payment
         </Button>
       </div>
 
