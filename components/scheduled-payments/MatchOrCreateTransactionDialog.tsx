@@ -67,6 +67,17 @@ export function MatchOrCreateTransactionDialog({
 
     setLoading(true)
     try {
+      // Fetch all transaction IDs already used by payment instances
+      const usedTransactionsResponse = await fetch(
+        `/api/scheduled-payment-instances/used-transactions?entity_id=${currentEntity.id}`
+      )
+
+      let usedTransactionIds: number[] = []
+      if (usedTransactionsResponse.ok) {
+        const usedData = await usedTransactionsResponse.json()
+        usedTransactionIds = usedData.transaction_ids || []
+      }
+
       // Fetch unmatched transactions for the same category
       const response = await fetch(
         `/api/main-transactions?entity_id=${currentEntity.id}&category_id=${scheduledPayment.category_id}&limit=50&sort_field=transaction_date&sort_direction=desc&account_types=bank,cash`
@@ -76,10 +87,11 @@ export function MatchOrCreateTransactionDialog({
 
       const data = await response.json()
 
-      // Filter to unmatched debit transactions only
+      // Filter to unmatched debit transactions only (not used by transfers OR payment instances)
       const filtered = (data.data || []).filter((t: MainTransactionDetails) =>
         t.transaction_direction === 'debit' &&
-        !t.transfer_matched_transaction_id // Unmatched only
+        !t.transfer_matched_transaction_id && // Not matched to a transfer
+        !usedTransactionIds.includes(t.main_transaction_id) // Not matched to a payment instance
       )
 
       // Sort by best match (amount + date proximity)

@@ -14,7 +14,9 @@ import {
   Clock,
   Loader2,
   FileText,
-  TrendingUp
+  TrendingUp,
+  LayoutGrid,
+  List
 } from "lucide-react"
 import { ScheduledPaymentOverview, ScheduledPaymentSummary, ContractType } from "@/types/scheduled-payment"
 import { Category } from "@/types/main-transaction"
@@ -22,6 +24,7 @@ import { useEntity } from "@/contexts/EntityContext"
 import { formatCurrency } from "@/lib/account-utils"
 import { CreateScheduledPaymentDialog } from "@/components/scheduled-payments/CreateScheduledPaymentDialog"
 import { ScheduledPaymentList } from "@/components/scheduled-payments/ScheduledPaymentList"
+import { PaymentTimeline } from "@/components/scheduled-payments/PaymentTimeline"
 
 export default function ScheduledPaymentsPage() {
   const { currentEntity } = useEntity()
@@ -31,6 +34,9 @@ export default function ScheduledPaymentsPage() {
   const [summary, setSummary] = useState<ScheduledPaymentSummary | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+
+  // View state
+  const [viewMode, setViewMode] = useState<'cards' | 'timeline'>('timeline')
 
   // Filter state
   const [selectedContractType, setSelectedContractType] = useState<string>("all")
@@ -230,7 +236,27 @@ export default function ScheduledPaymentsPage() {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Filters</CardTitle>
+            <div className="flex gap-2">
+              <Button
+                variant={viewMode === 'cards' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('cards')}
+              >
+                <LayoutGrid className="h-4 w-4 mr-2" />
+                Cards
+              </Button>
+              <Button
+                variant={viewMode === 'timeline' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('timeline')}
+              >
+                <List className="h-4 w-4 mr-2" />
+                Timeline
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -286,41 +312,79 @@ export default function ScheduledPaymentsPage() {
         </CardContent>
       </Card>
 
-      {/* Payment List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Contracts ({filteredPayments.length})</CardTitle>
-          <CardDescription>
-            Manage your contractual payment obligations
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
-              <p className="text-muted-foreground mt-2">Loading scheduled payments...</p>
-            </div>
-          ) : filteredPayments.length === 0 ? (
-            <div className="text-center py-12">
-              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No scheduled payments found</p>
-              <Button onClick={() => setCreateDialogOpen(true)} className="mt-4">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Your First Contract
-              </Button>
-            </div>
-          ) : (
-            <ScheduledPaymentList
-              payments={filteredPayments}
-              onEdit={(payment) => {
-                setEditingPayment(payment)
-                setCreateDialogOpen(true)
-              }}
-              onDelete={handleDeletePayment}
-            />
-          )}
-        </CardContent>
-      </Card>
+      {/* Payment View */}
+      {viewMode === 'timeline' ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Timeline ({filteredPayments.length})</CardTitle>
+            <CardDescription>
+              Visualize payments on a timeline with overlap detection
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+                <p className="text-muted-foreground mt-2">Loading payment timeline...</p>
+              </div>
+            ) : filteredPayments.length === 0 ? (
+              <div className="text-center py-12">
+                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No scheduled payments found</p>
+                <Button onClick={() => setCreateDialogOpen(true)} className="mt-4">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Your First Contract
+                </Button>
+              </div>
+            ) : (
+              <PaymentTimeline
+                payments={filteredPayments}
+                onEdit={(payment) => {
+                  setEditingPayment(payment)
+                  setCreateDialogOpen(true)
+                }}
+                onDelete={handleDeletePayment}
+              />
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Contracts ({filteredPayments.length})</CardTitle>
+            <CardDescription>
+              Manage your contractual payment obligations
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+                <p className="text-muted-foreground mt-2">Loading scheduled payments...</p>
+              </div>
+            ) : filteredPayments.length === 0 ? (
+              <div className="text-center py-12">
+                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No scheduled payments found</p>
+                <Button onClick={() => setCreateDialogOpen(true)} className="mt-4">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Your First Contract
+                </Button>
+              </div>
+            ) : (
+              <ScheduledPaymentList
+                payments={filteredPayments}
+                onEdit={(payment) => {
+                  setEditingPayment(payment)
+                  setCreateDialogOpen(true)
+                }}
+                onDelete={handleDeletePayment}
+                onRefresh={fetchPayments}
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Create/Edit Dialog */}
       <CreateScheduledPaymentDialog

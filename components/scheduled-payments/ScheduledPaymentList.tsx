@@ -33,9 +33,10 @@ interface ScheduledPaymentListProps {
   payments: ScheduledPaymentOverview[]
   onEdit: (payment: ScheduledPaymentOverview) => void
   onDelete: (paymentId: number, contractName: string) => void
+  onRefresh?: () => void
 }
 
-export function ScheduledPaymentList({ payments, onEdit, onDelete }: ScheduledPaymentListProps) {
+export function ScheduledPaymentList({ payments, onEdit, onDelete, onRefresh }: ScheduledPaymentListProps) {
   const [expandedPaymentId, setExpandedPaymentId] = useState<number | null>(null)
 
   const toggleExpand = (paymentId: number) => {
@@ -254,7 +255,10 @@ export function ScheduledPaymentList({ payments, onEdit, onDelete }: ScheduledPa
               {/* Payment Instances Timeline (Expanded) */}
               {isExpanded && (
                 <div className="pt-4 border-t">
-                  <PaymentInstanceList scheduledPaymentId={payment.scheduled_payment_id} />
+                  <PaymentInstanceList
+                    scheduledPaymentId={payment.scheduled_payment_id}
+                    onUpdate={onRefresh}
+                  />
                 </div>
               )}
             </CardContent>

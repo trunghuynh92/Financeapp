@@ -10,7 +10,8 @@ import {
   AlertCircle,
   XCircle,
   Loader2,
-  DollarSign
+  DollarSign,
+  Undo2
 } from "lucide-react"
 import { ScheduledPaymentInstance } from "@/types/scheduled-payment"
 import { formatCurrency } from "@/lib/account-utils"
@@ -19,9 +20,10 @@ import { MatchOrCreateTransactionDialog } from "./MatchOrCreateTransactionDialog
 
 interface PaymentInstanceListProps {
   scheduledPaymentId: number
+  onUpdate?: () => void
 }
 
-export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListProps) {
+export function PaymentInstanceList({ scheduledPaymentId, onUpdate }: PaymentInstanceListProps) {
   const [instances, setInstances] = useState<ScheduledPaymentInstance[]>([])
   const [scheduledPayment, setScheduledPayment] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -44,6 +46,29 @@ export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListP
       console.error('Error fetching payment instances:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleUnmark = async (instanceId: number) => {
+    if (!confirm('Are you sure you want to unmark this payment? This will set it back to pending or overdue.')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/scheduled-payment-instances/${instanceId}/unmark`, {
+        method: 'POST'
+      })
+
+      if (response.ok) {
+        fetchInstances() // Refresh the list
+        onUpdate?.() // Notify parent to refresh summary
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to unmark payment')
+      }
+    } catch (error) {
+      console.error('Error unmarking payment:', error)
+      alert('Failed to unmark payment')
     }
   }
 
@@ -74,7 +99,7 @@ export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListP
   }
 
   const isInstanceOverdue = (instance: ScheduledPaymentInstance) => {
-    return instance.status === "pending" && isPast(new Date(instance.due_date))
+    return instance.status === "overdue" || (instance.status === "pending" && isPast(new Date(instance.due_date)))
   }
 
   if (loading) {
@@ -128,12 +153,13 @@ export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListP
                         <p className="font-medium">
                           Due: {format(new Date(instance.due_date), "MMMM d, yyyy")}
                         </p>
-                        <Badge className={getStatusBadgeColor(instance.status)}>
-                          {instance.status}
-                        </Badge>
-                        {isOverdue && (
+                        {isOverdue ? (
                           <Badge className="bg-red-100 text-red-800">
-                            Overdue
+                            overdue
+                          </Badge>
+                        ) : (
+                          <Badge className={getStatusBadgeColor(instance.status)}>
+                            {instance.status}
                           </Badge>
                         )}
                       </div>
@@ -159,22 +185,33 @@ export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListP
                   {/* Payment Details (if paid) */}
                   {instance.status === "paid" && instance.paid_date && (
                     <div className="bg-green-50 border border-green-200 rounded p-3 mt-2">
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">Paid Date:</p>
-                          <p className="font-medium">
-                            {format(new Date(instance.paid_date), "MMM d, yyyy")}
-                          </p>
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="grid grid-cols-2 gap-2 text-sm flex-1">
+                          <div>
+                            <p className="text-muted-foreground">Paid Date:</p>
+                            <p className="font-medium">
+                              {format(new Date(instance.paid_date), "MMM d, yyyy")}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Paid Amount:</p>
+                            <p className="font-medium">
+                              {formatCurrency(instance.paid_amount || instance.amount, 'VND')}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-muted-foreground">Paid Amount:</p>
-                          <p className="font-medium">
-                            {formatCurrency(instance.paid_amount || instance.amount, 'VND')}
-                          </p>
-                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleUnmark(instance.instance_id)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Undo2 className="h-4 w-4 mr-1" />
+                          Unmark
+                        </Button>
                       </div>
                       {instance.transaction_id && (
-                        <p className="text-xs text-muted-foreground mt-2">
+                        <p className="text-xs text-muted-foreground">
                           Transaction ID: #{instance.transaction_id}
                         </p>
                       )}
@@ -207,6 +244,7 @@ export function PaymentInstanceList({ scheduledPaymentId }: PaymentInstanceListP
           onSuccess={() => {
             fetchInstances()
             setMarkingPaidInstance(null)
+            onUpdate?.() // Notify parent to refresh summary
           }}
         />
       )}
