@@ -203,7 +203,7 @@ export function CreateScheduledPaymentDialog({
   }
 
   // Get expense categories only
-  const expenseCategories = categories.filter(c => c.category_type === "expense")
+  const expenseCategories = categories.filter(c => c.transaction_types?.type_name === "expense")
 
   // If no expense categories, show all categories as fallback
   const availableCategories = expenseCategories.length > 0 ? expenseCategories : categories

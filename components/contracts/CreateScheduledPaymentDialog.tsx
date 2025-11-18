@@ -51,8 +51,8 @@ export function CreateScheduledPaymentDialog({
       if (duplicateFrom) {
         // Try to infer transaction type from category
         const category = categories.find(c => c.category_id === duplicateFrom.category_id)
-        if (category?.category_type) {
-          setTransactionType(category.category_type as "income" | "expense")
+        if (category?.transaction_types?.type_name) {
+          setTransactionType(category.transaction_types.type_name as "income" | "expense")
         }
         setPaymentType(duplicateFrom.payment_type || "")
         setCategoryId(duplicateFrom.category_id || null)
@@ -98,7 +98,9 @@ export function CreateScheduledPaymentDialog({
   }
 
   // Filter categories based on transaction type
-  const filteredCategories = categories.filter(c => c.category_type === transactionType)
+  const filteredCategories = categories.filter(c =>
+    c.transaction_types?.type_name === transactionType
+  )
 
   // If no categories of selected type, show all as fallback
   const availableCategories = filteredCategories.length > 0 ? filteredCategories : categories

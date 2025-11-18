@@ -23,7 +23,13 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('categories')
-      .select('*')
+      .select(`
+        *,
+        transaction_types!categories_transaction_type_id_fkey (
+          type_name,
+          type_code
+        )
+      `)
       .order('display_order', { ascending: true })
 
     if (transactionTypeId) {
