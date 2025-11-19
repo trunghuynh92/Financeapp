@@ -117,6 +117,8 @@ export interface ScheduledPaymentOverview extends ScheduledPayment {
 
 export interface CreateScheduledPaymentRequest {
   entity_id: string
+  contract_id?: number  // Link to contract (optional for standalone schedules)
+  payment_type?: string  // e.g., 'Year 1', 'Year 2', 'Rent', 'Utilities'
   category_id: number
   contract_name: string
   contract_type: ContractType

@@ -685,6 +685,39 @@ export async function POST(request: NextRequest) {
 
         console.log('✅ DEBT_TAKE auto-processing complete')
       }
+
+      // Handle DEBT_PAY (debt payback) special logic
+      // When user creates DEBT_PAY transaction with drawdown_id:
+      // - Auto-match the transaction to the specified drawdown
+      if (transactionType?.type_code === 'DEBT_PAY' && body.drawdown_id) {
+        console.log('🔄 Auto-matching DEBT_PAY transaction to drawdown...')
+
+        try {
+          const matchResponse = await fetch(`${request.nextUrl.origin}/api/debt/match-payback`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cookie': request.headers.get('cookie') || '',
+            },
+            body: JSON.stringify({
+              payback_transaction_id: mainTransaction.main_transaction_id,
+              drawdown_id: body.drawdown_id,
+            }),
+          })
+
+          if (matchResponse.ok) {
+            const matchData = await matchResponse.json()
+            console.log('✓ Auto-matched debt payback to drawdown:', matchData)
+          } else {
+            const errorData = await matchResponse.json()
+            console.warn('Failed to auto-match debt payback:', errorData.error)
+          }
+        } catch (matchError) {
+          console.error('Error auto-matching debt payback:', matchError)
+        }
+
+        console.log('✅ DEBT_PAY auto-processing complete')
+      }
     }
 
     // Fetch the final main transaction with all details

@@ -494,7 +494,7 @@ SELECT
   -- Days until expiration
   CASE
     WHEN c.expiration_date IS NOT NULL THEN
-      EXTRACT(DAY FROM (c.expiration_date - CURRENT_DATE))
+      (c.expiration_date - CURRENT_DATE)
     ELSE NULL
   END as days_until_expiration,
 

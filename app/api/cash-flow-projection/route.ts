@@ -48,13 +48,15 @@ export async function GET(request: NextRequest) {
       .from('scheduled_payment_instances')
       .select(`
         *,
-        scheduled_payments:scheduled_payment_id (
+        scheduled_payments:scheduled_payment_id!inner (
           contract_name,
           payment_type,
           payee_name,
-          category_id
+          category_id,
+          entity_id
         )
       `)
+      .eq('scheduled_payments.entity_id', entityId)
       .in('status', ['pending', 'overdue']) // Only include unpaid instances
       .gte('due_date', format(startDate, 'yyyy-MM-dd'))
       .lte('due_date', format(endDate, 'yyyy-MM-dd'))

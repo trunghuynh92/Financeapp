@@ -356,6 +356,7 @@ export async function POST(request: NextRequest) {
         .update({
           transaction_type_id: invContribType.transaction_type_id,
           description: description,
+          investment_contribution_id: contribution.contribution_id,
         })
         .eq('raw_transaction_id', raw_transaction_id_1)
 
@@ -397,6 +398,7 @@ export async function POST(request: NextRequest) {
         .from('main_transaction')
         .update({
           transaction_type_id: invContribType.transaction_type_id,
+          investment_contribution_id: contribution.contribution_id,
         })
         .eq('main_transaction_id', body.existing_source_transaction_id)
 
@@ -456,6 +458,7 @@ export async function POST(request: NextRequest) {
       .update({
         transaction_type_id: invContribType.transaction_type_id, // Reuse INV_CONTRIB type
         description: description,
+        investment_contribution_id: contribution.contribution_id,
       })
       .eq('raw_transaction_id', raw_transaction_id_2)
 

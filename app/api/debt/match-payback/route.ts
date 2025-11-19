@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
     const willBeOverpaid = paybackTx.amount > drawdown.remaining_balance
     const overpaymentAmount = willBeOverpaid ? paybackTx.amount - drawdown.remaining_balance : 0
 
-    // Get DEBT_PAY transaction type ID
+    // Get DEBT_PAY transaction type ID (for the credit to credit line account)
     const { data: debtPayType } = await supabase
       .from('transaction_types')
       .select('transaction_type_id')
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create original_transaction for the credit line account
+    // Create original_transaction for the credit line account (DEBT_PAY credit)
     // Generate a unique raw_transaction_id
     const rawTxId = `DEBT_PAY_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update the auto-created main_transaction to DEBT_PAY
+    // Update the auto-created main_transaction to DEBT_PAY (credit to credit line)
     const { data: debtPayTx, error: debtPayTxError } = await supabase
       .from('main_transaction')
       .update({
@@ -279,15 +279,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Manually recalculate the drawdown balance
-    // (The trigger should do this, but we'll do it explicitly to be sure)
-    const { data: settledAmount } = await supabase.rpc('get_drawdown_settled_amount', {
-      p_drawdown_id: drawdown_id
-    })
+    // Manually recalculate the drawdown balance using DEBT_PAY transactions (migration 043 updated system)
+    // Only count CREDIT transactions (money going TO the credit line, not FROM the bank)
+    const { data: paidTransactions } = await supabase
+      .from('main_transaction')
+      .select('amount')
+      .eq('drawdown_id', drawdown_id)
+      .eq('transaction_type_id', debtPayType.transaction_type_id)
+      .eq('transaction_direction', 'credit') // Only count credits to credit line
+      .not('transfer_matched_transaction_id', 'is', null)
 
-    const newRemainingBalance = Math.max(drawdown.original_amount - (settledAmount || 0), 0)
-    const isNowOverpaid = (settledAmount || 0) > drawdown.original_amount
-    const newStatus = (settledAmount || 0) >= drawdown.original_amount ? 'settled' :
+    const settledAmount = paidTransactions?.reduce((sum, tx) => sum + (tx.amount || 0), 0) || 0
+
+    const newRemainingBalance = Math.max(drawdown.original_amount - settledAmount, 0)
+    const isNowOverpaid = settledAmount > drawdown.original_amount
+    const newStatus = settledAmount >= drawdown.original_amount ? 'settled' :
                      (drawdown.due_date && new Date() > new Date(drawdown.due_date)) ? 'overdue' : 'active'
 
     await supabase

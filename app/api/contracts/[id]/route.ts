@@ -36,15 +36,31 @@ export async function GET(
     }
 
     // Fetch payment schedules for this contract
+    console.log('Fetching schedules for contract_id:', contractId)
     const { data: schedules, error: schedulesError } = await supabase
-      .from('scheduled_payment_overview')
-      .select('*')
+      .from('scheduled_payments')
+      .select(`
+        *,
+        categories:category_id (
+          category_name
+        )
+      `)
       .eq('contract_id', contractId)
-      .order('created_at', { ascending: false })
+      .eq('is_active', true)
+      .order('start_date', { ascending: true })
 
+    console.log('Schedules found:', schedules?.length || 0, 'schedules')
     if (schedulesError) {
       console.error('Error fetching payment schedules:', schedulesError)
+    } else {
+      console.log('Schedule data:', JSON.stringify(schedules, null, 2))
     }
+
+    // Transform schedules to include category_name at top level
+    const transformedSchedules = schedules?.map(schedule => ({
+      ...schedule,
+      category_name: schedule.categories?.category_name
+    })) || []
 
     // Fetch amendments for this contract
     const { data: amendments, error: amendmentsError } = await supabase
@@ -60,7 +76,7 @@ export async function GET(
     return NextResponse.json({
       data: {
         ...contract,
-        payment_schedules: schedules || [],
+        payment_schedules: transformedSchedules,
         amendments: amendments || []
       }
     })

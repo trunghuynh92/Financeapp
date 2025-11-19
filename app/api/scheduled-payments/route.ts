@@ -63,9 +63,18 @@ export async function GET(request: NextRequest) {
     if (includeSummary && payments) {
       const activePayments = payments.filter(p => p.is_active && p.status === 'active')
 
-      // Calculate monthly obligation (sum of monthly recurring payments)
+      // Calculate monthly obligation (sum of monthly recurring payments currently in effect)
+      const today = new Date()
       const monthlyObligation = activePayments
-        .filter(p => p.frequency === 'monthly')
+        .filter(p => {
+          if (p.frequency !== 'monthly') return false
+
+          // Only count schedules where today falls within the date range
+          const startDate = new Date(p.start_date)
+          const endDate = p.end_date ? new Date(p.end_date) : null
+
+          return startDate <= today && (!endDate || endDate >= today)
+        })
         .reduce((sum, p) => sum + parseFloat(p.payment_amount.toString()), 0)
 
       summary = {
@@ -161,6 +170,8 @@ export async function POST(request: NextRequest) {
       .from('scheduled_payments')
       .insert([{
         entity_id: body.entity_id,
+        contract_id: body.contract_id || null,
+        payment_type: body.payment_type || null,
         category_id: body.category_id,
         contract_name: body.contract_name,
         contract_type: body.contract_type,

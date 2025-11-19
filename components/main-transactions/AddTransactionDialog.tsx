@@ -72,6 +72,8 @@ export function AddTransactionDialog({
     partner_id: "",
     loan_disbursement_id: "",
     debt_account_id: "",
+    drawdown_id: "",
+    investment_account_id: "",
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -81,7 +83,9 @@ export function AddTransactionDialog({
   const [isCreatePartnerOpen, setIsCreatePartnerOpen] = useState(false)
   const [loanDisbursements, setLoanDisbursements] = useState<any[]>([])
   const [debtAccounts, setDebtAccounts] = useState<Account[]>([])
+  const [investmentAccounts, setInvestmentAccounts] = useState<Account[]>([])
   const [isCreateAccountOpen, setIsCreateAccountOpen] = useState(false)
+  const [activeDrawdowns, setActiveDrawdowns] = useState<any[]>([])
 
   useEffect(() => {
     if (open) {
@@ -103,17 +107,22 @@ export function AddTransactionDialog({
         partner_id: "",
         loan_disbursement_id: "",
         debt_account_id: "",
+        drawdown_id: "",
+        investment_account_id: "",
       })
       setErrors({})
       setSelectedAccount(null)
       setTransactionDirection("debit")
       setLoanDisbursements([])
       setDebtAccounts([])
+      setActiveDrawdowns([])
+      setInvestmentAccounts([])
 
       // Fetch partners for loan operations
       if (currentEntity) {
         fetchPartners()
         fetchDebtAccounts()
+        fetchInvestmentAccounts()
       }
     }
   }, [open, currentEntity])
@@ -147,6 +156,24 @@ export function AddTransactionDialog({
       }
     } catch (error) {
       console.error('Error fetching debt accounts:', error)
+    }
+  }
+
+  async function fetchInvestmentAccounts() {
+    if (!currentEntity) return
+
+    try {
+      const response = await fetch(`/api/accounts?entity_id=${currentEntity.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        // Filter to only investment accounts
+        const investAccs = (data.data || []).filter((acc: Account) =>
+          acc.account_type === 'investment'
+        )
+        setInvestmentAccounts(investAccs)
+      }
+    } catch (error) {
+      console.error('Error fetching investment accounts:', error)
     }
   }
 
@@ -191,6 +218,25 @@ export function AddTransactionDialog({
       setLoanDisbursements(allLoans)
     } catch (error) {
       console.error('Error fetching loan disbursements:', error)
+    }
+  }
+
+  async function fetchActiveDrawdowns() {
+    if (!formData.debt_account_id) return
+
+    try {
+      const response = await fetch(`/api/debt/drawdowns?account_id=${formData.debt_account_id}`)
+      if (response.ok) {
+        const data = await response.json()
+        // Filter to only active drawdowns with remaining balance
+        const active = (data.data || []).filter(
+          (drawdown: any) => drawdown.status === 'active' && drawdown.remaining_balance > 0
+        )
+        setActiveDrawdowns(active)
+      }
+    } catch (error) {
+      console.error('Error fetching drawdowns:', error)
+      setActiveDrawdowns([])
     }
   }
 
@@ -251,6 +297,15 @@ export function AddTransactionDialog({
   // Check if this is debt taken (requires debt account selection)
   const isDebtTake = selectedTransactionType?.type_code === 'DEBT_TAKE'
 
+  // Check if this is debt payback (requires debt account and drawdown selection)
+  const isDebtPayback = selectedTransactionType?.type_code === 'DEBT_PAY'
+
+  // Check if this is investment contribution (requires investment account selection)
+  const isInvestmentContribution = selectedTransactionType?.type_code === 'INV_CONTRIB'
+
+  // Check if this is investment withdrawal (requires investment account selection)
+  const isInvestmentWithdrawal = selectedTransactionType?.type_code === 'INV_WITHDRAW'
+
   // Fetch loan disbursements when partner is selected (for LOAN_COLLECT)
   useEffect(() => {
     if (isLoanCollection && formData.partner_id && currentEntity) {
@@ -262,6 +317,18 @@ export function AddTransactionDialog({
       }
     }
   }, [formData.partner_id, isLoanCollection, currentEntity])
+
+  // Fetch active drawdowns when debt account is selected (for DEBT_PAY)
+  useEffect(() => {
+    if (isDebtPayback && formData.debt_account_id) {
+      fetchActiveDrawdowns()
+    } else {
+      setActiveDrawdowns([])
+      if (formData.drawdown_id) {
+        setFormData(prev => ({ ...prev, drawdown_id: "" }))
+      }
+    }
+  }, [formData.debt_account_id, isDebtPayback])
 
   function validate(): boolean {
     const newErrors: Record<string, string> = {}
@@ -289,6 +356,12 @@ export function AddTransactionDialog({
     }
     if (isDebtTake && !formData.debt_account_id) {
       newErrors.debt_account_id = "Please select which credit line/term loan this drawdown is from"
+    }
+    if (isDebtPayback && !formData.debt_account_id) {
+      newErrors.debt_account_id = "Please select which credit line/term loan you're paying back"
+    }
+    if (isDebtPayback && !formData.drawdown_id) {
+      newErrors.drawdown_id = "Please select which drawdown you're paying back"
     }
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
       newErrors.amount = "Amount must be greater than 0"
@@ -345,6 +418,10 @@ export function AddTransactionDialog({
 
       if (formData.debt_account_id) {
         transactionData.debt_account_id = parseInt(formData.debt_account_id)
+      }
+
+      if (formData.drawdown_id) {
+        transactionData.drawdown_id = parseInt(formData.drawdown_id)
       }
 
       const createResponse = await fetch('/api/main-transactions/create', {
@@ -607,6 +684,80 @@ export function AddTransactionDialog({
             </div>
           )}
 
+          {/* Debt Account & Drawdown Selection (for Debt Payback) */}
+          {isDebtPayback && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="debt_account_id_payback">
+                  Which Credit Line/Term Loan? <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={formData.debt_account_id || "none"}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, debt_account_id: value === "none" ? "" : value, drawdown_id: "" })
+                  }
+                >
+                  <SelectTrigger id="debt_account_id_payback" className={errors.debt_account_id ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Select debt account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select an account</SelectItem>
+                    {debtAccounts.map((account) => (
+                      <SelectItem key={account.account_id} value={account.account_id.toString()}>
+                        {account.account_name} ({account.account_type === 'credit_line' ? 'Credit Line' : 'Term Loan'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.debt_account_id && (
+                  <p className="text-sm text-red-500">{errors.debt_account_id}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Select which credit line or term loan you're paying back
+                </p>
+              </div>
+
+              {formData.debt_account_id && activeDrawdowns.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="drawdown_id">
+                    Which Drawdown? <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={formData.drawdown_id || "none"}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, drawdown_id: value === "none" ? "" : value })
+                    }
+                  >
+                    <SelectTrigger id="drawdown_id" className={errors.drawdown_id ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Select drawdown" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select a drawdown</SelectItem>
+                      {activeDrawdowns.map((drawdown: any) => (
+                        <SelectItem key={drawdown.drawdown_id} value={drawdown.drawdown_id.toString()}>
+                          {drawdown.drawdown_reference} - {parseFloat(drawdown.remaining_balance).toLocaleString()}₫ remaining
+                          {drawdown.due_date && ` (Due: ${new Date(drawdown.due_date).toLocaleDateString()})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.drawdown_id && (
+                    <p className="text-sm text-red-500">{errors.drawdown_id}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Select which specific drawdown this payment is for
+                  </p>
+                </div>
+              )}
+
+              {formData.debt_account_id && activeDrawdowns.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No active drawdowns found for this account.
+                </p>
+              )}
+            </>
+          )}
+
           {/* Borrower & Loan Selection (for Loan Collection) */}
           {isLoanCollection && (
             <>
@@ -689,6 +840,46 @@ export function AddTransactionDialog({
                 </div>
               )}
             </>
+          )}
+
+          {/* Investment Account Selection (for INV_CONTRIB and INV_WITHDRAW) */}
+          {(isInvestmentContribution || isInvestmentWithdrawal) && (
+            <div className="space-y-2">
+              <Label htmlFor="investment_account_id">
+                Investment Account <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={formData.investment_account_id || "none"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, investment_account_id: value === "none" ? "" : value })
+                }
+              >
+                <SelectTrigger id="investment_account_id" className={errors.investment_account_id ? "border-red-500" : ""}>
+                  <SelectValue placeholder="Select investment account" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Select an investment account</SelectItem>
+                  {investmentAccounts.map((account) => (
+                    <SelectItem key={account.account_id} value={account.account_id.toString()}>
+                      {account.account_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.investment_account_id && (
+                <p className="text-sm text-red-500">{errors.investment_account_id}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {isInvestmentContribution
+                  ? "Select which investment account is receiving the funds"
+                  : "Select which investment account is being withdrawn from"}
+              </p>
+              {investmentAccounts.length === 0 && (
+                <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                  No investment accounts found. Create one first or the system will auto-create one.
+                </p>
+              )}
+            </div>
           )}
 
           {/* Category */}

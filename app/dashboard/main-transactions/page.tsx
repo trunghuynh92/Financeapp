@@ -1758,6 +1758,50 @@ export default function MainTransactionsPage() {
                                     Unmatched Collection
                                   </Badge>
                                 )}
+                                {/* Matched investment contribution */}
+                                {tx.investment_contribution_id && tx.transaction_type_code === 'INV_CONTRIB' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-green-100 text-green-800 border-green-200"
+                                    title="Matched to investment contribution"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Matched Investment
+                                  </Badge>
+                                )}
+                                {/* Unmatched investment contribution */}
+                                {!tx.investment_contribution_id && tx.transaction_type_code === 'INV_CONTRIB' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-yellow-100 text-yellow-800 border-yellow-200"
+                                    title="Investment contribution not linked"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Unmatched Investment
+                                  </Badge>
+                                )}
+                                {/* Matched investment withdrawal */}
+                                {tx.investment_contribution_id && tx.transaction_type_code === 'INV_WITHDRAW' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-green-100 text-green-800 border-green-200"
+                                    title="Matched to investment withdrawal"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Matched Withdrawal
+                                  </Badge>
+                                )}
+                                {/* Unmatched investment withdrawal */}
+                                {!tx.investment_contribution_id && tx.transaction_type_code === 'INV_WITHDRAW' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-yellow-100 text-yellow-800 border-yellow-200"
+                                    title="Investment withdrawal not linked"
+                                  >
+                                    <Link2 className="h-3 w-3 mr-1" />
+                                    Unmatched Withdrawal
+                                  </Badge>
+                                )}
                                 {/* Flagged transaction */}
                                 {tx.is_flagged && (
                                   <TooltipProvider>

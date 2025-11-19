@@ -77,6 +77,7 @@ export interface MainTransaction {
   transfer_matched_transaction_id: number | null
   drawdown_id: number | null
   loan_disbursement_id: number | null
+  investment_contribution_id: number | null
   is_flagged: boolean
   flagged_at: string | null
   flagged_by: string | null
