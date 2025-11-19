@@ -14,6 +14,7 @@ DECLARE
     v_disbursement_id INTEGER;
     v_paired_transaction_id INTEGER;
     v_loan_account_id INTEGER;
+    v_raw_transaction_id VARCHAR(255);
 BEGIN
     -- Only proceed if this is an UNMATCH operation
     -- (transfer_matched_transaction_id changed from NOT NULL to NULL)
@@ -35,7 +36,21 @@ BEGIN
         -- Delete the paired transaction on the loan_receivable account
         -- This is the credit transaction that was auto-created during matching
         IF v_paired_transaction_id IS NOT NULL THEN
-            -- First delete from main_transaction
+            -- First get the raw_transaction_id
+            SELECT raw_transaction_id INTO v_raw_transaction_id
+            FROM main_transaction
+            WHERE main_transaction_id = v_paired_transaction_id
+              AND account_id = v_loan_account_id;
+
+            -- Delete from original_transaction first
+            IF v_raw_transaction_id IS NOT NULL THEN
+                DELETE FROM original_transaction
+                WHERE raw_transaction_id = v_raw_transaction_id;
+
+                RAISE NOTICE 'Deleted original_transaction: %', v_raw_transaction_id;
+            END IF;
+
+            -- Then delete from main_transaction
             DELETE FROM main_transaction
             WHERE main_transaction_id = v_paired_transaction_id
               AND account_id = v_loan_account_id;
