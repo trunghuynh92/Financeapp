@@ -10,6 +10,10 @@ import {
   DateFormat,
 } from '@/types/import'
 import { detectDateFormat, parseDate, parseAmount } from './csv-parser'
+import {
+  processWorksheetWithMergedCells,
+  analyzeMergedCells,
+} from './excel-merged-cells-handler'
 
 // ==============================================================================
 // Main XLSX Parsing Functions
@@ -46,15 +50,22 @@ export async function parseXLSXFile(file: File): Promise<ParsedCSVData> {
 
         const worksheet = workbook.Sheets[firstSheetName]
 
-        // Convert sheet to array of arrays
-        const rawData = XLSX.utils.sheet_to_json(worksheet, {
-          header: 1,  // Return array of arrays instead of objects
-          raw: false, // Use formatted text values to preserve thousand separators
-          defval: null, // Use null for empty cells
-        }) as (string | number | null)[][]
+        // Analyze merged cells for debugging
+        const mergeAnalysis = analyzeMergedCells(worksheet)
+        console.log('📊 [XLSX Parser] Merge analysis:', mergeAnalysis)
+
+        // Process worksheet with merged cells handler
+        // This will: 1) Unmerge cells, 2) Forward-fill empty cells, 3) Remove empty rows
+        const processedData = processWorksheetWithMergedCells(workbook, worksheet, {
+          autoForwardFill: true,     // Auto-detect columns that need forward-filling
+          removeEmptyRows: true,      // Remove completely empty rows
+          headerRow: 0,               // Will be refined by findHeaderRow later
+        })
+
+        console.log(`📋 [XLSX Parser] Processed data: ${processedData.length} rows`)
 
         // Parse the data similar to CSV
-        const parsed = parseXLSXData(rawData)
+        const parsed = parseXLSXData(processedData)
 
         resolve(parsed)
       } catch (error) {
@@ -116,15 +127,21 @@ function parseXLSXData(rawData: (string | number | null)[][]): ParsedCSVData {
     rows.push(row)
   }
 
+  // Remove duplicate columns (from horizontally merged header cells)
+  const { headers: dedupedHeaders, rows: dedupedRows } = removeDuplicateColumns(headers, rows)
+
+  // Remove duplicate rows (exact duplicates)
+  const uniqueRows = removeDuplicateRows(dedupedRows)
+
   const result: ParsedCSVData = {
-    headers,
-    rows,
-    totalRows: rows.length,
+    headers: dedupedHeaders,
+    rows: uniqueRows,
+    totalRows: uniqueRows.length,
     detectedHeaderRow: headerRowIndex,
   }
 
   // Auto-detect date range and ending balance (reuse CSV logic)
-  const metadata = extractStatementMetadata(rows, headers)
+  const metadata = extractStatementMetadata(uniqueRows, dedupedHeaders)
   if (metadata.startDate) result.detectedStartDate = metadata.startDate
   if (metadata.endDate) result.detectedEndDate = metadata.endDate
   if (metadata.endingBalance !== null) result.detectedEndingBalance = metadata.endingBalance
@@ -246,15 +263,172 @@ function findHeaderRow(rows: (string | number | null)[][]): number {
 
 /**
  * Clean header values (convert to strings, trim whitespace, remove newlines)
+ * Also handles duplicate headers from horizontally merged cells
  */
 function cleanHeaders(headerRow: (string | number | null)[]): string[] {
-  return headerRow.map((cell, index) => {
+  const headers: string[] = []
+  const headerCounts = new Map<string, number>()
+
+  for (let index = 0; index < headerRow.length; index++) {
+    const cell = headerRow[index]
+
+    let headerName: string
     if (cell === null || cell === undefined || String(cell).trim() === '') {
-      return `Column ${index + 1}` // Generate name for empty headers
+      headerName = `Column ${index + 1}` // Generate name for empty headers
+    } else {
+      // Remove newlines and extra spaces, then trim
+      headerName = String(cell).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim()
     }
-    // Remove newlines and extra spaces, then trim
-    return String(cell).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim()
+
+    // Handle duplicates from horizontally merged header cells
+    if (headerCounts.has(headerName)) {
+      const count = headerCounts.get(headerName)! + 1
+      headerCounts.set(headerName, count)
+      // Append suffix to make unique: "Transaction Date (2)", "Transaction Date (3)", etc.
+      headerName = `${headerName} (${count})`
+    } else {
+      headerCounts.set(headerName, 1)
+    }
+
+    headers.push(headerName)
+  }
+
+  return headers
+}
+
+/**
+ * Remove duplicate columns that result from horizontally merged header cells
+ * Keeps only the first occurrence of each duplicate column
+ */
+function removeDuplicateColumns(
+  headers: string[],
+  rows: ParsedCSVRow[]
+): { headers: string[]; rows: ParsedCSVRow[] } {
+  const columnsToKeep: number[] = []
+  const headersToKeep: string[] = []
+  const duplicatesRemoved: string[] = []
+
+  // Identify which columns to keep
+  for (let i = 0; i < headers.length; i++) {
+    const header = headers[i]
+
+    // Check if this is a duplicate header (ends with " (2)", " (3)", etc.)
+    const isDuplicate = /\s\(\d+\)$/.test(header)
+
+    if (isDuplicate) {
+      // Extract the original header name (remove the "(2)" suffix)
+      const originalHeader = header.replace(/\s\(\d+\)$/, '')
+
+      console.log(`🔍 [Duplicate Check] Header: "${header}" → Original: "${originalHeader}"`)
+
+      // Check if the original header exists and if data is identical
+      const originalIndex = headersToKeep.indexOf(originalHeader)
+
+      console.log(`  Original header "${originalHeader}" ${originalIndex !== -1 ? 'FOUND' : 'NOT FOUND'} in headersToKeep`)
+
+      if (originalIndex !== -1) {
+        // Check if all data in this column matches the original
+        // Skip footer/summary rows (rows with keywords like "Tổng", "Total", "Chứng từ")
+        const footerKeywords = ['tổng phát sinh', 'total', 'chứng từ này', 'this document', 'automatically exported']
+
+        let mismatchCount = 0
+        const allRowsMatch = rows.every((row, rowIndex) => {
+          // Check if this is a footer/summary row
+          const isFooterRow = Object.values(row).some(val => {
+            if (!val) return false
+            const str = String(val).toLowerCase()
+            return footerKeywords.some(keyword => str.includes(keyword))
+          })
+
+          // Skip footer rows in comparison
+          if (isFooterRow) {
+            return true // Don't count this row
+          }
+
+          const originalValue = row[originalHeader]
+          const duplicateValue = row[header]
+          // Compare as strings, treating null/undefined/empty as equal
+          const origStr = originalValue === null || originalValue === undefined ? '' : String(originalValue)
+          const dupStr = duplicateValue === null || duplicateValue === undefined ? '' : String(duplicateValue)
+          const matches = origStr === dupStr
+
+          if (!matches && mismatchCount < 3) {
+            console.log(`  Row ${rowIndex}: "${originalHeader}" = "${origStr}" vs "${header}" = "${dupStr}" → MISMATCH`)
+            mismatchCount++
+          }
+
+          return matches
+        })
+
+        console.log(`  Data comparison: ${allRowsMatch ? 'ALL MATCH' : 'HAS MISMATCHES'}`)
+
+        if (allRowsMatch) {
+          // This is truly a duplicate - skip it
+          duplicatesRemoved.push(header)
+          console.log(`🗑️  Removing duplicate column: "${header}" (identical to "${originalHeader}")`)
+          continue
+        } else {
+          console.log(`  Keeping "${header}" - data differs from original`)
+        }
+      }
+    }
+
+    // Keep this column
+    columnsToKeep.push(i)
+    headersToKeep.push(header)
+  }
+
+  if (duplicatesRemoved.length > 0) {
+    console.log(`✅ Removed ${duplicatesRemoved.length} duplicate column(s) from merged headers`)
+  }
+
+  // Rebuild rows with only the kept columns
+  const newRows = rows.map(row => {
+    const newRow: ParsedCSVRow = {}
+    headersToKeep.forEach(header => {
+      newRow[header] = row[header]
+    })
+    return newRow
   })
+
+  return {
+    headers: headersToKeep,
+    rows: newRows
+  }
+}
+
+/**
+ * Remove duplicate rows (exact duplicates) from parsed data
+ * Uses JSON stringification to detect exact row matches
+ */
+function removeDuplicateRows(rows: ParsedCSVRow[]): ParsedCSVRow[] {
+  const seen = new Set<string>()
+  const uniqueRows: ParsedCSVRow[] = []
+  let duplicateCount = 0
+
+  for (const row of rows) {
+    // Create a hash of the row by sorting keys and stringifying
+    const sortedKeys = Object.keys(row).sort()
+    const rowHash = JSON.stringify(
+      sortedKeys.reduce((obj, key) => {
+        obj[key] = row[key]
+        return obj
+      }, {} as ParsedCSVRow)
+    )
+
+    if (!seen.has(rowHash)) {
+      seen.add(rowHash)
+      uniqueRows.push(row)
+    } else {
+      duplicateCount++
+    }
+  }
+
+  if (duplicateCount > 0) {
+    console.log(`🗑️  Removed ${duplicateCount} duplicate row(s) (exact matches)`)
+  }
+
+  return uniqueRows
 }
 
 /**
@@ -269,6 +443,10 @@ function extractStatementMetadata(
   endDate: string | null
   endingBalance: number | null
 } {
+  console.log('📅 [Metadata] Extracting statement metadata...')
+  console.log('📅 [Metadata] Available headers:', headers)
+  console.log('📅 [Metadata] Total rows:', rows.length)
+
   if (rows.length === 0) {
     return { startDate: null, endDate: null, endingBalance: null }
   }
@@ -297,12 +475,16 @@ function extractStatementMetadata(
     })
   }
 
+  console.log('📅 [Metadata] Date column found:', dateColumn || 'NOT FOUND')
+
   if (!dateColumn) {
     return { startDate: null, endDate: null, endingBalance: null }
   }
 
   // Collect all valid dates
   const datesWithRows: Array<{ date: Date; rowIndex: number }> = []
+  let sampleFailedDates: string[] = []
+
   rows.forEach((row, index) => {
     const dateValue = row[dateColumn]
     if (!dateValue) return
@@ -311,10 +493,20 @@ function extractStatementMetadata(
     const parsed = tryParseDate(String(dateValue))
     if (parsed) {
       datesWithRows.push({ date: parsed, rowIndex: index })
+    } else if (sampleFailedDates.length < 5) {
+      // Collect sample of failed dates for debugging
+      sampleFailedDates.push(String(dateValue))
     }
   })
 
+  if (sampleFailedDates.length > 0) {
+    console.log('📅 [Metadata] Sample of failed date values:', sampleFailedDates)
+  }
+
+  console.log(`📅 [Metadata] Parsed ${datesWithRows.length} valid dates from ${rows.length} rows`)
+
   if (datesWithRows.length === 0) {
+    console.log('📅 [Metadata] No valid dates found')
     return { startDate: null, endDate: null, endingBalance: null }
   }
 
@@ -335,6 +527,8 @@ function extractStatementMetadata(
   const startDate = formatLocalDate(earliestDateEntry.date)
   const endDate = formatLocalDate(latestDateEntry.date)
 
+  console.log(`📅 [Metadata] Date range: ${startDate} to ${endDate}`)
+
   // Find balance column
   const balanceColumn = headers.find(h => {
     const normalized = h.toLowerCase()
@@ -346,21 +540,26 @@ function extractStatementMetadata(
     )
   })
 
+  console.log('📅 [Metadata] Balance column found:', balanceColumn || 'NOT FOUND')
+
   let endingBalance: number | null = null
 
   if (balanceColumn) {
     const lastTransactionRow = rows[latestDateEntry.rowIndex]
     const balanceValue = lastTransactionRow[balanceColumn]
 
+    console.log('📅 [Metadata] Balance value from last transaction row:', balanceValue)
+
     if (balanceValue) {
-      console.log('🔍 [XLSX Debug] Raw balance value from Excel:', balanceValue)
-      console.log('🔍 [XLSX Debug] Type:', typeof balanceValue)
       endingBalance = parseAmount(balanceValue)
-      console.log('🔍 [XLSX Debug] Parsed balance:', endingBalance)
+      console.log('📅 [Metadata] Parsed ending balance:', endingBalance)
     }
   }
 
-  return { startDate, endDate, endingBalance }
+  const result = { startDate, endDate, endingBalance }
+  console.log('📅 [Metadata] Final result:', result)
+
+  return result
 }
 
 /**
@@ -368,17 +567,35 @@ function extractStatementMetadata(
  * Uses the CSV parser's date detection logic
  */
 function tryParseDate(value: string): Date | null {
+  // Strip time component if present (e.g., "17/11/2025 15:45" → "17/11/2025")
+  let dateOnly = value.trim()
+  const spaceIndex = dateOnly.indexOf(' ')
+  if (spaceIndex !== -1) {
+    dateOnly = dateOnly.substring(0, spaceIndex)
+  }
+
   // Try ISO format first (common in Excel)
-  const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  const isoMatch = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (isoMatch) {
-    const date = new Date(value)
+    const date = new Date(dateOnly)
+    if (!isNaN(date.getTime())) {
+      return date
+    }
+  }
+
+  // Try dd/mm/yyyy format (common in Vietnamese banks)
+  const ddmmyyyyMatch = dateOnly.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (ddmmyyyyMatch) {
+    const day = parseInt(ddmmyyyyMatch[1], 10)
+    const month = parseInt(ddmmyyyyMatch[2], 10) - 1 // Month is 0-indexed
+    const year = parseInt(ddmmyyyyMatch[3], 10)
+    const date = new Date(year, month, day)
     if (!isNaN(date.getTime())) {
       return date
     }
   }
 
   // Fall back to CSV date parser (handles all formats)
-  // We'll try all common formats
   const formats: DateFormat[] = [
     'dd/mm/yyyy',
     'mm/dd/yyyy',
@@ -394,7 +611,7 @@ function tryParseDate(value: string): Date | null {
   ]
 
   for (const format of formats) {
-    const parsed = parseDate(value, format)
+    const parsed = parseDate(dateOnly, format)
     if (parsed) {
       return parsed
     }
@@ -460,13 +677,18 @@ export async function parseXLSXSheet(file: File, sheetName: string): Promise<Par
         }
 
         const worksheet = workbook.Sheets[sheetName]
-        const rawData = XLSX.utils.sheet_to_json(worksheet, {
-          header: 1,
-          raw: false, // Use formatted text values to preserve thousand separators
-          defval: null,
-        }) as (string | number | null)[][]
 
-        const parsed = parseXLSXData(rawData)
+        // Analyze and process merged cells
+        const mergeAnalysis = analyzeMergedCells(worksheet)
+        console.log(`📊 [XLSX Parser] Sheet "${sheetName}" merge analysis:`, mergeAnalysis)
+
+        const processedData = processWorksheetWithMergedCells(workbook, worksheet, {
+          autoForwardFill: true,
+          removeEmptyRows: true,
+          headerRow: 0,
+        })
+
+        const parsed = parseXLSXData(processedData)
         resolve(parsed)
       } catch (error) {
         reject(error)

@@ -12,6 +12,10 @@ import {
   parseAmount,
   amountToDebitCredit,
 } from '@/lib/csv-parser'
+import {
+  processWorksheetWithMergedCells,
+  analyzeMergedCells,
+} from '@/lib/excel-merged-cells-handler'
 import type {
   ColumnMapping,
   DateFormat,
@@ -98,25 +102,24 @@ export async function POST(
       }
 
       const worksheet = workbook.Sheets[firstSheetName]
-      const rawData = XLSX.utils.sheet_to_json(worksheet, {
-        header: 1,
-        raw: false, // Use formatted text values to preserve thousand separators
-        defval: null,
-      }) as (string | number | null)[][]
 
-      // Filter out completely empty rows (rows with formatting but no actual data)
-      const filteredData = rawData.filter(row => {
-        // Keep row if it has at least one non-empty cell
-        return row.some(cell => {
-          if (cell === null || cell === undefined) return false
-          const str = String(cell).trim()
-          return str.length > 0
-        })
+      // Analyze merged cells for debugging
+      const mergeAnalysis = analyzeMergedCells(worksheet)
+      console.log('📊 Excel file merge analysis:', mergeAnalysis)
+
+      // Process worksheet with merged cells handler
+      // This will: 1) Unmerge cells, 2) Forward-fill empty cells, 3) Remove empty rows
+      const processedData = processWorksheetWithMergedCells(workbook, worksheet, {
+        autoForwardFill: true,     // Auto-detect columns that need forward-filling
+        removeEmptyRows: true,      // Remove completely empty rows
+        headerRow: 0,               // Assume header is in first row
       })
+
+      console.log(`📋 Processed Excel data: ${processedData.length} rows`)
 
       // Convert to CSV text format for existing parser
       // IMPORTANT: Properly escape newlines and quotes to preserve structure
-      const csvText = filteredData
+      const csvText = processedData
         .map(row =>
           row.map(cell => {
             if (cell === null || cell === undefined) return ''
@@ -160,6 +163,8 @@ export async function POST(
     const importResults: TransactionImportResult[] = []
     const transactionsToInsert: any[] = []
     const errors: Array<{ rowIndex: number; error: string }> = []
+    const seenTransactions = new Set<string>()
+    let duplicateCount = 0
 
     console.log(`📊 Processing ${parsedCSV.rows.length} rows from import...`)
 
@@ -180,6 +185,28 @@ export async function POST(
         )
 
         if (transactionData) {
+          // Create a hash of the transaction to detect duplicates
+          const transactionHash = JSON.stringify({
+            date: transactionData.transaction_date,
+            desc: transactionData.description,
+            debit: transactionData.debit_amount,
+            credit: transactionData.credit_amount,
+            ref: transactionData.bank_reference,
+          })
+
+          // Skip exact duplicates
+          if (seenTransactions.has(transactionHash)) {
+            duplicateCount++
+            console.log(`⚠️  Row ${rowIndex}: Skipping duplicate transaction`)
+            importResults.push({
+              success: false,
+              rowIndex,
+              error: 'Duplicate transaction (skipped)',
+            })
+            continue
+          }
+
+          seenTransactions.add(transactionHash)
           transactionsToInsert.push(transactionData)
           importResults.push({
             success: true,
@@ -212,6 +239,7 @@ export async function POST(
 
     console.log(`✅ Successfully processed ${transactionsToInsert.length} transactions`)
     console.log(`❌ Failed to process ${errors.length} rows`)
+    console.log(`🔄 Skipped ${duplicateCount} duplicate transactions`)
     if (errors.length > 0) {
       console.log('First few errors:', errors.slice(0, 5))
     }
@@ -586,7 +614,14 @@ function processRow(
 
     switch (mapping.mappedTo) {
       case 'transaction_date': {
-        const date = parseDate(value, mapping.dateFormat || dateFormat)
+        // Strip time component if present (e.g., "17/11/2025 15:45" → "17/11/2025")
+        let dateValue = value.toString().trim()
+        const spaceIndex = dateValue.indexOf(' ')
+        if (spaceIndex !== -1) {
+          dateValue = dateValue.substring(0, spaceIndex)
+        }
+
+        const date = parseDate(dateValue, mapping.dateFormat || dateFormat)
         if (!date) {
           throw new Error(`Invalid date format: ${value}`)
         }

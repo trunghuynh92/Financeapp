@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, Loader2, ArrowLeft, ArrowRight, X } from "lucide-react"
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, Loader2, ArrowLeft, ArrowRight, X, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -92,6 +92,9 @@ export function BankImportDialog({
   const [error, setError] = useState<string | null>(null)
   const [rollbackConfirmOpen, setRollbackConfirmOpen] = useState(false)
   const [isRollingBack, setIsRollingBack] = useState(false)
+
+  // Preview cleaned data dialog
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false)
 
   // Fetch saved import config when dialog opens
   useEffect(() => {
@@ -460,6 +463,19 @@ export function BankImportDialog({
                   </ul>
                   <p className="text-xs text-blue-600 mt-1">You can adjust these values if needed.</p>
                 </div>
+              )}
+              {/* Preview Button for Excel files */}
+              {file && file.name.match(/\.(xlsx|xls|XLSX|XLS)$/) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPreviewDialogOpen(true)}
+                  className="mt-2"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  Preview Cleaned Data
+                </Button>
               )}
             </>
           )}
@@ -1113,6 +1129,76 @@ export function BankImportDialog({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {/* Preview Cleaned Data Dialog */}
+      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+        <DialogContent className="max-w-6xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Preview Cleaned Excel Data</DialogTitle>
+            <DialogDescription>
+              Verify that merged cells were properly handled before importing
+            </DialogDescription>
+          </DialogHeader>
+
+          {parsedData && (
+            <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+              {/* Data Summary */}
+              <div className="rounded-lg border p-3 bg-muted flex-shrink-0">
+                <p className="text-sm font-medium">Data Summary</p>
+                <p className="text-sm text-muted-foreground">
+                  {parsedData.totalRows} rows × {parsedData.headers.length} columns
+                  {parsedData.detectedHeaderRow !== undefined && parsedData.detectedHeaderRow > 0 &&
+                    ` (header found at row ${parsedData.detectedHeaderRow + 1})`}
+                </p>
+              </div>
+
+              {/* Data Table Preview */}
+              <div className="border rounded-lg overflow-auto flex-1">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background z-10">
+                    <TableRow>
+                      <TableHead className="w-12 text-center">#</TableHead>
+                      {parsedData.headers.map((header, i) => (
+                        <TableHead key={i} className="min-w-[150px]">
+                          {header}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {parsedData.rows.slice(0, 100).map((row, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="text-center text-muted-foreground text-xs">
+                          {i + 1}
+                        </TableCell>
+                        {parsedData.headers.map((header, j) => (
+                          <TableCell key={j} className="font-mono text-xs">
+                            {row[header] !== null && row[header] !== undefined && row[header] !== ''
+                              ? String(row[header])
+                              : <span className="text-muted-foreground italic">empty</span>}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {parsedData.totalRows > 100 && (
+                <p className="text-sm text-muted-foreground flex-shrink-0">
+                  Showing first 100 of {parsedData.totalRows} rows
+                </p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="flex-shrink-0">
+            <Button onClick={() => setPreviewDialogOpen(false)}>
+              Close Preview
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }
