@@ -152,6 +152,37 @@ export function EditTransactionDialog({
 
     setLoading(true)
     try {
+      // Handle investment contribution/withdrawal with investment account selected
+      if ((isInvestmentContribution || isInvestmentWithdrawal) &&
+          formData.investment_account_id &&
+          formData.investment_account_id !== "none") {
+
+        const investmentData = {
+          source_account_id: transaction.account_id,
+          investment_account_id: parseInt(formData.investment_account_id),
+          contribution_amount: transaction.amount,
+          contribution_date: transaction.transaction_date,
+          notes: formData.description || formData.notes || null,
+          existing_source_transaction_id: transaction.main_transaction_id,
+        }
+
+        const response = await fetch('/api/investment-contributions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(investmentData),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to create investment contribution')
+        }
+
+        onSuccess()
+        onOpenChange(false)
+        return
+      }
+
+      // Regular transaction update
       const updates: any = {}
 
       if (formData.transaction_type_id) {
@@ -180,12 +211,6 @@ export function EditTransactionDialog({
         updates.drawdown_id = parseInt(formData.drawdown_id)
       } else {
         updates.drawdown_id = null
-      }
-
-      if (formData.investment_account_id && formData.investment_account_id !== "none") {
-        updates.investment_contribution_id = parseInt(formData.investment_account_id)
-      } else {
-        updates.investment_contribution_id = null
       }
 
       updates.description = formData.description || null

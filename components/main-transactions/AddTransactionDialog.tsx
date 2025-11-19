@@ -363,6 +363,9 @@ export function AddTransactionDialog({
     if (isDebtPayback && !formData.drawdown_id) {
       newErrors.drawdown_id = "Please select which drawdown you're paying back"
     }
+    if ((isInvestmentContribution || isInvestmentWithdrawal) && (!formData.investment_account_id || formData.investment_account_id === "none")) {
+      newErrors.investment_account_id = "Please select an investment account"
+    }
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
       newErrors.amount = "Amount must be greater than 0"
     }
@@ -378,6 +381,33 @@ export function AddTransactionDialog({
       setLoading(true)
 
       const amountValue = parseFloat(formData.amount)
+
+      // Handle investment contributions separately
+      if ((isInvestmentContribution || isInvestmentWithdrawal) && formData.investment_account_id && formData.investment_account_id !== "none") {
+        const investmentData = {
+          source_account_id: parseInt(formData.account_id),
+          investment_account_id: parseInt(formData.investment_account_id),
+          contribution_amount: amountValue,
+          contribution_date: new Date(formData.transaction_date).toISOString(),
+          notes: formData.description || null,
+        }
+
+        const response = await fetch('/api/investment-contributions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(investmentData),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to create investment contribution')
+        }
+
+        // Success!
+        onSuccess()
+        onOpenChange(false)
+        return
+      }
 
       // Use the optimized endpoint that handles all steps in one request
       const transactionData: any = {
