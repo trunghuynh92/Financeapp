@@ -394,13 +394,21 @@ export async function POST(request: NextRequest) {
       sourceMainTransactionId = newMainTxn.main_transaction_id
     } else {
       // When linking to existing transaction, update it with contribution type
-      const { error: linkError } = await supabase
+      console.log('=== Updating existing source transaction ===')
+      console.log('existing_source_transaction_id:', body.existing_source_transaction_id)
+      console.log('contribution_id:', contribution.contribution_id)
+      console.log('invContribType.transaction_type_id:', invContribType.transaction_type_id)
+
+      const { data: linkData, error: linkError, count } = await supabase
         .from('main_transaction')
         .update({
           transaction_type_id: invContribType.transaction_type_id,
           investment_contribution_id: contribution.contribution_id,
         })
         .eq('main_transaction_id', body.existing_source_transaction_id)
+        .select()
+
+      console.log('Update result - count:', count, 'data:', linkData, 'error:', linkError)
 
       if (linkError) {
         console.error('Error linking existing transaction:', linkError)
@@ -410,6 +418,17 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { error: 'Failed to link existing transaction: ' + linkError.message },
           { status: 500 }
+        )
+      }
+
+      if (!linkData || linkData.length === 0) {
+        console.error('UPDATE matched 0 rows! Transaction may not exist or RLS blocked it.')
+        // Rollback
+        await supabase.from('investment_contribution').delete().eq('contribution_id', contribution.contribution_id)
+
+        return NextResponse.json(
+          { error: 'Failed to update existing transaction - transaction not found or access denied' },
+          { status: 404 }
         )
       }
     }
@@ -453,7 +472,11 @@ export async function POST(request: NextRequest) {
     // Step 6: Update investment main_transaction - also use INV_CONTRIB type
     // Both sides of investment contribution use INV_CONTRIB
     // (INV_WITHDRAW is only used when withdrawing from investment)
-    const { error: investmentMainError } = await supabase
+    console.log('=== Updating investment account transaction ===')
+    console.log('raw_transaction_id_2:', raw_transaction_id_2)
+    console.log('contribution_id:', contribution.contribution_id)
+
+    const { data: investmentMainData, error: investmentMainError, count: investmentCount } = await supabase
       .from('main_transaction')
       .update({
         transaction_type_id: invContribType.transaction_type_id, // Reuse INV_CONTRIB type
@@ -461,6 +484,9 @@ export async function POST(request: NextRequest) {
         investment_contribution_id: contribution.contribution_id,
       })
       .eq('raw_transaction_id', raw_transaction_id_2)
+      .select()
+
+    console.log('Investment UPDATE result - count:', investmentCount, 'data:', investmentMainData, 'error:', investmentMainError)
 
     if (investmentMainError) {
       console.error('Error updating investment main transaction:', investmentMainError)
