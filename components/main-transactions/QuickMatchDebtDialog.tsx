@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, Link2, CreditCard, Wallet, Link2Off, AlertTriangle, Plus } from "lucide-react"
+import { Loader2, Link2, CreditCard, Link2Off, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -12,8 +12,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { MainTransactionDetails } from "@/types/main-transaction"
-import { CreateDrawdownDialog } from "@/components/create-drawdown-dialog"
+
+interface Account {
+  account_id: number
+  account_name: string
+  account_type: string
+  bank_name?: string
+  entity_id: string
+}
 
 interface QuickMatchDebtDialogProps {
   open: boolean
@@ -31,16 +41,24 @@ export function QuickMatchDebtDialog({
   const [loading, setLoading] = useState(false)
   const [matching, setMatching] = useState(false)
   const [unmatching, setUnmatching] = useState(false)
-  const [availableDebts, setAvailableDebts] = useState<MainTransactionDetails[]>([])
-  const [selectedDebt, setSelectedDebt] = useState<number | null>(null)
+  const [availableAccounts, setAvailableAccounts] = useState<Account[]>([])
+  const [selectedAccount, setSelectedAccount] = useState<number | null>(null)
   const [currentMatch, setCurrentMatch] = useState<MainTransactionDetails | null>(null)
   const [showUnmatchConfirm, setShowUnmatchConfirm] = useState(false)
-  const [createDrawdownDialogOpen, setCreateDrawdownDialogOpen] = useState(false)
+
+  // Drawdown fields
+  const [drawdownReference, setDrawdownReference] = useState("")
+  const [dueDate, setDueDate] = useState("")
+  const [interestRate, setInterestRate] = useState("")
+  const [notes, setNotes] = useState("")
 
   useEffect(() => {
     if (open && sourceTransaction) {
       fetchCurrentMatch()
-      fetchAvailableDebts()
+      fetchAvailableAccounts()
+      // Auto-generate drawdown reference
+      const ref = `DWN-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`
+      setDrawdownReference(ref)
     }
   }, [open, sourceTransaction])
 
@@ -63,61 +81,31 @@ export function QuickMatchDebtDialog({
     }
   }
 
-  const fetchAvailableDebts = async () => {
+  const fetchAvailableAccounts = async () => {
     if (!sourceTransaction) return
 
     setLoading(true)
     try {
-      // Fetch unmatched debt transactions
-      const response = await fetch(`/api/transfers/unmatched?entity_id=${sourceTransaction.entity_id}`)
+      const response = await fetch(`/api/accounts?entity_id=${sourceTransaction.entity_id}`)
 
       if (!response.ok) {
-        throw new Error("Failed to fetch debt transactions")
+        throw new Error("Failed to fetch accounts")
       }
 
-      const data = await response.json()
+      const result = await response.json()
+      const data = result.data || result
 
-      // Filter to same type (DEBT_TAKE matches with DEBT_TAKE on different account)
-      // Both sides of debt transaction use the same type in the new simplified system
-      const filtered = data.data.filter((t: MainTransactionDetails) =>
-        t.transaction_type_code === 'DEBT_TAKE' &&
-        t.main_transaction_id !== sourceTransaction.main_transaction_id &&
-        t.account_id !== sourceTransaction.account_id // Different account
-      )
+      // Filter to debt_payable accounts (credit_line, term_loan, credit_card)
+      const filtered = Array.isArray(data)
+        ? data.filter((acc: Account) =>
+            ['credit_line', 'term_loan', 'credit_card'].includes(acc.account_type)
+          )
+        : []
 
-      // Sort by best match (amount + date proximity)
-      filtered.sort((a: MainTransactionDetails, b: MainTransactionDetails) => {
-        // Calculate amount difference
-        const amountDiffA = Math.abs(a.amount - sourceTransaction.amount)
-        const amountDiffB = Math.abs(b.amount - sourceTransaction.amount)
-
-        // Calculate date difference in days
-        const sourceDateMs = new Date(sourceTransaction.transaction_date).getTime()
-        const dateDiffA = Math.abs(new Date(a.transaction_date).getTime() - sourceDateMs) / (1000 * 60 * 60 * 24)
-        const dateDiffB = Math.abs(new Date(b.transaction_date).getTime() - sourceDateMs) / (1000 * 60 * 60 * 24)
-
-        // Prioritize exact amount matches, then consider date
-        if (amountDiffA < 0.01 && amountDiffB < 0.01) {
-          // Both are exact amount matches - sort by date proximity
-          return dateDiffA - dateDiffB
-        } else if (amountDiffA < 0.01) {
-          // A is exact match - prioritize it
-          return -1
-        } else if (amountDiffB < 0.01) {
-          // B is exact match - prioritize it
-          return 1
-        } else {
-          // Neither is exact - use weighted score (amount is 80%, date is 20%)
-          const scoreA = (amountDiffA / sourceTransaction.amount) * 0.8 + (dateDiffA / 30) * 0.2
-          const scoreB = (amountDiffB / sourceTransaction.amount) * 0.8 + (dateDiffB / 30) * 0.2
-          return scoreA - scoreB
-        }
-      })
-
-      setAvailableDebts(filtered)
+      setAvailableAccounts(filtered)
     } catch (error) {
-      console.error("Error fetching available debt transactions:", error)
-      alert("Failed to load available debt transactions")
+      console.error("Error fetching available debt payable accounts:", error)
+      alert("Failed to load available debt payable accounts")
     } finally {
       setLoading(false)
     }
@@ -141,12 +129,14 @@ export function QuickMatchDebtDialog({
       // Clear current match and reset to allow new selection
       setCurrentMatch(null)
       setShowUnmatchConfirm(false)
-      setSelectedDebt(null)
+      setSelectedAccount(null)
 
-      // Refresh available debts
-      await fetchAvailableDebts()
+      // Refresh available accounts
+      await fetchAvailableAccounts()
 
-      alert("Debt transaction unmatched successfully! You can now select a new match.")
+      alert("Debt drawdown unmatched successfully! The drawdown record and paired transaction were auto-deleted.")
+      onSuccess()
+      onOpenChange(false)
     } catch (error: any) {
       console.error("Error unmatching debt transaction:", error)
       alert(error.message || "Failed to unmatch debt transaction. Please try again.")
@@ -156,34 +146,43 @@ export function QuickMatchDebtDialog({
   }
 
   const handleMatch = async () => {
-    if (!selectedDebt || !sourceTransaction) return
+    if (!selectedAccount || !sourceTransaction || !drawdownReference) return
+
+    // Validation
+    if (!drawdownReference.trim()) {
+      alert("Please enter a drawdown reference")
+      return
+    }
 
     setMatching(true)
     try {
-      // Not needed anymore - both sides use DEBT_TAKE
-      const isSourceDrawdown = false // Legacy variable kept for compatibility
-
-      const response = await fetch("/api/transfers/match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transfer_out_id: isSourceDrawdown ? sourceTransaction.main_transaction_id : selectedDebt,
-          transfer_in_id: isSourceDrawdown ? selectedDebt : sourceTransaction.main_transaction_id,
-        }),
-      })
+      const response = await fetch(
+        `/api/main-transactions/${sourceTransaction.main_transaction_id}/match-debt-drawdown`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            debt_payable_account_id: selectedAccount,
+            drawdown_reference: drawdownReference,
+            due_date: dueDate || null,
+            interest_rate: interestRate ? parseFloat(interestRate) : null,
+            notes: notes || null,
+          }),
+        }
+      )
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to match debt transactions")
+        throw new Error(data.error || "Failed to create debt drawdown")
       }
 
-      alert("Debt transactions matched successfully!")
+      alert("Debt drawdown created and matched successfully!")
       onSuccess()
       onOpenChange(false)
     } catch (error: any) {
-      console.error("Error matching debt transactions:", error)
-      alert(error.message || "Failed to match debt transactions. Please try again.")
+      console.error("Error matching debt drawdown:", error)
+      alert(error.message || "Failed to create debt drawdown. Please try again.")
     } finally {
       setMatching(false)
     }
@@ -199,20 +198,18 @@ export function QuickMatchDebtDialog({
 
   if (!sourceTransaction) return null
 
-  const isSourceDrawdown = false // Both sides use DEBT_TAKE now
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{currentMatch ? 'Change Debt Match' : 'Match Debt Transaction'}</DialogTitle>
+          <DialogTitle>{currentMatch ? 'Change Debt Match' : 'Match Debt Drawdown'}</DialogTitle>
           <DialogDescription>
             {currentMatch && !showUnmatchConfirm ? (
-              <>This debt transaction is currently matched. Click &quot;Change Match&quot; to unmatch and select a different transaction.</>
+              <>This debt transaction is currently matched. Click &quot;Change Match&quot; to unmatch and select a different account.</>
             ) : (
               <>
-                Select a {isSourceDrawdown ? 'Debt Acquired' : 'Debt Drawdown'} transaction to match with this {isSourceDrawdown ? 'drawdown' : 'debt acquisition'}.
-                Suggestions are sorted by best match (amount + date proximity).
+                Select a debt payable account (credit line, term loan, or credit card) to create a new debt drawdown record.
+                The system will automatically create the paired transaction on the selected account.
               </>
             )}
           </DialogDescription>
@@ -233,18 +230,9 @@ export function QuickMatchDebtDialog({
               <span className="font-mono font-medium">{formatAmount(sourceTransaction.amount)}</span>
             </div>
             <div>
-              <Badge variant={isSourceDrawdown ? 'destructive' : 'default'}>
-                {isSourceDrawdown ? (
-                  <>
-                    <CreditCard className="h-3 w-3 mr-1" />
-                    Debt Drawdown
-                  </>
-                ) : (
-                  <>
-                    <Wallet className="h-3 w-3 mr-1" />
-                    Debt Acquired
-                  </>
-                )}
+              <Badge variant="default">
+                <CreditCard className="h-3 w-3 mr-1" />
+                Debt Taken
               </Badge>
             </div>
           </div>
@@ -285,18 +273,9 @@ export function QuickMatchDebtDialog({
                 <span className="font-mono font-medium">{formatAmount(currentMatch.amount)}</span>
               </div>
               <div>
-                <Badge variant={currentMatch.transaction_type_code === 'DEBT_DRAW' ? 'destructive' : 'default'}>
-                  {currentMatch.transaction_type_code === 'DEBT_DRAW' ? (
-                    <>
-                      <CreditCard className="h-3 w-3 mr-1" />
-                      Debt Drawdown
-                    </>
-                  ) : (
-                    <>
-                      <Wallet className="h-3 w-3 mr-1" />
-                      Debt Acquired
-                    </>
-                  )}
+                <Badge variant="default">
+                  <CreditCard className="h-3 w-3 mr-1" />
+                  Debt Payable Account
                 </Badge>
               </div>
             </div>
@@ -315,11 +294,11 @@ export function QuickMatchDebtDialog({
               <AlertTriangle className="h-5 w-5 text-yellow-700 mt-0.5" />
               <div>
                 <div className="text-sm font-medium text-yellow-900 mb-1">
-                  Confirm Match Change
+                  Confirm Unmatch & Delete Drawdown
                 </div>
                 <div className="text-xs text-yellow-800">
-                  This will unmatch the current debt transaction so you can select a new one.
-                  Both transactions will become unmatched until you select and confirm a new match.
+                  This will unmatch the current debt transaction and automatically delete the debt_drawdown record and paired transaction.
+                  This action maintains proper bookkeeping - if it&apos;s no longer a debt, the records should be removed.
                 </div>
               </div>
             </div>
@@ -354,183 +333,149 @@ export function QuickMatchDebtDialog({
           </div>
         )}
 
-        {/* Available Debt Transactions */}
+        {/* Account Selection & Drawdown Fields */}
         {(!currentMatch || showUnmatchConfirm) && (
-          <div className="space-y-2">
-            <div className="text-sm font-medium">
-              Available {isSourceDrawdown ? 'Debt Acquired' : 'Debt Drawdowns'} ({availableDebts.length})
-            </div>
-
-            {loading ? (
-              <div className="text-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Loading available debt transactions...</p>
-              </div>
-            ) : availableDebts.length === 0 ? (
-            <div className="text-center py-8 border rounded-lg">
-              <p className="text-muted-foreground">No matching debt transactions available</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Make sure there&apos;s a {isSourceDrawdown ? 'Debt Acquired' : 'Debt Drawdown'} transaction from a different account
-              </p>
-              {!isSourceDrawdown && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => setCreateDrawdownDialogOpen(true)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create New Drawdown
-                </Button>
+          <div className="space-y-4">
+            {/* Account Selection */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                Select Debt Payable Account <span className="text-red-500">*</span>
+              </Label>
+              {loading ? (
+                <div className="text-center py-4 border rounded-lg">
+                  <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Loading accounts...</p>
+                </div>
+              ) : availableAccounts.length === 0 ? (
+                <div className="text-center py-4 border rounded-lg bg-muted/50">
+                  <p className="text-sm text-muted-foreground">No debt payable accounts available</p>
+                  <p className="text-xs text-muted-foreground mt-1">Create a credit line, term loan, or credit card account first</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg max-h-48 overflow-y-auto">
+                  {availableAccounts.map((account) => (
+                    <div
+                      key={account.account_id}
+                      className={`p-3 border-b last:border-b-0 cursor-pointer hover:bg-muted/50 ${
+                        selectedAccount === account.account_id ? 'bg-primary/10 border-l-4 border-l-primary' : ''
+                      }`}
+                      onClick={() => setSelectedAccount(account.account_id)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-2 flex-1">
+                          <input
+                            type="radio"
+                            checked={selectedAccount === account.account_id}
+                            onChange={() => setSelectedAccount(account.account_id)}
+                            className="mt-1"
+                          />
+                          <div className="flex-1">
+                            <div className="font-medium">{account.account_name}</div>
+                            {account.bank_name && (
+                              <div className="text-xs text-muted-foreground">{account.bank_name}</div>
+                            )}
+                            <Badge variant="outline" className="mt-1 text-xs">
+                              {account.account_type.replace('_', ' ')}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <div className="max-h-96 overflow-y-auto">
-                <table className="w-full">
-                  <thead className="bg-muted sticky top-0">
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-3 w-8"></th>
-                      <th className="text-left py-2 px-3">Date</th>
-                      <th className="text-left py-2 px-3">Account</th>
-                      <th className="text-left py-2 px-3">Description</th>
-                      <th className="text-right py-2 px-3">Amount</th>
-                      <th className="text-center py-2 px-3">Match</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {availableDebts.map((debt) => {
-                      const isSelected = selectedDebt === debt.main_transaction_id
-                      const amountMatch = Math.abs(debt.amount - sourceTransaction.amount) < 0.01
 
-                      // Calculate date difference in days
-                      const sourceDateMs = new Date(sourceTransaction.transaction_date).getTime()
-                      const debtDateMs = new Date(debt.transaction_date).getTime()
-                      const dateDiffDays = Math.abs(debtDateMs - sourceDateMs) / (1000 * 60 * 60 * 24)
-                      const sameDay = dateDiffDays < 1
+            {/* Drawdown Fields */}
+            {selectedAccount && (
+              <div className="space-y-3 border-t pt-4">
+                <div className="text-sm font-medium mb-2">Drawdown Details</div>
 
-                      return (
-                        <tr
-                          key={debt.main_transaction_id}
-                          className={`border-b hover:bg-muted/50 cursor-pointer ${
-                            isSelected ? 'bg-primary/10 border-primary' : ''
-                          }`}
-                          onClick={() => setSelectedDebt(debt.main_transaction_id)}
-                        >
-                          <td className="py-2 px-3">
-                            <input
-                              type="radio"
-                              checked={isSelected}
-                              onChange={() => setSelectedDebt(debt.main_transaction_id)}
-                            />
-                          </td>
-                          <td className="py-2 px-3 text-sm whitespace-nowrap">
-                            <div>{formatDate(debt.transaction_date)}</div>
-                            {sameDay ? (
-                              <div className="text-xs text-green-600 font-medium">Same day</div>
-                            ) : dateDiffDays < 3 ? (
-                              <div className="text-xs text-blue-600">
-                                {Math.round(dateDiffDays)} {Math.round(dateDiffDays) === 1 ? 'day' : 'days'} apart
-                              </div>
-                            ) : (
-                              <div className="text-xs text-muted-foreground">
-                                {Math.round(dateDiffDays)} days apart
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-sm">
-                            <div className="font-medium">{debt.account_name}</div>
-                            {debt.bank_name && (
-                              <div className="text-xs text-muted-foreground">{debt.bank_name}</div>
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-sm">
-                            {debt.description || <span className="text-muted-foreground italic">No description</span>}
-                          </td>
-                          <td className="py-2 px-3 text-sm text-right font-mono font-medium">
-                            {formatAmount(debt.amount)}
-                          </td>
-                          <td className="py-2 px-3 text-center">
-                            {amountMatch ? (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                Exact Match
-                              </Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                Diff: {formatAmount(Math.abs(debt.amount - sourceTransaction.amount))}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                {/* Drawdown Reference */}
+                <div className="space-y-1">
+                  <Label htmlFor="drawdown-reference" className="text-sm">
+                    Drawdown Reference <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="drawdown-reference"
+                    value={drawdownReference}
+                    onChange={(e) => setDrawdownReference(e.target.value)}
+                    placeholder="e.g., DWN-2025-001"
+                  />
+                </div>
+
+                {/* Due Date */}
+                <div className="space-y-1">
+                  <Label htmlFor="due-date" className="text-sm">Due Date (optional)</Label>
+                  <Input
+                    id="due-date"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                  />
+                </div>
+
+                {/* Interest Rate */}
+                <div className="space-y-1">
+                  <Label htmlFor="interest-rate" className="text-sm">Interest Rate % (optional)</Label>
+                  <Input
+                    id="interest-rate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={interestRate}
+                    onChange={(e) => setInterestRate(e.target.value)}
+                    placeholder="e.g., 12.5"
+                  />
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-1">
+                  <Label htmlFor="notes" className="text-sm">Notes (optional)</Label>
+                  <Textarea
+                    id="notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Additional notes about this drawdown..."
+                    rows={2}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
           </div>
         )}
 
         <DialogFooter>
-          <div className="flex w-full justify-between items-center">
-            {/* Left side: Create New Drawdown button (only for DEBT_ACQ source) */}
-            <div>
-              {!isSourceDrawdown && (!currentMatch || showUnmatchConfirm) && (
-                <Button
-                  variant="outline"
-                  onClick={() => setCreateDrawdownDialogOpen(true)}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create New Drawdown
-                </Button>
-              )}
-            </div>
-
-            {/* Right side: Cancel/Close and Match buttons */}
-            <div className="flex gap-2">
+          <div className="flex w-full justify-end items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={matching || unmatching}
+            >
+              {currentMatch && !showUnmatchConfirm ? 'Close' : 'Cancel'}
+            </Button>
+            {(!currentMatch || showUnmatchConfirm) && (
               <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={matching || unmatching}
+                onClick={handleMatch}
+                disabled={!selectedAccount || !drawdownReference || matching}
               >
-                {currentMatch && !showUnmatchConfirm ? 'Close' : 'Cancel'}
+                {matching ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="mr-2 h-4 w-4" />
+                    Create Debt Drawdown
+                  </>
+                )}
               </Button>
-              {(!currentMatch || showUnmatchConfirm) && (
-                <Button
-                  onClick={handleMatch}
-                  disabled={!selectedDebt || matching}
-                >
-                  {matching ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Matching...
-                    </>
-                  ) : (
-                    <>
-                      <Link2 className="mr-2 h-4 w-4" />
-                      Match Debt Transactions
-                    </>
-                  )}
-                </Button>
-              )}
-            </div>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>
-
-      {/* Create Drawdown Dialog */}
-      <CreateDrawdownDialog
-        open={createDrawdownDialogOpen}
-        onOpenChange={setCreateDrawdownDialogOpen}
-        prefilledAmount={sourceTransaction?.amount}
-        prefilledDate={sourceTransaction?.transaction_date ? new Date(sourceTransaction.transaction_date).toISOString().split('T')[0] : undefined}
-        onSuccess={() => {
-          setCreateDrawdownDialogOpen(false)
-          fetchAvailableDebts() // Refresh the list
-          onSuccess() // Refresh parent
-        }}
-      />
     </Dialog>
   )
 }
