@@ -73,7 +73,7 @@ export async function POST(
 
     console.log('Found cash transaction:', cashTransaction.main_transaction_id)
 
-    // Verify it's a LOAN_COLLECT transaction
+    // Get transaction types
     const { data: loanCollectType } = await supabase
       .from('transaction_types')
       .select('transaction_type_id, type_code')
@@ -84,9 +84,13 @@ export async function POST(
       throw new Error('LOAN_COLLECT transaction type not found')
     }
 
-    if (cashTransaction.transaction_type_id !== loanCollectType.transaction_type_id) {
+    // Verify transaction is LOAN_COLLECT only
+    // LOAN_DISBURSE should use /api/main-transactions/[id]/match-loan-disbursement instead
+    const isLoanCollect = cashTransaction.transaction_type_id === loanCollectType.transaction_type_id
+
+    if (!isLoanCollect) {
       return NextResponse.json(
-        { error: 'Transaction must be of type LOAN_COLLECT' },
+        { error: 'This endpoint only handles LOAN_COLLECT transactions. For LOAN_DISBURSE, use /api/main-transactions/[id]/match-loan-disbursement' },
         { status: 400 }
       )
     }
@@ -119,7 +123,7 @@ export async function POST(
       )
     }
 
-    // Check for overpayment (allow it, but flag it)
+    // Check for overpayment
     let isOverpayment = false
     let overpaymentAmount = 0
 
@@ -129,13 +133,14 @@ export async function POST(
       console.warn(`⚠️ Overpayment detected: Loan ${disbursement.loan_disbursement_id}, Owed: ${disbursement.remaining_balance}, Received: ${cashTransaction.amount}, Excess: ${overpaymentAmount}`)
     }
 
-    // Create receivable-side LOAN_COLLECT transaction (debit - asset decreasing)
+    // Create receivable-side transaction
     const description = cashTransaction.description || `Loan collection from ${disbursement.partner?.partner_name || disbursement.borrower_name || 'borrower'}`
 
     // Generate unique transaction ID for receivable side
     const rawTxId = `LOAN_COLLECT_RECEIVABLE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     // Create original_transaction for receivable side (this will auto-create main_transaction via trigger)
+    // LOAN_COLLECT: DEBIT (decreases receivable asset)
     const { data: originalTx, error: originalTxError } = await supabase
       .from('original_transaction')
       .insert([{
@@ -143,7 +148,7 @@ export async function POST(
         account_id: disbursement.account_id, // loan_receivable account
         transaction_date: cashTransaction.transaction_date,
         description,
-        debit_amount: cashTransaction.amount, // Debit decreases the receivable asset
+        debit_amount: cashTransaction.amount,
         credit_amount: null,
         transaction_source: 'user_manual',
       }])
@@ -173,7 +178,7 @@ export async function POST(
       )
     }
 
-    // Update receivable transaction to set type to LOAN_COLLECT and link to disbursement
+    // Update receivable transaction to set type and link to disbursement
     const { error: updateReceivableError } = await supabase
       .from('main_transaction')
       .update({

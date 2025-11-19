@@ -183,24 +183,82 @@ export async function DELETE(
       )
     }
 
-    // Check if disbursement has any payments
-    const { count: paymentsCount } = await supabase
-      .from('main_transaction')
-      .select('*', { count: 'exact', head: true })
+    // Get loan disbursement details
+    const { data: disbursement, error: disbursementError } = await supabase
+      .from('loan_disbursement')
+      .select('loan_disbursement_id, account_id')
       .eq('loan_disbursement_id', disbursementId)
+      .single()
 
-    if (paymentsCount && paymentsCount > 0) {
+    if (disbursementError || !disbursement) {
+      console.error('Error fetching disbursement:', disbursementError)
       return NextResponse.json(
-        {
-          error: 'Cannot delete loan disbursement with payment history',
-          message: `This loan disbursement has ${paymentsCount} payment(s). Delete the payments first or mark the loan as written_off instead.`,
-          payments_count: paymentsCount,
-        },
-        { status: 400 }
+        { error: 'Loan disbursement not found' },
+        { status: 404 }
       )
     }
 
-    // Delete disbursement
+    // Check if disbursement has any payment history (LOAN_RECEIVE/LOAN_COLLECT)
+    const { data: loanReceiveType } = await supabase
+      .from('transaction_types')
+      .select('transaction_type_id')
+      .in('type_code', ['LOAN_RECEIVE', 'LOAN_COLLECT'])
+      .single()
+
+    if (loanReceiveType) {
+      const { count: paymentsCount } = await supabase
+        .from('main_transaction')
+        .select('*', { count: 'exact', head: true })
+        .eq('loan_disbursement_id', disbursementId)
+        .eq('transaction_type_id', loanReceiveType.transaction_type_id)
+
+      if (paymentsCount && paymentsCount > 0) {
+        return NextResponse.json(
+          {
+            error: 'Cannot delete loan disbursement with payment history',
+            message: `This loan disbursement has ${paymentsCount} payment(s). Delete the payments first or mark the loan as written_off instead.`,
+            payments_count: paymentsCount,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Find all linked transactions (source bank transaction + credit in Loan Receivable)
+    const { data: linkedTransactions } = await supabase
+      .from('main_transaction')
+      .select('main_transaction_id, raw_transaction_id, account_id')
+      .eq('loan_disbursement_id', disbursementId)
+
+    if (linkedTransactions && linkedTransactions.length > 0) {
+      for (const tx of linkedTransactions) {
+        // ONLY delete transactions from the Loan Receivable account (credit entries)
+        // Keep the source bank transaction, just clear its link
+        if (tx.account_id === disbursement.account_id) {
+          // Delete the credit transaction in Loan Receivable account
+          await supabase
+            .from('main_transaction')
+            .delete()
+            .eq('main_transaction_id', tx.main_transaction_id)
+
+          await supabase
+            .from('original_transaction')
+            .delete()
+            .eq('raw_transaction_id', tx.raw_transaction_id)
+        } else {
+          // For source bank transactions, just clear the loan_disbursement_id link
+          await supabase
+            .from('main_transaction')
+            .update({
+              loan_disbursement_id: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('main_transaction_id', tx.main_transaction_id)
+        }
+      }
+    }
+
+    // Delete the loan_disbursement record
     const { error: deleteError } = await supabase
       .from('loan_disbursement')
       .delete()
@@ -215,7 +273,7 @@ export async function DELETE(
     }
 
     return NextResponse.json({
-      message: 'Loan disbursement deleted successfully',
+      message: 'Loan disbursement deleted successfully. Paired transactions cleaned up.',
     })
   } catch (error) {
     console.error('Unexpected error:', error)

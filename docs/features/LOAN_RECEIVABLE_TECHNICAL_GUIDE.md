@@ -706,6 +706,37 @@ OR
 (my_type_code = 'LOAN_DISBURSE' AND matched_type_code = 'LOAN_DISBURSE')
 ```
 
+#### 4. `trigger_auto_delete_loan_disbursement_on_unmatch` (Migration 068)
+
+**Function**: `auto_delete_loan_disbursement_on_unmatch()`
+**Table**: `main_transaction`
+**Events**: AFTER UPDATE OF transfer_matched_transaction_id
+**Purpose**: Automatically clean up loan disbursement records when transactions are unmatched
+
+**Key Logic**:
+- Detects when `transfer_matched_transaction_id` changes from NOT NULL → NULL (unmatch)
+- Only processes transactions with a `loan_disbursement_id`
+- Automatically deletes:
+  1. The paired transaction on the loan_receivable account
+  2. The loan_disbursement record itself
+- Maintains data integrity by ensuring incomplete disbursements don't remain in the system
+
+**Example**:
+```sql
+-- User unmatches transaction #28225 (has loan_disbursement_id = 59)
+UPDATE main_transaction
+SET transfer_matched_transaction_id = NULL
+WHERE main_transaction_id = 28225;
+
+-- Trigger automatically:
+-- 1. Deletes paired transaction on loan_receivable account
+-- 2. Deletes loan_disbursement record #59
+-- Result: Clean removal of the entire disbursement
+```
+
+**Why This Design**:
+From a bookkeeping perspective, if you're unmatching a loan disbursement transaction, it means the transaction is not actually a loan. Therefore, the loan disbursement record should be deleted automatically to maintain data integrity.
+
 ### Deprecated Triggers (Pre-Migration 042)
 
 These triggers existed in the original implementation but were replaced:
@@ -1024,6 +1055,8 @@ DELETE FROM business_partners WHERE partner_id = 999;
    - Deleting loans nullifies transaction links (`ON DELETE SET NULL`)
 
 6. **Status Tracking**: Loan status (`active`, `overdue`, `repaid`, `written_off`) updates automatically based on balance and due date
+
+7. **Auto-Cleanup on Unmatch** (Migration 068): When a LOAN_DISBURSE transaction is unmatched, the database trigger automatically deletes the loan disbursement record and paired transaction, maintaining data integrity
 
 ### Related Files
 
