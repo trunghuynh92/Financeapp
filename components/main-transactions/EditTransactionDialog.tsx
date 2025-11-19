@@ -20,6 +20,7 @@ import { MainTransactionDetails, TransactionType, Category, Branch, Project } fr
 import { Loader2, AlertTriangle, Info, Link } from "lucide-react"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
 import { SelectDrawdownDialog } from "./SelectDrawdownDialog"
+import { useEntity } from "@/contexts/EntityContext"
 
 interface EditTransactionDialogProps {
   transaction: MainTransactionDetails | null
@@ -42,9 +43,11 @@ export function EditTransactionDialog({
   branches,
   projects,
 }: EditTransactionDialogProps) {
+  const { currentEntity } = useEntity()
   const [loading, setLoading] = useState(false)
   const [drawdownDialogOpen, setDrawdownDialogOpen] = useState(false)
   const [selectedDrawdown, setSelectedDrawdown] = useState<any>(null)
+  const [investmentAccounts, setInvestmentAccounts] = useState<any[]>([])
 
   // Initialize formData from transaction if available
   const getInitialFormData = () => ({
@@ -55,6 +58,7 @@ export function EditTransactionDialog({
     description: transaction?.description || "",
     notes: transaction?.notes || "",
     drawdown_id: transaction?.drawdown_id?.toString() || "none",
+    investment_account_id: transaction?.investment_contribution_id?.toString() || "none",
   })
 
   const [formData, setFormData] = useState(getInitialFormData())
@@ -77,8 +81,14 @@ export function EditTransactionDialog({
         description: transaction.description || "",
         notes: transaction.notes || "",
         drawdown_id: transaction.drawdown_id?.toString() || "none",
+        investment_account_id: transaction.investment_contribution_id?.toString() || "none",
       })
       setSelectedDrawdown(null) // Reset selected drawdown
+
+      // Fetch investment accounts when dialog opens
+      if (currentEntity) {
+        fetchInvestmentAccounts()
+      }
     }
   }, [transaction, open])
 
@@ -112,6 +122,29 @@ export function EditTransactionDialog({
   const filteredBranches = branches.filter((branch) => {
     return branch.entity_id === transaction?.entity_id
   })
+
+  // Fetch investment accounts
+  async function fetchInvestmentAccounts() {
+    if (!currentEntity) return
+
+    try {
+      const response = await fetch(`/api/accounts?entity_id=${currentEntity.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        const investAccs = (data.data || []).filter((acc: any) =>
+          acc.account_type === 'investment'
+        )
+        setInvestmentAccounts(investAccs)
+      }
+    } catch (error) {
+      console.error('Error fetching investment accounts:', error)
+    }
+  }
+
+  // Check if this is investment contribution or withdrawal
+  const selectedType = transactionTypes.find(t => t.transaction_type_id.toString() === formData.transaction_type_id)
+  const isInvestmentContribution = selectedType?.type_code === 'INV_CONTRIB'
+  const isInvestmentWithdrawal = selectedType?.type_code === 'INV_WITHDRAW'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -147,6 +180,12 @@ export function EditTransactionDialog({
         updates.drawdown_id = parseInt(formData.drawdown_id)
       } else {
         updates.drawdown_id = null
+      }
+
+      if (formData.investment_account_id && formData.investment_account_id !== "none") {
+        updates.investment_contribution_id = parseInt(formData.investment_account_id)
+      } else {
+        updates.investment_contribution_id = null
       }
 
       updates.description = formData.description || null
@@ -284,6 +323,41 @@ export function EditTransactionDialog({
                 Filtered based on account type ({transaction.account_type}) and direction ({transaction.transaction_direction})
               </p>
             </div>
+
+            {/* Investment Account Selection (for INV_CONTRIB and INV_WITHDRAW) */}
+            {(isInvestmentContribution || isInvestmentWithdrawal) && (
+              <div className="space-y-2">
+                <Label htmlFor="investment_account_id">Investment Account</Label>
+                <Select
+                  value={formData.investment_account_id}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, investment_account_id: value })
+                  }
+                >
+                  <SelectTrigger id="investment_account_id">
+                    <SelectValue placeholder="Select investment account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {investmentAccounts.map((account) => (
+                      <SelectItem key={account.account_id} value={account.account_id.toString()}>
+                        {account.account_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {isInvestmentContribution
+                    ? "Select which investment account is receiving the funds"
+                    : "Select which investment account is being withdrawn from"}
+                </p>
+                {investmentAccounts.length === 0 && (
+                  <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                    No investment accounts found.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Category */}
             <div className="space-y-2">
