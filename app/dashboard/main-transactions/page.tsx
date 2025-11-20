@@ -22,6 +22,7 @@ import { QuickMatchTransferDialog } from "@/components/main-transactions/QuickMa
 import { QuickMatchDebtDialog } from "@/components/main-transactions/QuickMatchDebtDialog"
 import { QuickMatchLoanDialog } from "@/components/main-transactions/QuickMatchLoanDialog"
 import { QuickMatchInvestmentDialog } from "@/components/main-transactions/QuickMatchInvestmentDialog"
+import { UnmatchInvestmentDialog } from "@/components/main-transactions/UnmatchInvestmentDialog"
 import { QuickPayCreditCardDialog } from "@/components/main-transactions/QuickPayCreditCardDialog"
 import { SelectDrawdownDialog } from "@/components/main-transactions/SelectDrawdownDialog"
 import { InlineCombobox } from "@/components/main-transactions/InlineCombobox"
@@ -119,6 +120,7 @@ export default function MainTransactionsPage() {
   const [quickMatchDebtDialogOpen, setQuickMatchDebtDialogOpen] = useState(false)
   const [quickMatchLoanDialogOpen, setQuickMatchLoanDialogOpen] = useState(false)
   const [quickMatchInvestmentDialogOpen, setQuickMatchInvestmentDialogOpen] = useState(false)
+  const [unmatchInvestmentDialogOpen, setUnmatchInvestmentDialogOpen] = useState(false)
   const [quickPayCreditCardDialogOpen, setQuickPayCreditCardDialogOpen] = useState(false)
   const [selectDrawdownDialogOpen, setSelectDrawdownDialogOpen] = useState(false)
 
@@ -1761,18 +1763,23 @@ export default function MainTransactionsPage() {
                                   </Badge>
                                 )}
                                 {/* Matched investment contribution */}
-                                {tx.investment_contribution_id && tx.transaction_type_code === 'INV_CONTRIB' && (
+                                {tx.transfer_matched_transaction_id && tx.transaction_type_code === 'INV_CONTRIB' && (
                                   <Badge
                                     variant="secondary"
-                                    className="bg-green-100 text-green-800 border-green-200"
-                                    title="Matched to investment contribution"
+                                    className="bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200"
+                                    title="Matched to investment contribution - Click to unmatch"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setSelectedTransaction(tx)
+                                      setUnmatchInvestmentDialogOpen(true)
+                                    }}
                                   >
                                     <Link2 className="h-3 w-3 mr-1" />
                                     Matched Investment
                                   </Badge>
                                 )}
                                 {/* Unmatched investment contribution */}
-                                {!tx.investment_contribution_id && tx.transaction_type_code === 'INV_CONTRIB' && (
+                                {!tx.transfer_matched_transaction_id && tx.transaction_type_code === 'INV_CONTRIB' && (
                                   <Badge
                                     variant="secondary"
                                     className="bg-yellow-100 text-yellow-800 border-yellow-200 cursor-pointer hover:bg-yellow-200"
@@ -1788,18 +1795,23 @@ export default function MainTransactionsPage() {
                                   </Badge>
                                 )}
                                 {/* Matched investment withdrawal */}
-                                {tx.investment_contribution_id && tx.transaction_type_code === 'INV_WITHDRAW' && (
+                                {tx.transfer_matched_transaction_id && tx.transaction_type_code === 'INV_WITHDRAW' && (
                                   <Badge
                                     variant="secondary"
-                                    className="bg-green-100 text-green-800 border-green-200"
-                                    title="Matched to investment withdrawal"
+                                    className="bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200"
+                                    title="Matched to investment withdrawal - Click to unmatch"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setSelectedTransaction(tx)
+                                      setUnmatchInvestmentDialogOpen(true)
+                                    }}
                                   >
                                     <Link2 className="h-3 w-3 mr-1" />
                                     Matched Withdrawal
                                   </Badge>
                                 )}
                                 {/* Unmatched investment withdrawal */}
-                                {!tx.investment_contribution_id && tx.transaction_type_code === 'INV_WITHDRAW' && (
+                                {!tx.transfer_matched_transaction_id && tx.transaction_type_code === 'INV_WITHDRAW' && (
                                   <Badge
                                     variant="secondary"
                                     className="bg-yellow-100 text-yellow-800 border-yellow-200 cursor-pointer hover:bg-yellow-200"
@@ -2148,6 +2160,7 @@ export default function MainTransactionsPage() {
         transactionTypes={transactionTypes}
         categories={categories}
         branches={branches}
+        projects={projects}
       />
 
       {/* Quick Match Transfer Dialog */}
@@ -2178,6 +2191,14 @@ export default function MainTransactionsPage() {
       <QuickMatchInvestmentDialog
         open={quickMatchInvestmentDialogOpen}
         onOpenChange={setQuickMatchInvestmentDialogOpen}
+        sourceTransaction={selectedTransaction}
+        onSuccess={handleQuickMatchSuccess}
+      />
+
+      {/* Unmatch Investment Dialog */}
+      <UnmatchInvestmentDialog
+        open={unmatchInvestmentDialogOpen}
+        onOpenChange={setUnmatchInvestmentDialogOpen}
         sourceTransaction={selectedTransaction}
         onSuccess={handleQuickMatchSuccess}
       />

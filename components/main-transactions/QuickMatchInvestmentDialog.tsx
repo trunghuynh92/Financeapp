@@ -83,31 +83,88 @@ export function QuickMatchInvestmentDialog({
 
     setMatching(true)
     try {
-      const investmentData = {
-        source_account_id: sourceTransaction.account_id,
-        investment_account_id: parseInt(selectedAccountId),
-        contribution_amount: sourceTransaction.amount,
-        contribution_date: sourceTransaction.transaction_date,
-        notes: sourceTransaction.description || sourceTransaction.notes || null,
-        existing_source_transaction_id: sourceTransaction.main_transaction_id,
+      const investmentAccountId = parseInt(selectedAccountId)
+
+      // Step 1: Get the correct transaction type ID
+      const transactionTypeCode = isInvestmentWithdrawal ? 'INV_WITHDRAW' : 'INV_CONTRIB'
+      const typesResponse = await fetch('/api/transaction-types')
+      const typesData = await typesResponse.json()
+      const types = typesData.data || typesData
+      const transactionType = types.find((t: any) => t.type_code === transactionTypeCode)
+
+      if (!transactionType) {
+        throw new Error(`Transaction type ${transactionTypeCode} not found`)
       }
 
-      const response = await fetch('/api/investment-contributions', {
+      // Step 2: Create paired transaction in investment account (via original_transaction)
+      // The SQL trigger will automatically create the main_transaction
+      // Determine amounts: contribution = credit to investment, withdrawal = debit from investment
+      const debitAmount = isInvestmentWithdrawal ? sourceTransaction.amount : null
+      const creditAmount = isInvestmentWithdrawal ? null : sourceTransaction.amount
+
+      const createResponse = await fetch('/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(investmentData),
+        body: JSON.stringify({
+          account_id: investmentAccountId,
+          transaction_date: sourceTransaction.transaction_date,
+          description: sourceTransaction.description || (isInvestmentWithdrawal ? 'Investment withdrawal' : 'Investment contribution'),
+          debit_amount: debitAmount,
+          credit_amount: creditAmount,
+          transaction_source: 'user_manual',
+        }),
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to create investment contribution')
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json()
+        throw new Error(errorData.error || 'Failed to create paired transaction')
+      }
+
+      const createData = await createResponse.json()
+
+      // Step 3: Get the main_transaction_id from the created original_transaction
+      const mainTxResponse = await fetch(`/api/main-transactions?raw_transaction_id=${createData.raw_transaction_id}`)
+      const mainTxData = await mainTxResponse.json()
+      const pairedTransactionId = mainTxData.data?.[0]?.main_transaction_id
+
+      if (!pairedTransactionId) {
+        throw new Error('Failed to get paired main transaction ID')
+      }
+
+      // Step 4: Update the transaction type to INV_CONTRIB or INV_WITHDRAW
+      const updateResponse = await fetch(`/api/main-transactions/${pairedTransactionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transaction_type_id: transactionType.transaction_type_id,
+        }),
+      })
+
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json()
+        throw new Error(errorData.error || 'Failed to update transaction type')
+      }
+
+      // Step 5: Match the two transactions using transfer matching
+      const matchResponse = await fetch('/api/transfers/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transfer_out_id: sourceTransaction.main_transaction_id,
+          transfer_in_id: pairedTransactionId,
+        }),
+      })
+
+      if (!matchResponse.ok) {
+        const errorData = await matchResponse.json()
+        throw new Error(errorData.error || 'Failed to match transactions')
       }
 
       onSuccess()
       onOpenChange(false)
     } catch (error) {
-      console.error("Error creating investment contribution:", error)
-      alert(error instanceof Error ? error.message : "Failed to create investment contribution")
+      console.error("Error matching investment:", error)
+      alert(error instanceof Error ? error.message : "Failed to match investment")
     } finally {
       setMatching(false)
     }

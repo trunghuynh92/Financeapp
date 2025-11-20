@@ -60,6 +60,9 @@ export async function DELETE(
 
     const isDebtPayback = typeData?.type_code === 'DEBT_PAY'
     const isLoanCollection = typeData?.type_code === 'LOAN_RECEIVE' || typeData?.type_code === 'LOAN_COLLECT'
+    const isLoanDisbursement = typeData?.type_code === 'LOAN_DISBURSE'
+    const isInvestmentContribution = typeData?.type_code === 'INV_CONTRIB'
+    const isInvestmentWithdrawal = typeData?.type_code === 'INV_WITHDRAW'
 
     // Special handling for LOAN_RECEIVE/LOAN_COLLECT transactions
     if (isLoanCollection && transaction.loan_disbursement_id) {
@@ -150,6 +153,87 @@ export async function DELETE(
       return NextResponse.json({
         success: true,
         message: 'Loan collection unmatched successfully. Balance recalculated.',
+        transaction_id: mainTransactionId,
+        loan_disbursement_id: loanDisbursementId,
+      })
+    }
+
+    // Special handling for LOAN_DISBURSE transactions
+    if (isLoanDisbursement && transaction.loan_disbursement_id) {
+      const loanDisbursementId = transaction.loan_disbursement_id
+
+      // Get the loan disbursement details (might not exist if already deleted)
+      const { data: loanDisbursement } = await supabase
+        .from('loan_disbursement')
+        .select('loan_disbursement_id, loan_receivable_account_id')
+        .eq('loan_disbursement_id', loanDisbursementId)
+        .single()
+
+      // If disbursement exists, check for payment history
+      if (loanDisbursement) {
+        const { data: loanReceiveType } = await supabase
+          .from('transaction_types')
+          .select('transaction_type_id')
+          .in('type_code', ['LOAN_RECEIVE', 'LOAN_COLLECT'])
+          .single()
+
+        if (loanReceiveType) {
+          const { count: paymentsCount } = await supabase
+            .from('main_transaction')
+            .select('*', { count: 'exact', head: true })
+            .eq('loan_disbursement_id', loanDisbursementId)
+            .eq('transaction_type_id', loanReceiveType.transaction_type_id)
+
+          if (paymentsCount && paymentsCount > 0) {
+            return NextResponse.json(
+              { error: 'Cannot unmatch loan disbursement with payment history. Please delete payments first.' },
+              { status: 400 }
+            )
+          }
+        }
+      }
+
+      // Get the matched credit transaction (in Loan Receivable account)
+      const { data: matchedTransaction } = await supabase
+        .from('main_transaction')
+        .select('main_transaction_id, raw_transaction_id, account_id')
+        .eq('main_transaction_id', matchedId)
+        .single()
+
+      if (matchedTransaction) {
+        // Delete the credit transaction in Loan Receivable account
+        await supabase
+          .from('main_transaction')
+          .delete()
+          .eq('main_transaction_id', matchedTransaction.main_transaction_id)
+
+        await supabase
+          .from('original_transaction')
+          .delete()
+          .eq('raw_transaction_id', matchedTransaction.raw_transaction_id)
+      }
+
+      // Clear the loan_disbursement_id and transfer link from source transaction
+      const { error: unmatchError } = await supabase
+        .from('main_transaction')
+        .update({
+          transfer_matched_transaction_id: null,
+          loan_disbursement_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('main_transaction_id', mainTransactionId)
+
+      if (unmatchError) {
+        console.error('Error unmatching LOAN_DISBURSE transaction:', unmatchError)
+        return NextResponse.json(
+          { error: 'Failed to unmatch loan disbursement' },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Loan disbursement unmatched successfully. Credit transaction deleted and links cleared.',
         transaction_id: mainTransactionId,
         loan_disbursement_id: loanDisbursementId,
       })
@@ -272,6 +356,52 @@ export async function DELETE(
         message: 'Debt payback unmatched successfully. Balance recalculated.',
         transaction_id: mainTransactionId,
         drawdown_id: drawdownId,
+      })
+    }
+
+    // Special handling for INV_CONTRIB and INV_WITHDRAW transactions
+    if (isInvestmentContribution || isInvestmentWithdrawal) {
+      // Get the matched transaction (the paired transaction in the investment account)
+      const { data: matchedTransaction } = await supabase
+        .from('main_transaction')
+        .select('main_transaction_id, raw_transaction_id, account_id')
+        .eq('main_transaction_id', matchedId)
+        .single()
+
+      if (matchedTransaction) {
+        // Delete the paired transaction in the investment account
+        await supabase
+          .from('main_transaction')
+          .delete()
+          .eq('main_transaction_id', matchedTransaction.main_transaction_id)
+
+        await supabase
+          .from('original_transaction')
+          .delete()
+          .eq('raw_transaction_id', matchedTransaction.raw_transaction_id)
+      }
+
+      // Clear the transfer link from the source transaction
+      const { error: unmatchError } = await supabase
+        .from('main_transaction')
+        .update({
+          transfer_matched_transaction_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('main_transaction_id', mainTransactionId)
+
+      if (unmatchError) {
+        console.error('Error unmatching investment transaction:', unmatchError)
+        return NextResponse.json(
+          { error: 'Failed to unmatch investment' },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Investment unmatched successfully. Paired transaction deleted.',
+        transaction_id: mainTransactionId,
       })
     }
 
