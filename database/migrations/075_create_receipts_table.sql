@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS receipts (
   -- Relations (linking to transactions)
   main_transaction_id INTEGER REFERENCES main_transaction(main_transaction_id) ON DELETE CASCADE,
   account_id INTEGER REFERENCES accounts(account_id) ON DELETE CASCADE,
-  entity_id UUID REFERENCES entities(entity_id) ON DELETE CASCADE,
+  entity_id UUID NOT NULL,  -- Derived from account, no FK constraint (entities table structure unknown)
 
   -- File storage (Supabase Storage URLs)
   file_url TEXT NOT NULL,                           -- Full URL to receipt file
