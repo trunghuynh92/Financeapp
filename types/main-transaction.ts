@@ -127,6 +127,10 @@ export interface MainTransactionDetails extends MainTransaction {
   checkpoint_id?: number
   transaction_sequence?: number // CSV row order for same-date transactions
   import_batch_id?: number
+
+  // Receipt fields
+  receipt_id?: string
+  receipt_url?: string
 }
 
 export interface UnmatchedTransfer {

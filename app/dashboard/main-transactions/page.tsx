@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit, Search, Filter, X, Split, Check, Link2, Plus, Trash2, Loader2, Info, CalendarIcon, Flag } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit, Search, Filter, X, Split, Check, Link2, Plus, Trash2, Loader2, Info, CalendarIcon, Flag, Upload, Paperclip } from "lucide-react"
 import { MainTransactionDetails, TransactionType, Category, Branch, Project } from "@/types/main-transaction"
 import { EditTransactionDialog } from "@/components/main-transactions/EditTransactionDialog"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
@@ -28,6 +28,8 @@ import { SelectDrawdownDialog } from "@/components/main-transactions/SelectDrawd
 import { InlineCombobox } from "@/components/main-transactions/InlineCombobox"
 import { AddTransactionDialog } from "@/components/main-transactions/AddTransactionDialog"
 import { DeleteSplitWarningDialog } from "@/components/main-transactions/DeleteSplitWarningDialog"
+import { ReceiptUploadDialog } from "@/components/receipts/ReceiptUploadDialog"
+import { ReceiptPreviewDialog } from "@/components/receipts/ReceiptPreviewDialog"
 import { useEntity } from "@/contexts/EntityContext"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useToast } from "@/hooks/use-toast"
@@ -126,6 +128,12 @@ export default function MainTransactionsPage() {
 
   // Add transaction dialog state
   const [addTransactionDialogOpen, setAddTransactionDialogOpen] = useState(false)
+
+  // Upload receipt dialog state
+  const [uploadReceiptDialogOpen, setUploadReceiptDialogOpen] = useState(false)
+  const [previewReceiptId, setPreviewReceiptId] = useState<string | null>(null)
+  const [previewAccountId, setPreviewAccountId] = useState<number | null>(null)
+  const [attachReceiptTransaction, setAttachReceiptTransaction] = useState<MainTransactionDetails | null>(null)
 
   // Delete split warning dialog state
   const [deleteSplitWarningOpen, setDeleteSplitWarningOpen] = useState(false)
@@ -1416,14 +1424,24 @@ export default function MainTransactionsPage() {
                   </Button>
                 </>
               ) : (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => setAddTransactionDialogOpen(true)}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Transaction
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => setAddTransactionDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Transaction
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setUploadReceiptDialogOpen(true)}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Receipt
+                  </Button>
+                </div>
               )}
             </div>
           </div>
@@ -2012,6 +2030,22 @@ export default function MainTransactionsPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                onClick={() => {
+                                  if (tx.receipt_id) {
+                                    // View receipt via authenticated API endpoint
+                                    window.open(`/api/receipts/${tx.receipt_id}/view`, '_blank')
+                                  } else {
+                                    // Attach receipt
+                                    setAttachReceiptTransaction(tx)
+                                  }
+                                }}
+                                title={tx.receipt_id ? "View receipt" : "Attach receipt"}
+                              >
+                                <Paperclip className={`h-4 w-4 ${tx.receipt_id ? 'text-blue-600' : ''}`} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => handleEditTransaction(tx)}
                                 disabled={isBalanceAdjustment}
                                 title={
@@ -2272,6 +2306,72 @@ export default function MainTransactionsPage() {
           fetchTransactions()
         }}
       />
+
+      {/* Upload Receipt Dialog (general upload) */}
+      {currentEntity && accounts.length > 0 && (
+        <ReceiptUploadDialog
+          open={uploadReceiptDialogOpen}
+          onOpenChange={setUploadReceiptDialogOpen}
+          accountId={accounts.find(acc => acc.account_type === 'bank' || acc.account_type === 'cash')?.account_id || accounts[0]?.account_id}
+          entityId={currentEntity.id}
+          onSuccess={(receiptId) => {
+            toast({
+              title: "Success",
+              description: "Receipt uploaded and processed with AI",
+            })
+            setUploadReceiptDialogOpen(false)
+            // Open preview dialog
+            setPreviewReceiptId(receiptId)
+            setPreviewAccountId(accounts.find(acc => acc.account_type === 'bank' || acc.account_type === 'cash')?.account_id || accounts[0]?.account_id)
+          }}
+        />
+      )}
+
+      {/* Attach Receipt Dialog (for specific transaction) */}
+      {currentEntity && attachReceiptTransaction && (
+        <ReceiptUploadDialog
+          open={!!attachReceiptTransaction}
+          onOpenChange={(open) => {
+            if (!open) setAttachReceiptTransaction(null)
+          }}
+          accountId={attachReceiptTransaction.account_id}
+          entityId={currentEntity.id}
+          rawTransactionId={attachReceiptTransaction.raw_transaction_id}
+          onSuccess={(receiptId) => {
+            toast({
+              title: "Success",
+              description: "Receipt attached to transaction successfully",
+            })
+            setAttachReceiptTransaction(null)
+            fetchTransactions()
+          }}
+        />
+      )}
+
+      {/* Receipt Preview Dialog */}
+      {currentEntity && previewReceiptId && previewAccountId && (
+        <ReceiptPreviewDialog
+          open={!!previewReceiptId}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPreviewReceiptId(null)
+              setPreviewAccountId(null)
+            }
+          }}
+          receiptId={previewReceiptId}
+          entityId={currentEntity.id}
+          accountId={previewAccountId}
+          onTransactionCreated={(transactionId) => {
+            toast({
+              title: "Success",
+              description: "Transaction created from receipt",
+            })
+            setPreviewReceiptId(null)
+            setPreviewAccountId(null)
+            fetchTransactions()
+          }}
+        />
+      )}
 
       {/* Delete Split Warning Dialog */}
       <DeleteSplitWarningDialog

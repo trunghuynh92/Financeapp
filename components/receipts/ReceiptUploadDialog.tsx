@@ -18,7 +18,7 @@ interface ReceiptUploadDialogProps {
   onOpenChange: (open: boolean) => void
   accountId: number
   entityId: string
-  mainTransactionId?: number
+  rawTransactionId?: string
   onSuccess?: (receiptId: string) => void
 }
 
@@ -35,7 +35,7 @@ export function ReceiptUploadDialog({
   onOpenChange,
   accountId,
   entityId,
-  mainTransactionId,
+  rawTransactionId,
   onSuccess,
 }: ReceiptUploadDialogProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -86,12 +86,11 @@ export function ReceiptUploadDialog({
     try {
       const formData = new FormData()
       formData.append('file', selectedFile)
-      formData.append('account_id', accountId.toString())
       formData.append('entity_id', entityId)
-      if (mainTransactionId) {
-        formData.append('main_transaction_id', mainTransactionId.toString())
+      if (rawTransactionId) {
+        formData.append('raw_transaction_id', rawTransactionId)
       }
-      formData.append('process_ocr', 'false') // Will enable OCR in next phase
+      formData.append('process_ocr', 'true') // Enable OCR processing
 
       const response = await fetch('/api/receipts/upload', {
         method: 'POST',

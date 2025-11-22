@@ -5,9 +5,8 @@
  *
  * Request: FormData with:
  * - file: File (image or PDF)
- * - account_id: number
  * - entity_id: string (UUID)
- * - main_transaction_id?: number (optional, link to existing transaction)
+ * - raw_transaction_id?: string (optional, link to existing transaction)
  * - process_ocr?: boolean (default: false, set true to trigger OCR)
  *
  * Response:
@@ -18,6 +17,9 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import vision from '@google-cloud/vision'
+import { parseVietnameseReceipt, calculateConfidence } from '@/lib/receipt-parser'
+import { parseReceiptWithAI } from '@/lib/ai-receipt-parser'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 const ALLOWED_MIME_TYPES = [
@@ -45,11 +47,8 @@ export async function POST(request: NextRequest) {
     // Parse form data
     const formData = await request.formData()
     const file = formData.get('file') as File
-    const accountId = parseInt(formData.get('account_id') as string)
     const entityId = formData.get('entity_id') as string
-    const mainTransactionId = formData.get('main_transaction_id')
-      ? parseInt(formData.get('main_transaction_id') as string)
-      : null
+    const rawTransactionId = formData.get('raw_transaction_id') as string | null
     const processOCR = formData.get('process_ocr') === 'true'
 
     // Validate required fields
@@ -57,9 +56,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File is required' }, { status: 400 })
     }
 
-    if (!accountId || !entityId) {
+    if (!entityId) {
       return NextResponse.json(
-        { error: 'account_id and entity_id are required' },
+        { error: 'entity_id is required' },
         { status: 400 }
       )
     }
@@ -140,8 +139,7 @@ export async function POST(request: NextRequest) {
       .from('receipts')
       .insert({
         receipt_id: receiptId,
-        main_transaction_id: mainTransactionId,
-        account_id: accountId,
+        raw_transaction_id: rawTransactionId,
         entity_id: entityId,
         file_url: publicUrl,
         file_path: filePath,
@@ -166,8 +164,81 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // TODO: If processOCR is true, trigger OCR processing
-    // This will be implemented in the next phase with Google Cloud Vision
+    // Process OCR if requested
+    let ocrData = null
+    if (processOCR) {
+      try {
+        // Update status to processing
+        await supabase
+          .from('receipts')
+          .update({ processing_status: 'processing' })
+          .eq('receipt_id', receiptId)
+
+        // Process with Google Cloud Vision
+        const client = new vision.ImageAnnotatorClient()
+        const [result] = await client.textDetection({
+          image: { content: buffer },
+        })
+
+        const detections = result.textAnnotations
+        const rawText = detections?.[0]?.description || ''
+
+        if (rawText) {
+          // Parse Vietnamese receipt with AI
+          const parsedData = await parseReceiptWithAI(rawText)
+          const confidence = parsedData.confidence
+
+          // Update database with OCR results
+          await supabase
+            .from('receipts')
+            .update({
+              ocr_raw_text: rawText,
+              ocr_merchant_name: parsedData.merchantName,
+              ocr_transaction_date: parsedData.transactionDate,
+              ocr_total_amount: parsedData.totalAmount,
+              ocr_currency: parsedData.currency,
+              ocr_items: parsedData.items,
+              ocr_confidence: confidence,
+              ocr_processed_at: new Date().toISOString(),
+              ocr_service: 'google_vision',
+              processing_status: 'completed',
+              suggested_description: parsedData.suggestedDescription,
+              suggested_category_code: parsedData.suggestedCategoryCode,
+              suggested_category_name: parsedData.suggestedCategoryName,
+            })
+            .eq('receipt_id', receiptId)
+
+          ocrData = {
+            merchant_name: parsedData.merchantName,
+            transaction_date: parsedData.transactionDate,
+            total_amount: parsedData.totalAmount,
+            currency: parsedData.currency,
+            items: parsedData.items,
+            confidence,
+            suggested_description: parsedData.suggestedDescription,
+            suggested_category_code: parsedData.suggestedCategoryCode,
+            suggested_category_name: parsedData.suggestedCategoryName,
+          }
+        } else {
+          await supabase
+            .from('receipts')
+            .update({
+              processing_status: 'failed',
+              processing_error: 'No text found in receipt',
+            })
+            .eq('receipt_id', receiptId)
+        }
+      } catch (ocrError) {
+        console.error('OCR processing error:', ocrError)
+        await supabase
+          .from('receipts')
+          .update({
+            processing_status: 'failed',
+            processing_error: ocrError instanceof Error ? ocrError.message : 'OCR failed',
+          })
+          .eq('receipt_id', receiptId)
+      }
+    }
 
     return NextResponse.json(
       {
@@ -179,6 +250,7 @@ export async function POST(request: NextRequest) {
           file_size: receipt.file_size,
           processing_status: receipt.processing_status,
           created_at: receipt.created_at,
+          ocr_data: ocrData,
         },
       },
       { status: 201 }
