@@ -227,7 +227,7 @@ COMMENT ON COLUMN receipts.processing_status IS 'OCR processing status: pending,
 
 -- Grant authenticated users access to receipts table
 GRANT SELECT, INSERT, UPDATE, DELETE ON receipts TO authenticated;
-GRANT USAGE, SELECT ON SEQUENCE receipts_receipt_id_seq TO authenticated;
+-- No sequence needed - receipt_id is UUID with DEFAULT gen_random_uuid()
 
 -- ============================================================================
 -- Migration complete
