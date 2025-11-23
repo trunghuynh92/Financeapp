@@ -100,12 +100,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Get current cash balance (sum of all account balances)
+    // First get all account IDs for this entity
     const { data: accounts, error: accountsError} = await supabase
       .from('accounts')
-      .select(`
-        account_id,
-        balance:account_balances(current_balance)
-      `)
+      .select('account_id')
       .eq('entity_id', entityId)
       .eq('is_active', true)
 
@@ -113,10 +111,22 @@ export async function GET(request: NextRequest) {
       console.error('Error fetching accounts:', accountsError)
     }
 
-    const currentBalance = accounts?.reduce((sum, acc: any) => {
-      const balance = acc.balance?.[0]?.current_balance || 0
-      return sum + balance
-    }, 0) || 0
+    const accountIds = accounts?.map(a => a.account_id) || []
+
+    // Then get balances for those accounts
+    let currentBalance = 0
+    if (accountIds.length > 0) {
+      const { data: balances, error: balancesError } = await supabase
+        .from('account_balances')
+        .select('current_balance')
+        .in('account_id', accountIds)
+
+      if (balancesError) {
+        console.error('Error fetching balances:', balancesError)
+      }
+
+      currentBalance = balances?.reduce((sum, b) => sum + (b.current_balance || 0), 0) || 0
+    }
 
     // === CASH FLOW SYSTEM 2.0: Calculate predicted income (once for all months) ===
     const { total: predictedMonthlyIncome, breakdown: incomeBreakdown } = await calculatePredictedIncome(entityId)

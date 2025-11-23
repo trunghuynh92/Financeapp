@@ -68,38 +68,30 @@ export async function analyzeHistoricalIncome(
   const startDate = startOfMonth(subMonths(new Date(), monthsBack))
   const endDate = endOfMonth(new Date())
 
-  // Fetch income transactions (credit/positive transactions)
+  // Fetch income transactions (credit direction transactions)
   const { data: transactions, error } = await supabase
-    .from('main_transaction')
+    .from('main_transaction_details')
     .select(`
-      transaction_id,
+      main_transaction_id,
       transaction_date,
-      debit_amount,
-      credit_amount,
+      amount,
+      transaction_direction,
       category_id,
-      categories:category_id (
-        category_name,
-        transaction_types:transaction_type_id (
-          direction
-        )
-      )
+      category_name
     `)
     .eq('entity_id', entityId)
     .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
     .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
     .not('category_id', 'is', null)
+    .eq('transaction_direction', 'credit') // Only credit transactions (income)
 
   if (error) {
     console.error('Error fetching income transactions:', error)
     return []
   }
 
-  // Filter for income transactions (credit direction or credit amount > 0)
-  const incomeTransactions = transactions?.filter(tx => {
-    const direction = (tx.categories as any)?.transaction_types?.direction
-    const amount = tx.credit_amount || 0
-    return direction === 'credit' && amount > 0
-  }) || []
+  // All transactions are income (filtered by direction)
+  const incomeTransactions = transactions || []
 
   // Group by category and calculate statistics
   const categoryMap = new Map<number, {
@@ -111,8 +103,8 @@ export async function analyzeHistoricalIncome(
 
   incomeTransactions.forEach(tx => {
     const categoryId = tx.category_id!
-    const categoryName = (tx.categories as any)?.category_name || 'Unknown'
-    const amount = tx.credit_amount || 0
+    const categoryName = (tx as any)?.category_name || 'Unknown'
+    const amount = (tx as any).amount || 0
     const month = format(parseISO(tx.transaction_date), 'yyyy-MM')
 
     if (!categoryMap.has(categoryId)) {
@@ -249,38 +241,30 @@ export async function analyzeHistoricalExpenses(
   // Get categories with scheduled payments (to exclude)
   const scheduledCategories = await getCategoriesWithScheduledPayments(entityId, monthKey)
 
-  // Fetch expense transactions (debit/negative transactions)
+  // Fetch expense transactions (debit direction transactions)
   const { data: transactions, error } = await supabase
-    .from('main_transaction')
+    .from('main_transaction_details')
     .select(`
-      transaction_id,
+      main_transaction_id,
       transaction_date,
-      debit_amount,
-      credit_amount,
+      amount,
+      transaction_direction,
       category_id,
-      categories:category_id (
-        category_name,
-        transaction_types:transaction_type_id (
-          direction
-        )
-      )
+      category_name
     `)
     .eq('entity_id', entityId)
     .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
     .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
     .not('category_id', 'is', null)
+    .eq('transaction_direction', 'debit') // Only debit transactions (expenses)
 
   if (error) {
     console.error('Error fetching expense transactions:', error)
     return []
   }
 
-  // Filter for expense transactions (debit direction or debit amount > 0)
-  const expenseTransactions = transactions?.filter(tx => {
-    const direction = (tx.categories as any)?.transaction_types?.direction
-    const amount = tx.debit_amount || 0
-    return direction === 'debit' && amount > 0
-  }) || []
+  // All transactions are expenses (filtered by direction)
+  const expenseTransactions = transactions || []
 
   // Group by category and calculate statistics
   const categoryMap = new Map<number, {
@@ -298,8 +282,8 @@ export async function analyzeHistoricalExpenses(
       return
     }
 
-    const categoryName = (tx.categories as any)?.category_name || 'Unknown'
-    const amount = tx.debit_amount || 0
+    const categoryName = (tx as any)?.category_name || 'Unknown'
+    const amount = (tx as any).amount || 0
     const month = format(parseISO(tx.transaction_date), 'yyyy-MM')
 
     if (!categoryMap.has(categoryId)) {
