@@ -41,7 +41,7 @@ export function Sidebar() {
   const { currentEntity } = useEntity()
 
   // Get user's role for the current entity
-  const userRole = currentEntity?.role as UserRole | undefined
+  const userRole = currentEntity?.user_role as UserRole | undefined
 
   // Filter navigation items based on role
   const visibleNavigation = navigation.filter((item) => {
