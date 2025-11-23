@@ -337,7 +337,7 @@ export default function CashFlowPage() {
               <CardHeader>
                 <CardTitle>Cash Flow Projection Chart</CardTitle>
                 <CardDescription>
-                  {data.version === '2.0'
+                  {(data.version === '2.0' || data.version === '3.0')
                     ? 'Predicted income vs expenses with projected balance'
                     : 'Stacked expenses and projected balance over time'}
                 </CardDescription>
@@ -412,8 +412,8 @@ export default function CashFlowPage() {
                       name="Scheduled Payments"
                       radius={[0, 0, 0, 0]}
                     />
-                    {/* Cash Flow 2.0: Predicted Expenses */}
-                    {data.version === '2.0' && (
+                    {/* Cash Flow 2.0+: Predicted Expenses */}
+                    {(data.version === '2.0' || data.version === '3.0') && (
                       <Bar
                         dataKey="predicted"
                         stackId="expenses"
