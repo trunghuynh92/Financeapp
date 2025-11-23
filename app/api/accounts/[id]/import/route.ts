@@ -34,6 +34,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  console.log('========== IMPORT API CALLED ==========')
   try {
     const supabase = createSupabaseServerClient()
     const accountId = parseInt(params.id, 10)
@@ -108,23 +109,46 @@ export async function POST(
       console.log('📊 Excel file merge analysis:', mergeAnalysis)
 
       // Process worksheet with merged cells handler
-      // This will: 1) Unmerge cells, 2) Forward-fill empty cells, 3) Remove empty rows
+      // This will: 1) Unmerge cells, 2) Smart forward-fill (text only), 3) Remove empty rows
       const processedData = processWorksheetWithMergedCells(workbook, worksheet, {
-        autoForwardFill: true,     // Auto-detect columns that need forward-filling
+        autoForwardFill: true,      // ENABLE smart forward-fill - only fills text columns, never amounts
         removeEmptyRows: true,      // Remove completely empty rows
         headerRow: 0,               // Assume header is in first row
       })
 
       console.log(`📋 Processed Excel data: ${processedData.length} rows`)
 
+      // Debug: Log first few rows to verify data types
+      if (processedData.length > 1) {
+        console.log('🔍 First row (header):', processedData[0])
+        console.log('🔍 Second row data:', processedData[1])
+        console.log('🔍 Second row types:', processedData[1].map((cell, idx) =>
+          `[${idx}] ${typeof cell} ${cell instanceof Date ? '(Date)' : ''}: ${cell}`
+        ))
+      }
+
       // Convert to CSV text format for existing parser
-      // IMPORTANT: Properly escape newlines and quotes to preserve structure
+      // IMPORTANT: Properly handle different cell types (Date, Number, String)
       const csvText = processedData
         .map(row =>
           row.map(cell => {
             if (cell === null || cell === undefined) return ''
+
+            // Handle Date objects: convert to ISO date string (YYYY-MM-DD)
+            if (cell instanceof Date) {
+              const year = cell.getFullYear()
+              const month = String(cell.getMonth() + 1).padStart(2, '0')
+              const day = String(cell.getDate()).padStart(2, '0')
+              return `${year}-${month}-${day}`
+            }
+
+            // Handle numbers: keep as number string (don't add formatting)
+            if (typeof cell === 'number') {
+              return String(cell)
+            }
+
+            // Handle strings: escape and quote if needed
             const str = String(cell)
-            // Always quote cells that contain special characters
             // Replace actual newlines with space to prevent CSV row breaks
             const cleaned = str.replace(/[\r\n]+/g, ' ').trim()
             // Escape quotes and wrap in quotes if contains comma or quotes
@@ -136,7 +160,23 @@ export async function POST(
         )
         .join('\n')
 
+      // Debug: Show first 3 lines of generated CSV
+      const csvLines = csvText.split('\n')
+      console.log('🔍 Generated CSV (first 3 lines):')
+      for (let i = 0; i < Math.min(3, csvLines.length); i++) {
+        console.log(`  Line ${i}: ${csvLines[i]}`)
+      }
+
       parsedCSV = parseCSVText(csvText)
+
+      // Debug: Show what parseCSVText returned
+      console.log('🔍 After parseCSVText:')
+      console.log('  Headers:', parsedCSV.headers)
+      console.log('  Detected header row index:', parsedCSV.detectedHeaderRow)
+      console.log('  Total rows:', parsedCSV.totalRows)
+      if (parsedCSV.rows.length > 0) {
+        console.log('  First data row keys:', Object.keys(parsedCSV.rows[0]))
+      }
     } else {
       // Parse CSV file (default)
       const csvText = await file.text()
@@ -636,6 +676,9 @@ function processRow(
 
       case 'debit_amount': {
         const amount = parseAmount(value)
+        if (rowIndex === 0) {
+          console.log(`[Row ${rowIndex}] Debit raw value: "${value}" (${typeof value}) → parsed: ${amount}`)
+        }
         if (amount !== null && amount !== 0) {
           // Convert to positive if negative (e.g., Techcombank format)
           transactionData.debit_amount = Math.abs(amount)
@@ -647,6 +690,9 @@ function processRow(
 
       case 'credit_amount': {
         const amount = parseAmount(value)
+        if (rowIndex === 0) {
+          console.log(`[Row ${rowIndex}] Credit raw value: "${value}" (${typeof value}) → parsed: ${amount}`)
+        }
         if (amount !== null && amount !== 0) {
           // Convert to positive if negative
           transactionData.credit_amount = Math.abs(amount)

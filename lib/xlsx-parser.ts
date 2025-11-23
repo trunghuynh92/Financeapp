@@ -54,12 +54,25 @@ export async function parseXLSXFile(file: File): Promise<ParsedCSVData> {
         const mergeAnalysis = analyzeMergedCells(worksheet)
         console.log('📊 [XLSX Parser] Merge analysis:', mergeAnalysis)
 
+        // First, convert to array WITHOUT processing to find the actual header row
+        const rawData = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          raw: true, // Use raw values (numbers as numbers, not formatted strings)
+          defval: null,
+        }) as (string | number | null)[][]
+
+        // Find header row BEFORE processing merged cells
+        const preliminaryHeaderRow = findHeaderRow(rawData)
+        console.log(`📋 [XLSX Parser] Detected header row at index: ${preliminaryHeaderRow}`)
+
         // Process worksheet with merged cells handler
         // This will: 1) Unmerge cells, 2) Forward-fill empty cells, 3) Remove empty rows
+        // IMPORTANT: Skip metadata rows before header when unmerging
         const processedData = processWorksheetWithMergedCells(workbook, worksheet, {
           autoForwardFill: true,     // Auto-detect columns that need forward-filling
           removeEmptyRows: true,      // Remove completely empty rows
-          headerRow: 0,               // Will be refined by findHeaderRow later
+          headerRow: preliminaryHeaderRow,  // Use detected header row
+          skipMergeBeforeHeader: true, // NEW: Don't unmerge metadata rows before header
         })
 
         console.log(`📋 [XLSX Parser] Processed data: ${processedData.length} rows`)
@@ -113,13 +126,21 @@ function parseXLSXData(rawData: (string | number | null)[][]): ParsedCSVData {
     headers.forEach((header, index) => {
       const value = values[index]
 
-      // Convert value to string or null
+      // Handle different value types appropriately
       if (value === null || value === undefined || value === '') {
         row[header] = null
       } else if (typeof value === 'object' && value !== null && 'toISOString' in value && typeof (value as any).toISOString === 'function') {
-        // Convert Date objects to ISO string
+        // Convert Date objects to ISO date string
         row[header] = (value as Date).toISOString().split('T')[0]
+      } else if (typeof value === 'number') {
+        // Keep numbers as numbers (don't convert to formatted strings)
+        // Debug: Log first few numeric values to verify they're correct
+        if (i < headerRowIndex + 5) {
+          console.log(`[XLSX Debug] Row ${i} "${header}": ${value} (type: number)`)
+        }
+        row[header] = value
       } else {
+        // Convert everything else to string
         row[header] = String(value)
       }
     })
@@ -489,8 +510,15 @@ function extractStatementMetadata(
     const dateValue = row[dateColumn]
     if (!dateValue) return
 
-    // Try to parse date
-    const parsed = tryParseDate(String(dateValue))
+    // Handle Date objects directly (from Excel with cellDates: true)
+    let parsed: Date | null = null
+    if (dateValue instanceof Date) {
+      parsed = dateValue
+    } else {
+      // Try to parse date string
+      parsed = tryParseDate(String(dateValue))
+    }
+
     if (parsed) {
       datesWithRows.push({ date: parsed, rowIndex: index })
     } else if (sampleFailedDates.length < 5) {
@@ -531,12 +559,14 @@ function extractStatementMetadata(
 
   // Find balance column
   const balanceColumn = headers.find(h => {
-    const normalized = h.toLowerCase()
+    const normalized = h.toLowerCase().replace(/\s+/g, '') // Remove all spaces
     return (
       normalized.includes('balance') ||
-      normalized.includes('số dư') ||
-      normalized.includes('sodu') ||
-      normalized.includes('running')
+      normalized.includes('sodu') ||      // "so du" without accent, no space
+      normalized.includes('sốdư') ||      // "số dư" with accent, no space
+      normalized.includes('sổdư') ||      // Alternative Vietnamese spelling
+      normalized.includes('running') ||
+      normalized.includes('cuối')         // "cuối" = ending (for "số dư cuối")
     )
   })
 

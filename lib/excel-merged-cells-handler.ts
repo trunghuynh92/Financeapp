@@ -11,9 +11,18 @@ import type { WorkBook, WorkSheet, Range } from 'xlsx'
  *
  * @param workbook - XLSX workbook
  * @param worksheet - XLSX worksheet to process
+ * @param options - Options for unmerging
  * @returns Modified worksheet with unmerged cells
  */
-export function unmergeCells(workbook: WorkBook, worksheet: WorkSheet): WorkSheet {
+export function unmergeCells(
+  workbook: WorkBook,
+  worksheet: WorkSheet,
+  options: {
+    skipBeforeRow?: number  // Don't unmerge rows before this index (for metadata)
+  } = {}
+): WorkSheet {
+  const { skipBeforeRow } = options
+
   // Get merge information from worksheet
   const merges = worksheet['!merges'] || []
 
@@ -23,6 +32,12 @@ export function unmergeCells(workbook: WorkBook, worksheet: WorkSheet): WorkShee
   }
 
   console.log(`📋 Found ${merges.length} merged cell ranges`)
+  if (skipBeforeRow !== undefined) {
+    console.log(`📋 Skipping metadata rows before row ${skipBeforeRow + 1}`)
+  }
+
+  let skippedCount = 0
+  let processedCount = 0
 
   // Process each merge range
   for (const merge of merges) {
@@ -30,6 +45,15 @@ export function unmergeCells(workbook: WorkBook, worksheet: WorkSheet): WorkShee
     const endRow = merge.e.r    // End row index (0-based)
     const startCol = merge.s.c  // Start column index (0-based)
     const endCol = merge.e.c    // End column index (0-based)
+
+    // Skip metadata rows if option is set
+    if (skipBeforeRow !== undefined && startRow < skipBeforeRow) {
+      skippedCount++
+      console.log(
+        `  ⏭️  Skipping metadata merge at R${startRow + 1}C${startCol + 1} (before header row)`
+      )
+      continue
+    }
 
     // Get the value from the first cell in the merge range
     const firstCellAddress = encodeCell(startRow, startCol)
@@ -61,12 +85,14 @@ export function unmergeCells(workbook: WorkBook, worksheet: WorkSheet): WorkShee
         }
       }
     }
+
+    processedCount++
   }
 
   // Clear merge information (cells are now unmerged)
   delete worksheet['!merges']
 
-  console.log(`✅ Successfully unmerged ${merges.length} cell ranges`)
+  console.log(`✅ Unmerged ${processedCount} cell ranges (skipped ${skippedCount} metadata merges)`)
 
   return worksheet
 }
@@ -124,6 +150,9 @@ export function forwardFillEmptyCells(
  * Smart forward-fill that detects which columns likely need filling
  * based on empty cell patterns
  *
+ * IMPORTANT: Only forward-fills TEXT columns (like descriptions).
+ * NEVER forward-fills numeric/amount columns (debit, credit, balance).
+ *
  * @param data - 2D array of cell values
  * @param headerRow - Index of header row (0-based)
  * @returns Modified data with forward-filled values
@@ -137,10 +166,36 @@ export function smartForwardFill(
   const numCols = data[headerRow]?.length || 0
   const columnsNeedingFill: number[] = []
 
+  // Keywords that identify amount/numeric columns that should NEVER be forward-filled
+  const AMOUNT_COLUMN_KEYWORDS = [
+    'NO', 'CO', 'SODU', 'BALANCE', 'DEBIT', 'CREDIT',
+    'AMOUNT', 'SOTIEN', 'GHINO', 'GHICO', 'SODU',
+    'THU', 'CHI', 'PHATSINH', 'TANG', 'GIAM',
+    'CUOI', 'DAU', 'TIEN', 'MONEY', 'VND', 'USD',
+    'WITHDRAWAL', 'DEPOSIT', 'RUT', 'NOP'
+  ]
+
   // Analyze each column to detect if it needs forward-filling
   for (let colIndex = 0; colIndex < numCols; colIndex++) {
+    const headerName = String(data[headerRow][colIndex] || '').toUpperCase().trim()
+    const normalizedHeader = headerName.replace(/\s+/g, '')
+
+    // CRITICAL: Skip amount/numeric columns - these should NEVER be forward-filled
+    const isAmountColumn = AMOUNT_COLUMN_KEYWORDS.some(keyword =>
+      normalizedHeader.includes(keyword)
+    )
+
+    if (isAmountColumn) {
+      console.log(
+        `  Column ${colIndex} "${headerName}": Skipping (amount column - never forward-fill)`
+      )
+      continue
+    }
+
     let emptyCount = 0
     let totalCount = 0
+    let numericCount = 0
+    let textCount = 0
 
     // Check data rows (skip header)
     for (let rowIndex = headerRow + 1; rowIndex < data.length; rowIndex++) {
@@ -151,17 +206,45 @@ export function smartForwardFill(
                      cellValue === undefined ||
                      (typeof cellValue === 'string' && cellValue.trim() === '')
 
-      if (isEmpty) emptyCount++
+      if (isEmpty) {
+        emptyCount++
+      } else {
+        // Count numeric values
+        const isNumeric = typeof cellValue === 'number' ||
+                         (typeof cellValue === 'string' && !isNaN(parseFloat(cellValue.replace(/[,\s]/g, ''))))
+        if (isNumeric) {
+          numericCount++
+        } else {
+          textCount++
+        }
+      }
     }
 
-    // If more than 20% of cells are empty, this column might need forward-filling
-    const emptyRatio = totalCount > 0 ? emptyCount / totalCount : 0
-    if (emptyRatio > 0.2) {
-      const headerName = data[headerRow][colIndex]
+    // If column is mostly numeric (>50% of non-empty cells), skip it
+    const nonEmptyCount = totalCount - emptyCount
+    const numericRatio = nonEmptyCount > 0 ? numericCount / nonEmptyCount : 0
+    if (numericRatio > 0.5) {
       console.log(
-        `  Column ${colIndex} "${headerName}": ${emptyCount}/${totalCount} empty (${(emptyRatio * 100).toFixed(1)}%) - will forward-fill`
+        `  Column ${colIndex} "${headerName}": Skipping (mostly numeric: ${(numericRatio * 100).toFixed(1)}%)`
+      )
+      continue
+    }
+
+    // Only forward-fill if:
+    // 1. Column has actual text content (not just numbers)
+    // 2. More than 30% of cells are empty (indicating merged cells)
+    const emptyRatio = totalCount > 0 ? emptyCount / totalCount : 0
+    const hasText = textCount > 0
+
+    if (hasText && emptyRatio > 0.3) {
+      console.log(
+        `  Column ${colIndex} "${headerName}": ${emptyCount}/${totalCount} empty (${(emptyRatio * 100).toFixed(1)}%), ${textCount} text cells - will forward-fill`
       )
       columnsNeedingFill.push(colIndex)
+    } else if (emptyRatio > 0.3) {
+      console.log(
+        `  Column ${colIndex} "${headerName}": ${emptyCount}/${totalCount} empty but no text content - skipping`
+      )
     }
   }
 
@@ -213,25 +296,29 @@ export function processWorksheetWithMergedCells(
     forwardFillColumns?: number[] // Specific columns to forward-fill (overrides auto-detect)
     removeEmptyRows?: boolean     // Remove completely empty rows (default: true)
     headerRow?: number            // Index of header row for smart forward-fill (default: 0)
+    skipMergeBeforeHeader?: boolean // Don't unmerge metadata rows before header (default: false)
   } = {}
 ): (string | number | null)[][] {
   const {
     autoForwardFill = true,
     forwardFillColumns,
     removeEmptyRows: shouldRemoveEmptyRows = true,
-    headerRow = 0
+    headerRow = 0,
+    skipMergeBeforeHeader = false
   } = options
 
   console.log('🔧 Processing Excel worksheet with merged cells...')
 
-  // Step 1: Unmerge cells
-  const unmergedWorksheet = unmergeCells(workbook, worksheet)
+  // Step 1: Unmerge cells (skip metadata rows if requested)
+  const unmergedWorksheet = unmergeCells(workbook, worksheet, {
+    skipBeforeRow: skipMergeBeforeHeader ? headerRow : undefined
+  })
 
   // Step 2: Convert to array
   const XLSX = require('xlsx')
   let data = XLSX.utils.sheet_to_json(unmergedWorksheet, {
     header: 1,
-    raw: false, // Use formatted text values
+    raw: true, // Use raw values (numbers as numbers, not formatted strings)
     defval: null,
   }) as (string | number | null)[][]
 
