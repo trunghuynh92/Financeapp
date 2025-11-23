@@ -1,10 +1,11 @@
 /**
- * Cash Flow Projection API - Version 2.0
+ * Cash Flow Projection API - Version 3.0
  *
  * Implements intelligent predictive forecasting with hierarchical priority system
- * to prevent double-counting of expenses.
+ * to prevent double-counting of expenses, plus liquidity & solvency analysis.
  *
- * @see docs/CASHFLOW_SYSTEM_2.0.md for full documentation
+ * @see docs/CASHFLOW_SYSTEM_2.0.md for v2.0 documentation
+ * @see docs/CASHFLOW_SYSTEM_3.0.md for v3.0 liquidity features
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -14,7 +15,9 @@ import {
   calculatePredictedIncome,
   calculatePredictedExpenses,
   compareBudgets,
-  getCategoriesWithScheduledPayments
+  getCategoriesWithScheduledPayments,
+  analyzeLiquidityPosition,
+  calculateRunwayAnalysis
 } from '@/lib/cash-flow-analyzer'
 
 export async function GET(request: NextRequest) {
@@ -273,6 +276,20 @@ export async function GET(request: NextRequest) {
     console.log(`[Cash Flow 2.0] Net change: ${(totalProjectedIncome - totalObligations).toLocaleString()} VND`)
     console.log(`[Cash Flow 2.0] Lowest projected balance: ${lowestBalance.toLocaleString()} VND`)
 
+    // === CASH FLOW 3.0: LIQUIDITY & SOLVENCY ANALYSIS ===
+    const liquidityPosition = await analyzeLiquidityPosition(entityId)
+    const monthlyBurnRate = totalObligations / monthsAhead
+    const runwayAnalysis = calculateRunwayAnalysis(
+      liquidityPosition,
+      monthlyBurnRate,
+      predictedMonthlyIncome,
+      monthsAhead
+    )
+
+    console.log(`[Cash Flow 3.0] Total liquid assets: ${liquidityPosition.total_liquid_assets.toLocaleString()} VND`)
+    console.log(`[Cash Flow 3.0] Cash runway: ${runwayAnalysis.cash_runway_months.toFixed(1)} months`)
+    console.log(`[Cash Flow 3.0] Liquidity runway: ${runwayAnalysis.liquidity_runway_months.toFixed(1)} months`)
+
     return NextResponse.json({
       data: {
         current_balance: currentBalance,
@@ -283,7 +300,12 @@ export async function GET(request: NextRequest) {
         lowest_projected_balance: lowestBalance,
         months_until_negative: monthsUntilNegative === -1 ? null : monthsUntilNegative + 1,
         projections: projectionsWithBalance,
-        version: '2.0' // Mark this as v2.0 response
+
+        // NEW in v3.0: Liquidity & Solvency Analysis
+        liquidity: liquidityPosition,
+        runway: runwayAnalysis,
+
+        version: '3.0' // Mark this as v3.0 response
       }
     })
 

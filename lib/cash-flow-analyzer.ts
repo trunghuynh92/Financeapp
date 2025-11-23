@@ -417,3 +417,299 @@ export function compareBudgets(
 
   return warnings
 }
+
+// ==============================================================================
+// CASH FLOW 3.0: LIQUIDITY & SOLVENCY ANALYSIS
+// ==============================================================================
+
+export interface AccountBalance {
+  account_id: number
+  account_name: string
+  account_type: string
+  current_balance: number
+}
+
+export interface ReceivableLoan {
+  loan_disbursement_id: number
+  borrower_name: string
+  remaining_balance: number
+  due_date: string | null
+  is_overdue: boolean
+  days_overdue: number
+}
+
+export interface LiquidityPosition {
+  // Cash accounts (checking, savings)
+  cash_balance: number
+  cash_accounts: AccountBalance[]
+  
+  // Investment accounts (stocks, bonds, funds)
+  investment_balance: number
+  investment_accounts: AccountBalance[]
+  
+  // Receivables (loans given out)
+  receivables_balance: number
+  receivables: ReceivableLoan[]
+  overdue_receivables: number
+  overdue_count: number
+  
+  // Total liquidity
+  total_liquid_assets: number
+}
+
+export interface RunwayAnalysis {
+  monthly_burn_rate: number
+  cash_runway_months: number
+  liquidity_runway_months: number
+  quick_ratio: number
+  will_run_out_of_cash: boolean
+  cash_depletion_month: string | null
+  liquidity_buffer: number // Extra months from investments + receivables
+}
+
+/**
+ * Get all account balances grouped by type
+ * 
+ * @param entityId - The entity to analyze
+ * @returns Account balances grouped by type
+ */
+export async function getAccountBalancesByType(
+  entityId: string
+): Promise<{ cash: AccountBalance[]; investments: AccountBalance[]; total_cash: number; total_investments: number }> {
+  const supabase = createSupabaseServerClient()
+
+  // Get all accounts with their balances
+  const { data: accounts, error: accountsError } = await supabase
+    .from('accounts')
+    .select('account_id, account_name, account_type')
+    .eq('entity_id', entityId)
+    .eq('is_active', true)
+
+  if (accountsError) {
+    console.error('Error fetching accounts:', accountsError)
+    return { cash: [], investments: [], total_cash: 0, total_investments: 0 }
+  }
+
+  const accountIds = accounts?.map(a => a.account_id) || []
+
+  if (accountIds.length === 0) {
+    return { cash: [], investments: [], total_cash: 0, total_investments: 0 }
+  }
+
+  // Get balances for those accounts
+  const { data: balances, error: balancesError } = await supabase
+    .from('account_balances')
+    .select('account_id, current_balance')
+    .in('account_id', accountIds)
+
+  if (balancesError) {
+    console.error('Error fetching account balances:', balancesError)
+    return { cash: [], investments: [], total_cash: 0, total_investments: 0 }
+  }
+
+  // Merge account info with balances
+  const accountsWithBalances: AccountBalance[] = (accounts || []).map((acc: any) => {
+    const balance = balances?.find(b => b.account_id === acc.account_id)
+    return {
+      account_id: acc.account_id,
+      account_name: acc.account_name,
+      account_type: acc.account_type,
+      current_balance: balance?.current_balance || 0
+    }
+  })
+
+  // Separate cash accounts from investment accounts
+  const cashAccounts = accountsWithBalances.filter(a => 
+    a.account_type === 'checking' || 
+    a.account_type === 'savings' ||
+    a.account_type === 'cash'
+  )
+
+  const investmentAccounts = accountsWithBalances.filter(a => 
+    a.account_type === 'investment' ||
+    a.account_type === 'stocks' ||
+    a.account_type === 'bonds' ||
+    a.account_type === 'mutual_fund'
+  )
+
+  const totalCash = cashAccounts.reduce((sum, a) => sum + a.current_balance, 0)
+  const totalInvestments = investmentAccounts.reduce((sum, a) => sum + a.current_balance, 0)
+
+  return {
+    cash: cashAccounts,
+    investments: investmentAccounts,
+    total_cash: totalCash,
+    total_investments: totalInvestments
+  }
+}
+
+/**
+ * Get outstanding receivables (loans given to others)
+ * 
+ * @param entityId - The entity to analyze
+ * @returns Receivables summary
+ */
+export async function analyzeReceivables(
+  entityId: string
+): Promise<{ total: number; overdue_total: number; loans: ReceivableLoan[] }> {
+  const supabase = createSupabaseServerClient()
+
+  // Get all accounts for this entity
+  const { data: accounts, error: accountsError } = await supabase
+    .from('accounts')
+    .select('account_id')
+    .eq('entity_id', entityId)
+    .eq('is_active', true)
+
+  if (accountsError) {
+    console.error('Error fetching accounts for receivables:', accountsError)
+    return { total: 0, overdue_total: 0, loans: [] }
+  }
+
+  const accountIds = accounts?.map(a => a.account_id) || []
+
+  if (accountIds.length === 0) {
+    return { total: 0, overdue_total: 0, loans: [] }
+  }
+
+  // Get loan disbursements (money we lent out)
+  const { data: loans, error } = await supabase
+    .from('loan_disbursement')
+    .select(`
+      loan_disbursement_id,
+      borrower_name,
+      remaining_balance,
+      due_date,
+      status
+    `)
+    .in('account_id', accountIds)
+    .eq('status', 'active')
+
+  if (error) {
+    console.error('Error fetching receivables:', error)
+    return { total: 0, overdue_total: 0, loans: [] }
+  }
+
+  const today = new Date()
+  const receivableLoans: ReceivableLoan[] = (loans || []).map((loan: any) => {
+    const dueDate = loan.due_date ? new Date(loan.due_date) : null
+    const isOverdue = dueDate ? dueDate < today : false
+    const daysOverdue = isOverdue && dueDate 
+      ? Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+      : 0
+
+    return {
+      loan_disbursement_id: loan.loan_disbursement_id,
+      borrower_name: loan.borrower_name,
+      remaining_balance: loan.remaining_balance || 0,
+      due_date: loan.due_date,
+      is_overdue: isOverdue,
+      days_overdue: daysOverdue
+    }
+  })
+
+  const total = receivableLoans.reduce((sum, l) => sum + l.remaining_balance, 0)
+  const overdueTotal = receivableLoans
+    .filter(l => l.is_overdue)
+    .reduce((sum, l) => sum + l.remaining_balance, 0)
+
+  return { 
+    total, 
+    overdue_total: overdueTotal,
+    loans: receivableLoans 
+  }
+}
+
+/**
+ * Calculate complete liquidity position
+ * 
+ * @param entityId - The entity to analyze
+ * @returns Complete liquidity analysis
+ */
+export async function analyzeLiquidityPosition(
+  entityId: string
+): Promise<LiquidityPosition> {
+  // Get account balances by type
+  const {
+    cash: cashAccounts,
+    investments: investmentAccounts,
+    total_cash,
+    total_investments
+  } = await getAccountBalancesByType(entityId)
+  
+  // Get receivables
+  const { total: totalReceivables, overdue_total, loans } = await analyzeReceivables(entityId)
+
+  const totalLiquidAssets = total_cash + total_investments + totalReceivables
+  const overdueCount = loans.filter(l => l.is_overdue).length
+
+  return {
+    cash_balance: total_cash,
+    cash_accounts: cashAccounts,
+    investment_balance: total_investments,
+    investment_accounts: investmentAccounts,
+    receivables_balance: totalReceivables,
+    receivables: loans,
+    overdue_receivables: overdue_total,
+    overdue_count: overdueCount,
+    total_liquid_assets: totalLiquidAssets
+  }
+}
+
+/**
+ * Calculate runway analysis
+ * 
+ * @param liquidity - Liquidity position
+ * @param monthlyBurnRate - Average monthly expenses
+ * @param monthlyIncome - Average monthly income
+ * @param monthsAhead - Number of months to project
+ * @returns Runway analysis with depletion warnings
+ */
+export function calculateRunwayAnalysis(
+  liquidity: LiquidityPosition,
+  monthlyBurnRate: number,
+  monthlyIncome: number,
+  monthsAhead: number = 6
+): RunwayAnalysis {
+  const netMonthlyBurn = monthlyBurnRate - monthlyIncome
+
+  // If income > expenses, infinite runway
+  if (netMonthlyBurn <= 0) {
+    return {
+      monthly_burn_rate: netMonthlyBurn,
+      cash_runway_months: Infinity,
+      liquidity_runway_months: Infinity,
+      quick_ratio: Infinity,
+      will_run_out_of_cash: false,
+      cash_depletion_month: null,
+      liquidity_buffer: Infinity
+    }
+  }
+
+  // Calculate cash runway
+  const cashRunway = liquidity.cash_balance / netMonthlyBurn
+
+  // Calculate total liquidity runway
+  const liquidityRunway = liquidity.total_liquid_assets / netMonthlyBurn
+
+  // Quick ratio (liquid assets / monthly obligations)
+  const quickRatio = liquidity.total_liquid_assets / monthlyBurnRate
+
+  // Determine cash depletion month
+  let cashDepletionMonth: string | null = null
+  if (cashRunway < monthsAhead) {
+    const depletionDate = new Date()
+    depletionDate.setMonth(depletionDate.getMonth() + Math.floor(cashRunway))
+    cashDepletionMonth = format(depletionDate, 'yyyy-MM')
+  }
+
+  return {
+    monthly_burn_rate: netMonthlyBurn,
+    cash_runway_months: cashRunway,
+    liquidity_runway_months: liquidityRunway,
+    quick_ratio: quickRatio,
+    will_run_out_of_cash: cashRunway < monthsAhead,
+    cash_depletion_month: cashDepletionMonth,
+    liquidity_buffer: liquidityRunway - cashRunway
+  }
+}

@@ -42,22 +42,29 @@ interface MonthlyProjection {
   projected_income: number
   debt_payments: any[]
   scheduled_payments: any[]
+  predicted_expenses: any[] // NEW in v2.0
   budgets: any[]
   total_debt: number
   total_scheduled: number
+  total_predicted: number // NEW in v2.0
   total_budgets: number
   total_obligations: number
   closing_balance: number
   health: 'surplus' | 'tight' | 'deficit'
+  income_breakdown: any[] // NEW in v2.0
+  budget_warnings: any[] // NEW in v2.0
 }
 
 interface CashFlowData {
   current_balance: number
   months_ahead: number
   total_obligations: number
+  total_projected_income: number // NEW in v2.0
+  net_projected_change: number // NEW in v2.0
   lowest_projected_balance: number
   months_until_negative: number | null
   projections: MonthlyProjection[]
+  version: string // NEW in v2.0
 }
 
 export default function CashFlowPage() {
@@ -152,8 +159,33 @@ export default function CashFlowPage() {
         </div>
       ) : data ? (
         <>
+          {/* Cash Flow 2.0 Badge */}
+          {data.version === '2.0' && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant="secondary">Cash Flow System 2.0</Badge>
+              <span>With intelligent income & expense predictions</span>
+            </div>
+          )}
+
+          {/* NEW in v3.0: Liquidity Position Alert */}
+          {data.liquidity && data.runway && data.runway.will_run_out_of_cash && (
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-blue-900">Liquidity Buffer Available</h3>
+                  <p className="text-sm text-blue-700 mt-1">
+                    Cash will run low in <strong>{data.runway.cash_runway_months.toFixed(1)} months</strong>,
+                    but you have <strong>{formatCurrency(data.liquidity.total_investments + data.liquidity.receivables_balance, 'VND')}</strong> in
+                    investments and receivables that extend your runway to <strong>{data.runway.liquidity_runway_months.toFixed(1)} months</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -168,6 +200,58 @@ export default function CashFlowPage() {
                 <p className="text-xs text-muted-foreground mt-1">Available now</p>
               </CardContent>
             </Card>
+
+            {/* NEW in v3.0: Total Liquidity */}
+            {data.liquidity && (
+              <Card className="border-blue-200 bg-blue-50/30">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-blue-600" />
+                    Total Liquidity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(data.liquidity.total_liquid_assets, 'VND')}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Cash + Investments + Receivables
+                  </p>
+                  <div className="mt-2 space-y-1 text-xs">
+                    {data.liquidity.investment_balance > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Investments:</span>
+                        <span className="font-medium">{formatCurrency(data.liquidity.investment_balance, 'VND')}</span>
+                      </div>
+                    )}
+                    {data.liquidity.receivables_balance > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Receivables:</span>
+                        <span className="font-medium">{formatCurrency(data.liquidity.receivables_balance, 'VND')}</span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* NEW in v2.0: Projected Income */}
+            {data.total_projected_income !== undefined && (
+              <Card className="border-green-200 bg-green-50/30">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                    Projected Income
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">
+                    {formatCurrency(data.total_projected_income, 'VND')}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Next {monthsAhead} months</p>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader className="pb-2">
@@ -184,37 +268,65 @@ export default function CashFlowPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <TrendingDown className="h-4 w-4" />
-                  Lowest Balance
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className={`text-2xl font-bold ${data.lowest_projected_balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {formatCurrency(data.lowest_projected_balance, 'VND')}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {data.lowest_projected_balance < 0 ? 'Warning' : 'Projected minimum'}
-                </p>
-              </CardContent>
-            </Card>
+            {/* NEW in v2.0: Net Change */}
+            {data.net_projected_change !== undefined && (
+              <Card className={data.net_projected_change >= 0 ? 'border-green-200' : 'border-red-200'}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    Net Change
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-2xl font-bold ${data.net_projected_change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {data.net_projected_change >= 0 ? '+' : ''}{formatCurrency(data.net_projected_change, 'VND')}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Income - Expenses</p>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                   <AlertCircle className="h-4 w-4" />
-                  Cash Runway
+                  Runway Analysis
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {data.months_until_negative === null ? `${monthsAhead}+` : data.months_until_negative}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {data.months_until_negative === null ? 'Positive throughout' : 'Months until negative'}
-                </p>
+                {data.runway ? (
+                  <>
+                    <div className="space-y-2">
+                      <div>
+                        <div className="text-sm text-muted-foreground">Cash Runway</div>
+                        <div className="text-xl font-bold">
+                          {data.runway.cash_runway_months === Infinity
+                            ? `${monthsAhead}+`
+                            : `${data.runway.cash_runway_months.toFixed(1)}mo`}
+                        </div>
+                      </div>
+                      {data.runway.liquidity_runway_months !== data.runway.cash_runway_months && (
+                        <div className="pt-2 border-t">
+                          <div className="text-sm text-muted-foreground">With Liquidation</div>
+                          <div className="text-xl font-bold text-blue-600">
+                            {data.runway.liquidity_runway_months === Infinity
+                              ? `${monthsAhead}+`
+                              : `${data.runway.liquidity_runway_months.toFixed(1)}mo`}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold">
+                      {data.months_until_negative === null ? `${monthsAhead}+` : data.months_until_negative}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {data.months_until_negative === null ? 'Positive throughout' : 'Months until negative'}
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -225,7 +337,9 @@ export default function CashFlowPage() {
               <CardHeader>
                 <CardTitle>Cash Flow Projection Chart</CardTitle>
                 <CardDescription>
-                  Stacked expenses and projected balance over time
+                  {data.version === '2.0'
+                    ? 'Predicted income vs expenses with projected balance'
+                    : 'Stacked expenses and projected balance over time'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -233,8 +347,10 @@ export default function CashFlowPage() {
                   <ComposedChart
                     data={data.projections.map(p => ({
                       month: p.month_label.split(' ')[0], // Short month name
+                      income: p.projected_income || 0, // NEW in v2.0
                       debt: -p.total_debt,
                       scheduled: -p.total_scheduled,
+                      predicted: -(p.total_predicted || 0), // NEW in v2.0
                       budgets: -p.total_budgets,
                       balance: p.closing_balance,
                       opening: p.opening_balance
@@ -271,6 +387,16 @@ export default function CashFlowPage() {
                       label={{ value: 'Zero', position: 'right', fill: '#374151' }}
                     />
 
+                    {/* Cash Flow 2.0: Income bar (going up) */}
+                    {data.version === '2.0' && (
+                      <Bar
+                        dataKey="income"
+                        fill="#10b981"
+                        name="Projected Income"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    )}
+
                     {/* Stacked bars for expenses (going down) */}
                     <Bar
                       dataKey="debt"
@@ -286,11 +412,21 @@ export default function CashFlowPage() {
                       name="Scheduled Payments"
                       radius={[0, 0, 0, 0]}
                     />
+                    {/* Cash Flow 2.0: Predicted Expenses */}
+                    {data.version === '2.0' && (
+                      <Bar
+                        dataKey="predicted"
+                        stackId="expenses"
+                        fill="#f97316"
+                        name="Predicted Expenses"
+                        radius={[0, 0, 0, 0]}
+                      />
+                    )}
                     <Bar
                       dataKey="budgets"
                       stackId="expenses"
                       fill="#a855f7"
-                      name="Budgets"
+                      name="Budgets (unused)"
                       radius={[0, 0, 0, 0]}
                     />
 
@@ -298,10 +434,10 @@ export default function CashFlowPage() {
                     <Line
                       type="monotone"
                       dataKey="balance"
-                      stroke="#10b981"
+                      stroke="#0ea5e9"
                       strokeWidth={3}
                       name="Projected Balance"
-                      dot={{ fill: '#10b981', r: 4 }}
+                      dot={{ fill: '#0ea5e9', r: 4 }}
                       activeDot={{ r: 6 }}
                     />
                   </ComposedChart>
@@ -338,6 +474,27 @@ export default function CashFlowPage() {
                     <span className="font-semibold">{formatCurrency(projection.opening_balance, 'VND')}</span>
                   </div>
 
+                  {/* Cash Flow 2.0: Projected Income */}
+                  {projection.projected_income > 0 && (
+                    <div className="space-y-2 pl-4 border-l-4 border-l-green-500 bg-green-50/30 p-2 rounded">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-sm">Projected Income</span>
+                        <span className="font-semibold text-green-600">
+                          +{formatCurrency(projection.projected_income, 'VND')}
+                        </span>
+                      </div>
+                      {projection.income_breakdown && projection.income_breakdown.length > 0 && (
+                        projection.income_breakdown.map((income: any, i: number) => (
+                          <div key={i} className="text-xs text-muted-foreground flex items-center justify-between">
+                            <span className="flex-1">{income.category_name}</span>
+                            <Badge variant="outline" className="text-xs">{income.confidence}</Badge>
+                            <span className="font-medium">{formatCurrency(income.amount, 'VND')}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
                   {/* Priority 1: Debt Payments */}
                   {projection.debt_payments.length > 0 && (
                     <div className="space-y-2 pl-4 border-l-4 border-l-red-500">
@@ -357,11 +514,11 @@ export default function CashFlowPage() {
                     </div>
                   )}
 
-                  {/* Priority 2: Scheduled Payments */}
+                  {/* Priority 1: Scheduled Payments */}
                   {projection.scheduled_payments.length > 0 && (
                     <div className="space-y-2 pl-4 border-l-4 border-l-blue-500">
                       <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm">Priority 2: Scheduled Payments</span>
+                        <span className="font-medium text-sm">Priority 1: Scheduled Payments</span>
                         <span className="font-semibold text-blue-600">
                           -{formatCurrency(projection.total_scheduled, 'VND')}
                         </span>
@@ -376,7 +533,26 @@ export default function CashFlowPage() {
                     </div>
                   )}
 
-                  {/* Priority 3: Budgets */}
+                  {/* Cash Flow 2.0: Priority 2: Predicted Expenses */}
+                  {projection.predicted_expenses && projection.predicted_expenses.length > 0 && (
+                    <div className="space-y-2 pl-4 border-l-4 border-l-orange-500">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-sm">Priority 2: Predicted Expenses</span>
+                        <span className="font-semibold text-orange-600">
+                          -{formatCurrency(projection.total_predicted || 0, 'VND')}
+                        </span>
+                      </div>
+                      {projection.predicted_expenses.map((expense: any, i: number) => (
+                        <div key={i} className="text-xs text-muted-foreground flex items-center justify-between gap-2">
+                          <span className="flex-1">{expense.category_name}</span>
+                          <Badge variant="outline" className="text-xs">{expense.confidence}</Badge>
+                          <span className="font-medium">{formatCurrency(expense.amount, 'VND')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Priority 3: Budgets (only unused categories in v2.0) */}
                   {projection.budgets.length > 0 && (
                     <div className="space-y-2 pl-4 border-l-4 border-l-purple-500">
                       <div className="flex items-center justify-between">
