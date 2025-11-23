@@ -5,7 +5,25 @@
 
 import { SupabaseClient } from '@supabase/supabase-js'
 
-export type UserRole = 'owner' | 'admin' | 'editor' | 'viewer'
+export type UserRole = 'owner' | 'admin' | 'editor' | 'data_entry' | 'viewer'
+
+/**
+ * Role hierarchy levels (higher = more permissions)
+ */
+export const ROLE_HIERARCHY: Record<UserRole, number> = {
+  owner: 5,
+  admin: 4,
+  editor: 3,
+  data_entry: 2,
+  viewer: 1,
+}
+
+/**
+ * Check if a user role has at least the required permission level
+ */
+export function hasPermission(userRole: UserRole, requiredRole: UserRole): boolean {
+  return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[requiredRole]
+}
 
 /**
  * Get user's role for a specific entity
@@ -50,12 +68,30 @@ export async function getAccountEntityId(
 }
 
 /**
- * Check if user can write (create/edit/delete) for an entity
- * Only owner, admin, and editor can write. Viewer is read-only.
+ * Check if user can write (create/edit) for an entity
+ * Owner, admin, editor, and data_entry can write. Viewer is read-only.
  */
 export function canWrite(role: UserRole | null): boolean {
   if (!role) return false
+  return ['owner', 'admin', 'editor', 'data_entry'].includes(role)
+}
+
+/**
+ * Check if user can delete transactions
+ * Only owner, admin, and editor can delete. Data entry cannot delete.
+ */
+export function canDelete(role: UserRole | null): boolean {
+  if (!role) return false
   return ['owner', 'admin', 'editor'].includes(role)
+}
+
+/**
+ * Check if user can access reports and analytics
+ * Only owner, admin, and editor can access. Data entry and viewer cannot.
+ */
+export function canAccessReports(role: UserRole | null): boolean {
+  if (!role) return false
+  return hasPermission(role, 'editor')
 }
 
 /**
