@@ -387,8 +387,8 @@ export default function CashFlowPage() {
                       label={{ value: 'Zero', position: 'right', fill: '#374151' }}
                     />
 
-                    {/* Cash Flow 2.0: Income bar (going up) */}
-                    {data.version === '2.0' && (
+                    {/* Cash Flow 2.0+: Income bar (going up) */}
+                    {(data.version === '2.0' || data.version === '3.0') && (
                       <Bar
                         dataKey="income"
                         fill="#10b981"
