@@ -111,7 +111,7 @@ export async function POST(
       )
     }
 
-    const validRoles = ['owner', 'admin', 'editor', 'viewer']
+    const validRoles = ['owner', 'admin', 'editor', 'data_entry', 'viewer']
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { error: 'Invalid role' },
