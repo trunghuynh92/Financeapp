@@ -48,7 +48,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-type UserRole = 'owner' | 'admin' | 'editor' | 'viewer'
+type UserRole = 'owner' | 'admin' | 'editor' | 'data_entry' | 'viewer'
 
 type Member = {
   id: number
@@ -76,7 +76,13 @@ const ROLE_CONFIG = {
     label: 'Editor',
     icon: Edit3,
     color: 'bg-green-100 text-green-800',
-    description: 'Can create and edit data',
+    description: 'Can create, edit, and delete data plus access reports',
+  },
+  data_entry: {
+    label: 'Data Entry',
+    icon: Edit3,
+    color: 'bg-yellow-100 text-yellow-800',
+    description: 'Can manage transactions but no reports or analytics access',
   },
   viewer: {
     label: 'Viewer',
