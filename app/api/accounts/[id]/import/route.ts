@@ -207,8 +207,19 @@ export async function POST(
     const errors: Array<{ rowIndex: number; error: string }> = []
     const seenTransactions = new Set<string>()
     let duplicateCount = 0
+    let dateFilteredCount = 0
+
+    // Parse statement date range for filtering
+    const startDateFilter = statementStartDate ? new Date(statementStartDate) : null
+    const endDateFilter = statementEndDate ? new Date(statementEndDate) : null
+
+    if (startDateFilter) startDateFilter.setHours(0, 0, 0, 0)
+    if (endDateFilter) endDateFilter.setHours(23, 59, 59, 999)
 
     console.log(`📊 Processing ${parsedCSV.rows.length} rows from import...`)
+    if (startDateFilter && endDateFilter) {
+      console.log(`📅 Filtering transactions between ${startDateFilter.toISOString().split('T')[0]} and ${endDateFilter.toISOString().split('T')[0]}`)
+    }
 
     for (let i = 0; i < parsedCSV.rows.length; i++) {
       const row = parsedCSV.rows[i]
@@ -227,6 +238,17 @@ export async function POST(
         )
 
         if (transactionData) {
+          // Filter by date range if specified
+          if (startDateFilter && endDateFilter && transactionData.transaction_date) {
+            const txDate = new Date(transactionData.transaction_date)
+            if (txDate < startDateFilter || txDate > endDateFilter) {
+              dateFilteredCount++
+              if (dateFilteredCount <= 5) {
+                console.log(`📅 Row ${rowIndex}: Filtering out transaction outside date range (${txDate.toISOString().split('T')[0]})`)
+              }
+              continue // Skip this transaction
+            }
+          }
           // Create a hash of the transaction to detect duplicates
           const transactionHash = JSON.stringify({
             date: transactionData.transaction_date,
@@ -282,6 +304,7 @@ export async function POST(
     console.log(`✅ Successfully processed ${transactionsToInsert.length} transactions`)
     console.log(`❌ Failed to process ${errors.length} rows`)
     console.log(`🔄 Skipped ${duplicateCount} duplicate transactions`)
+    console.log(`📅 Filtered out ${dateFilteredCount} transactions outside date range`)
     if (errors.length > 0) {
       console.log('First few errors:', errors.slice(0, 5))
     }
@@ -513,7 +536,76 @@ export async function POST(
       checkpointDate = new Date(statementEndDate)
       checkpointDate.setHours(23, 59, 59, 999)
     }
-    const endingBalance = parseFloat(statementEndingBalance)
+
+    // Extract ending balance from the last transaction on the end date (if available)
+    let endingBalance = parseFloat(statementEndingBalance) // Default: use auto-detected or user-entered balance
+    let balanceSource = 'user_entered'
+
+    if (transactionsToInsert.length > 0) {
+      console.log('🔍 Attempting to extract checkpoint balance from last transaction...')
+
+      // Detect sort order: check if transactions are in descending order (newest first)
+      const firstTxDate = new Date(transactionsToInsert[0].transaction_date)
+      const lastTxDate = new Date(transactionsToInsert[transactionsToInsert.length - 1].transaction_date)
+      const isDescending = firstTxDate > lastTxDate
+
+      console.log(`📊 Transaction order: ${isDescending ? 'DESCENDING (newest first)' : 'ASCENDING (oldest first)'}`)
+      console.log(`   First tx date: ${firstTxDate.toISOString().split('T')[0]}`)
+      console.log(`   Last tx date: ${lastTxDate.toISOString().split('T')[0]}`)
+
+      // Find the chronologically LAST transaction on the checkpoint date
+      const checkpointDateStr = checkpointDate.toISOString().split('T')[0]
+      let lastTransactionOnEndDate = null
+
+      if (isDescending) {
+        // Newest first → FIRST occurrence of checkpoint date = last chronologically
+        lastTransactionOnEndDate = transactionsToInsert.find(tx => {
+          const txDateStr = new Date(tx.transaction_date).toISOString().split('T')[0]
+          return txDateStr === checkpointDateStr
+        })
+      } else {
+        // Oldest first → LAST occurrence of checkpoint date = last chronologically
+        // Search from end of array
+        for (let i = transactionsToInsert.length - 1; i >= 0; i--) {
+          const txDateStr = new Date(transactionsToInsert[i].transaction_date).toISOString().split('T')[0]
+          if (txDateStr === checkpointDateStr) {
+            lastTransactionOnEndDate = transactionsToInsert[i]
+            break
+          }
+        }
+      }
+
+      // If we found a transaction and it has a balance field, use it
+      if (lastTransactionOnEndDate && lastTransactionOnEndDate.balance !== null && lastTransactionOnEndDate.balance !== undefined) {
+        const extractedBalance = parseFloat(lastTransactionOnEndDate.balance)
+        if (!isNaN(extractedBalance)) {
+          console.log(`✅ Found balance from last transaction on ${checkpointDateStr}: ${extractedBalance}`)
+          console.log(`   Transaction: ${lastTransactionOnEndDate.description?.substring(0, 50) || 'N/A'}`)
+
+          // Compare with user-entered balance
+          const difference = Math.abs(extractedBalance - endingBalance)
+          const percentDiff = endingBalance !== 0 ? (difference / Math.abs(endingBalance)) * 100 : 0
+
+          if (difference > 0.01) {
+            console.log(`⚠️  Balance mismatch detected:`)
+            console.log(`   User entered: ${endingBalance}`)
+            console.log(`   From CSV: ${extractedBalance}`)
+            console.log(`   Difference: ${difference} (${percentDiff.toFixed(2)}%)`)
+            console.log(`   → Using balance from CSV (more accurate)`)
+          }
+
+          endingBalance = extractedBalance
+          balanceSource = 'extracted_from_csv'
+        }
+      } else {
+        console.log(`⚠️  Could not find transaction with balance on ${checkpointDateStr}`)
+        console.log(`   Using user-entered balance: ${endingBalance}`)
+      }
+    } else {
+      console.log(`⚠️  No transactions to extract balance from, using user-entered: ${endingBalance}`)
+    }
+
+    console.log(`💰 Final checkpoint balance: ${endingBalance} (source: ${balanceSource})`)
 
     // Count existing checkpoints BEFORE creating new one
     // to determine how many will be recalculated
