@@ -95,12 +95,23 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- STEP 4: Skip account_balance (table never created in migrations)
+-- STEP 4: Convert account_balance.balance_date (if exists)
 -- ============================================================================
 
 DO $$
 BEGIN
-  RAISE NOTICE 'Skipping account_balance.balance_date (table was never created in migrations)';
+  -- Check if table exists first (must check schema name too)
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public'
+    AND table_name = 'account_balance'
+  ) THEN
+    RAISE NOTICE 'Converting account_balance.balance_date to DATE...';
+    ALTER TABLE public.account_balance ALTER COLUMN balance_date TYPE DATE;
+    RAISE NOTICE '✓ account_balance.balance_date converted to DATE';
+  ELSE
+    RAISE NOTICE 'Skipping account_balance (table does not exist in public schema)';
+  END IF;
 END $$;
 
 -- ============================================================================

@@ -80,20 +80,23 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- STEP 4: Revert account_balance.balance_date to TIMESTAMPTZ
+-- STEP 4: Revert account_balance.balance_date to TIMESTAMPTZ (if exists)
 -- ============================================================================
 
 DO $$
 BEGIN
-  RAISE NOTICE 'Reverting account_balance.balance_date to TIMESTAMPTZ...';
-END $$;
-
-ALTER TABLE account_balance
-  ALTER COLUMN balance_date TYPE TIMESTAMPTZ USING balance_date::TIMESTAMPTZ;
-
-DO $$
-BEGIN
-  RAISE NOTICE '✓ account_balance.balance_date reverted to TIMESTAMPTZ';
+  -- Check if table exists first (must check schema name too)
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public'
+    AND table_name = 'account_balance'
+  ) THEN
+    RAISE NOTICE 'Reverting account_balance.balance_date to TIMESTAMPTZ...';
+    ALTER TABLE public.account_balance ALTER COLUMN balance_date TYPE TIMESTAMPTZ USING balance_date::TIMESTAMPTZ;
+    RAISE NOTICE '✓ account_balance.balance_date reverted to TIMESTAMPTZ';
+  ELSE
+    RAISE NOTICE 'Skipping account_balance (table does not exist in public schema)';
+  END IF;
 END $$;
 
 -- ============================================================================
