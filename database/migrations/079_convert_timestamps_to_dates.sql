@@ -181,16 +181,6 @@ SELECT
   ot.import_batch_id,
   ot.transaction_sequence,
 
-  -- Debt-related fields
-  ot.debt_drawdown_id,
-  ot.debt_payback_id,
-  ot.loan_disbursement_id,
-  ot.loan_collection_id,
-  ot.investment_contribution_id,
-
-  -- Receipt field
-  ot.receipt_id,
-
   -- Account info
   a.account_name,
   a.bank_name,
