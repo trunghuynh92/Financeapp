@@ -39,7 +39,7 @@ DROP VIEW IF EXISTS scheduled_payment_overview CASCADE;
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ All dependent views dropped';
+  RAISE NOTICE 'OK: All dependent views dropped';
 END $$;
 
 -- ============================================================================
@@ -57,7 +57,7 @@ ALTER TABLE original_transaction
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ original_transaction.transaction_date converted to DATE';
+  RAISE NOTICE 'OK: original_transaction.transaction_date converted to DATE';
 END $$;
 
 -- ============================================================================
@@ -74,7 +74,7 @@ ALTER TABLE main_transaction
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ main_transaction.transaction_date converted to DATE';
+  RAISE NOTICE 'OK: main_transaction.transaction_date converted to DATE';
 END $$;
 
 -- ============================================================================
@@ -91,7 +91,7 @@ ALTER TABLE balance_checkpoints
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ balance_checkpoints.checkpoint_date converted to DATE';
+  RAISE NOTICE 'OK: balance_checkpoints.checkpoint_date converted to DATE';
 END $$;
 
 -- ============================================================================
@@ -108,7 +108,7 @@ BEGIN
   ) THEN
     RAISE NOTICE 'Converting account_balance.balance_date to DATE...';
     ALTER TABLE public.account_balance ALTER COLUMN balance_date TYPE DATE;
-    RAISE NOTICE '✓ account_balance.balance_date converted to DATE';
+    RAISE NOTICE 'OK: account_balance.balance_date converted to DATE';
   ELSE
     RAISE NOTICE 'Skipping account_balance (table does not exist in public schema)';
   END IF;
@@ -150,7 +150,7 @@ $$ LANGUAGE plpgsql;
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ calculate_balance_up_to_date function updated';
+  RAISE NOTICE 'OK: calculate_balance_up_to_date function updated';
 END $$;
 
 -- ============================================================================
@@ -234,7 +234,7 @@ COMMENT ON VIEW main_transaction_details IS
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ main_transaction_details view recreated';
+  RAISE NOTICE 'OK: main_transaction_details view recreated';
 END $$;
 
 -- ============================================================================
@@ -305,7 +305,7 @@ ORDER BY a.account_name;
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ Other views recreated';
+  RAISE NOTICE 'OK: Other views recreated';
 END $$;
 
 -- ============================================================================
@@ -315,7 +315,7 @@ END $$;
 DO $$
 BEGIN
   RAISE NOTICE 'Indexes automatically updated by PostgreSQL';
-  RAISE NOTICE '✓ All indexes remain functional with DATE type';
+  RAISE NOTICE 'OK: All indexes remain functional with DATE type';
 END $$;
 
 -- ============================================================================
@@ -350,7 +350,7 @@ BEGIN
 
   IF v_ot_type = 'date' AND v_mt_type = 'date' AND v_cp_type = 'date' THEN
     RAISE NOTICE '';
-    RAISE NOTICE '✅ SUCCESS: All business date columns converted to DATE type';
+    RAISE NOTICE 'SUCCESS: All business date columns converted to DATE type';
   ELSE
     RAISE EXCEPTION 'Migration failed: Some columns not converted';
   END IF;
@@ -365,12 +365,12 @@ BEGIN
   RAISE NOTICE '';
   RAISE NOTICE '=== MIGRATION 079 COMPLETE ===';
   RAISE NOTICE 'Converted columns:';
-  RAISE NOTICE '  - original_transaction.transaction_date (TIMESTAMPTZ → DATE)';
-  RAISE NOTICE '  - main_transaction.transaction_date (TIMESTAMPTZ → DATE)';
-  RAISE NOTICE '  - balance_checkpoints.checkpoint_date (TIMESTAMPTZ → DATE)';
+  RAISE NOTICE '  - original_transaction.transaction_date (TIMESTAMPTZ -> DATE)';
+  RAISE NOTICE '  - main_transaction.transaction_date (TIMESTAMPTZ -> DATE)';
+  RAISE NOTICE '  - balance_checkpoints.checkpoint_date (TIMESTAMPTZ -> DATE)';
   RAISE NOTICE '';
-  RAISE NOTICE 'Skipped (table does not exist):';
-  RAISE NOTICE '  - account_balance.balance_date';
+  RAISE NOTICE 'Account balance handling:';
+  RAISE NOTICE '  - account_balance.balance_date (converted if table exists)';
   RAISE NOTICE '';
   RAISE NOTICE 'Updated functions:';
   RAISE NOTICE '  - calculate_balance_up_to_date (now accepts DATE)';
@@ -381,11 +381,11 @@ BEGIN
   RAISE NOTICE '  - debt_summary';
   RAISE NOTICE '';
   RAISE NOTICE 'Benefits:';
-  RAISE NOTICE '  ✓ No more timezone conversion bugs';
-  RAISE NOTICE '  ✓ Clearer intent (business dates, not timestamps)';
-  RAISE NOTICE '  ✓ Smaller storage (4 bytes vs 8 bytes)';
-  RAISE NOTICE '  ✓ Industry standard (70% adoption)';
-  RAISE NOTICE '  ✓ Simpler code (no timezone handling needed)';
+  RAISE NOTICE '  - No more timezone conversion bugs';
+  RAISE NOTICE '  - Clearer intent (business dates, not timestamps)';
+  RAISE NOTICE '  - Smaller storage (4 bytes vs 8 bytes)';
+  RAISE NOTICE '  - Industry standard (70%% adoption)';
+  RAISE NOTICE '  - Simpler code (no timezone handling needed)';
   RAISE NOTICE '';
   RAISE NOTICE 'Note: Audit timestamps (created_at, updated_at) remain TIMESTAMPTZ';
 END $$;

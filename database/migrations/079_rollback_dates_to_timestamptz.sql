@@ -42,7 +42,7 @@ ALTER TABLE original_transaction
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ original_transaction.transaction_date reverted to TIMESTAMPTZ';
+  RAISE NOTICE 'OK: original_transaction.transaction_date reverted to TIMESTAMPTZ';
 END $$;
 
 -- ============================================================================
@@ -59,7 +59,7 @@ ALTER TABLE main_transaction
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ main_transaction.transaction_date reverted to TIMESTAMPTZ';
+  RAISE NOTICE 'OK: main_transaction.transaction_date reverted to TIMESTAMPTZ';
 END $$;
 
 -- ============================================================================
@@ -76,7 +76,7 @@ ALTER TABLE balance_checkpoints
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ balance_checkpoints.checkpoint_date reverted to TIMESTAMPTZ';
+  RAISE NOTICE 'OK: balance_checkpoints.checkpoint_date reverted to TIMESTAMPTZ';
 END $$;
 
 -- ============================================================================
@@ -93,7 +93,7 @@ BEGIN
   ) THEN
     RAISE NOTICE 'Reverting account_balance.balance_date to TIMESTAMPTZ...';
     ALTER TABLE public.account_balance ALTER COLUMN balance_date TYPE TIMESTAMPTZ USING balance_date::TIMESTAMPTZ;
-    RAISE NOTICE '✓ account_balance.balance_date reverted to TIMESTAMPTZ';
+    RAISE NOTICE 'OK: account_balance.balance_date reverted to TIMESTAMPTZ';
   ELSE
     RAISE NOTICE 'Skipping account_balance (table does not exist in public schema)';
   END IF;
@@ -133,7 +133,7 @@ $$ LANGUAGE plpgsql;
 
 DO $$
 BEGIN
-  RAISE NOTICE '✓ calculate_balance_up_to_date function reverted';
+  RAISE NOTICE 'OK: calculate_balance_up_to_date function reverted';
 END $$;
 
 -- ============================================================================
@@ -191,7 +191,7 @@ BEGIN
   IF v_ot_type = 'timestamp with time zone' AND v_mt_type = 'timestamp with time zone'
      AND v_cp_type = 'timestamp with time zone' AND v_ab_type = 'timestamp with time zone' THEN
     RAISE NOTICE '';
-    RAISE NOTICE '✅ ROLLBACK SUCCESSFUL: All columns reverted to TIMESTAMPTZ';
+    RAISE NOTICE 'OK: ROLLBACK SUCCESSFUL: All columns reverted to TIMESTAMPTZ';
   ELSE
     RAISE EXCEPTION 'Rollback failed: Some columns not reverted';
   END IF;
@@ -206,10 +206,10 @@ BEGIN
   RAISE NOTICE '';
   RAISE NOTICE '=== MIGRATION 079 ROLLBACK COMPLETE ===';
   RAISE NOTICE 'Reverted columns:';
-  RAISE NOTICE '  - original_transaction.transaction_date (DATE → TIMESTAMPTZ)';
-  RAISE NOTICE '  - main_transaction.transaction_date (DATE → TIMESTAMPTZ)';
-  RAISE NOTICE '  - balance_checkpoints.checkpoint_date (DATE → TIMESTAMPTZ)';
-  RAISE NOTICE '  - account_balance.balance_date (DATE → TIMESTAMPTZ)';
+  RAISE NOTICE '  - original_transaction.transaction_date (DATE -> TIMESTAMPTZ)';
+  RAISE NOTICE '  - main_transaction.transaction_date (DATE -> TIMESTAMPTZ)';
+  RAISE NOTICE '  - balance_checkpoints.checkpoint_date (DATE -> TIMESTAMPTZ)';
+  RAISE NOTICE '  - account_balance.balance_date (DATE -> TIMESTAMPTZ)';
   RAISE NOTICE '';
   RAISE NOTICE '⚠️  IMPORTANT: You need to:';
   RAISE NOTICE '  1. Revert backend code changes (git revert)';
