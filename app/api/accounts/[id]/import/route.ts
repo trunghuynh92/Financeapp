@@ -123,7 +123,7 @@ export async function POST(
         console.log('🔍 First row (header):', processedData[0])
         console.log('🔍 Second row data:', processedData[1])
         console.log('🔍 Second row types:', processedData[1].map((cell, idx) =>
-          `[${idx}] ${typeof cell} ${cell instanceof Date ? '(Date)' : ''}: ${cell}`
+          `[${idx}] ${typeof cell} ${cell && typeof cell === 'object' && cell instanceof Date ? '(Date)' : ''}: ${cell}`
         ))
       }
 
