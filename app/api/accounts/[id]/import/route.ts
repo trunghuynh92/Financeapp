@@ -137,7 +137,7 @@ export async function POST(
 
             // Handle Date objects: convert to ISO date string (YYYY-MM-DD)
             if (Object.prototype.toString.call(cell) === '[object Date]') {
-              const dateObj = cell as Date
+              const dateObj = cell as unknown as Date
               const year = dateObj.getFullYear()
               const month = String(dateObj.getMonth() + 1).padStart(2, '0')
               const day = String(dateObj.getDate()).padStart(2, '0')
