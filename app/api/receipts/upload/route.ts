@@ -180,7 +180,8 @@ export async function POST(request: NextRequest) {
           ? new vision.ImageAnnotatorClient({
               credentials: {
                 project_id: process.env.GOOGLE_CLOUD_PROJECT_ID,
-                private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+                // Handle both single and double escaped newlines
+                private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\\\n/g, '\n').replace(/\\n/g, '\n'),
                 client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
               },
             })
