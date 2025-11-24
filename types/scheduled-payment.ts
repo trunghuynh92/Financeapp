@@ -165,6 +165,7 @@ export interface MarkAsPaidRequest {
   paid_amount: number
   transaction_id?: number  // Link to existing transaction
   create_transaction?: boolean  // If true, create new transaction
+  account_id?: number  // Account to use when creating transaction
   notes?: string
 }
 
