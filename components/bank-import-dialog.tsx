@@ -34,6 +34,8 @@ import {
   detectColumnTypes,
   detectDateFormat,
   generateColumnMappings,
+  parseDate,
+  parseAmount,
 } from "@/lib/csv-parser"
 import { parseXLSXFile } from "@/lib/xlsx-parser"
 import {
@@ -75,6 +77,8 @@ export function BankImportDialog({
   const [statementStartDate, setStatementStartDate] = useState("")
   const [statementEndDate, setStatementEndDate] = useState("")
   const [statementEndingBalance, setStatementEndingBalance] = useState("")
+  const [selectedDateColumn, setSelectedDateColumn] = useState<string>("")
+  const [availableDateColumns, setAvailableDateColumns] = useState<string[]>([])
 
   // Step 2: Column mapping
   const [parsedData, setParsedData] = useState<ParsedCSVData | null>(null)
@@ -127,6 +131,8 @@ export function BankImportDialog({
         setStatementStartDate("")
         setStatementEndDate("")
         setStatementEndingBalance("")
+        setSelectedDateColumn("")
+        setAvailableDateColumns([])
         setParsedData(null)
         setColumnDetections([])
         setColumnMappings([])
@@ -177,10 +183,19 @@ export function BankImportDialog({
       const detections = detectColumnTypes(parsed.headers, parsed.rows)
       setColumnDetections(detections)
 
-      // Auto-detect date format
-      const dateColumn = detections.find(d => d.suggestedType === 'transaction_date')
-      if (dateColumn) {
-        const dateDetection = detectDateFormat(dateColumn.sampleValues)
+      // Find all date columns
+      const dateColumns = detections.filter(d => d.suggestedType === 'transaction_date')
+      const dateColumnNames = dateColumns.map(d => d.columnName)
+      setAvailableDateColumns(dateColumnNames)
+
+      // Auto-select first date column
+      if (dateColumnNames.length > 0) {
+        setSelectedDateColumn(dateColumnNames[0])
+      }
+
+      // Auto-detect date format from first date column
+      if (dateColumns.length > 0) {
+        const dateDetection = detectDateFormat(dateColumns[0].sampleValues)
         if (dateDetection.detectedFormat !== 'unknown') {
           setDateFormat(dateDetection.detectedFormat)
         }
@@ -256,67 +271,130 @@ export function BankImportDialog({
 
   // Recalculate balance based on selected end date
   function recalculateBalanceForDate(selectedDate: string) {
-    if (!parsedData || !selectedDate) return
+    console.log('🔧 recalculateBalanceForDate called with:', selectedDate)
+
+    if (!parsedData || !selectedDate || !selectedDateColumn) {
+      console.log('❌ Early exit: parsedData, selectedDate, or selectedDateColumn missing')
+      console.log('   parsedData:', !!parsedData, 'selectedDate:', selectedDate, 'selectedDateColumn:', selectedDateColumn)
+      return
+    }
 
     try {
       // Find the balance column mapping
       const balanceMapping = columnMappings.find(m => m.mappedTo === 'balance')
-      const dateMapping = columnMappings.find(m => m.mappedTo === 'transaction_date')
 
-      if (!balanceMapping || !dateMapping) {
-        console.log('Cannot recalculate: missing balance or date column mapping')
+      // Use the user-selected date column instead of auto-detected one
+      const dateColumn = selectedDateColumn
+
+      console.log('📋 Balance column:', balanceMapping?.csvColumn)
+      console.log('📋 Date column (user-selected):', dateColumn)
+
+      if (!balanceMapping || !dateColumn) {
+        console.log('❌ Cannot recalculate: missing balance or date column mapping')
         return
       }
 
       const balanceColumn = balanceMapping.csvColumn
-      const dateColumn = dateMapping.csvColumn
 
-      // Parse the selected date
-      const selectedDateObj = new Date(selectedDate)
-      selectedDateObj.setHours(23, 59, 59, 999)
+      console.log(`📊 parsedData.rows.length: ${parsedData.rows.length}`)
 
-      // Detect sort order (check first vs last row dates)
-      if (parsedData.rows.length < 2) return
+      // Parse the selected date (using date string format to avoid timezone issues)
+      const selectedDateStr = selectedDate // Already in YYYY-MM-DD format from input
 
-      const firstRowDate = parsedData.rows[0][dateColumn]
-      const lastRowDate = parsedData.rows[parsedData.rows.length - 1][dateColumn]
-
-      if (!firstRowDate || !lastRowDate) return
-
-      // Parse dates using the date format
+      // Parse dates using the date format - define this helper first
       const parseRowDate = (dateStr: string) => {
         const trimmed = dateStr.toString().trim()
         const spaceIndex = trimmed.indexOf(' ')
         const cleanDate = spaceIndex !== -1 ? trimmed.substring(0, spaceIndex) : trimmed
-        return parseDate(cleanDate, dateMapping.dateFormat || dateFormat)
+        return parseDate(cleanDate, dateFormat)
       }
 
-      const firstDate = parseRowDate(firstRowDate)
-      const lastDate = parseRowDate(lastRowDate)
+      // Helper to convert Date to YYYY-MM-DD without timezone conversion
+      const toLocalDateString = (date: Date): string => {
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
+      }
 
-      if (!firstDate || !lastDate) return
+      // Detect sort order (check first vs last row dates)
+      if (parsedData.rows.length < 2) {
+        console.log('❌ Not enough rows (need at least 2)')
+        return
+      }
+
+      // Find first row with a PARSEABLE date
+      let firstRowDate = null
+      let firstDate = null
+      for (const row of parsedData.rows) {
+        const dateVal = row[dateColumn]
+        if (dateVal !== null && dateVal !== undefined && dateVal !== '') {
+          const parsed = parseRowDate(dateVal)
+          if (parsed) {
+            firstRowDate = dateVal
+            firstDate = parsed
+            break
+          }
+        }
+      }
+
+      // Find last row with a PARSEABLE date (search backwards)
+      let lastRowDate = null
+      let lastDate = null
+      for (let i = parsedData.rows.length - 1; i >= 0; i--) {
+        const dateVal = parsedData.rows[i][dateColumn]
+        if (dateVal !== null && dateVal !== undefined && dateVal !== '') {
+          const parsed = parseRowDate(dateVal)
+          if (parsed) {
+            lastRowDate = dateVal
+            lastDate = parsed
+            break
+          }
+        }
+      }
+
+      console.log(`📊 First parseable row [${dateColumn}]:`, firstRowDate)
+      console.log(`📊 Last parseable row [${dateColumn}]:`, lastRowDate)
+      console.log('📅 First row date:', firstRowDate, '→', firstDate)
+      console.log('📅 Last row date:', lastRowDate, '→', lastDate)
+
+      if (!firstDate || !lastDate) {
+        console.log('❌ Could not find parseable dates in rows')
+        return
+      }
 
       const isDescending = firstDate > lastDate
-      console.log(`📊 Recalculating balance for ${selectedDate}, order: ${isDescending ? 'DESCENDING' : 'ASCENDING'}`)
+      console.log(`📊 Recalculating balance for ${selectedDateStr}, order: ${isDescending ? 'DESCENDING' : 'ASCENDING'}`)
+      console.log(`📊 Total rows to search: ${parsedData.rows.length}`)
 
       // Find the last transaction on the selected date
-      const selectedDateStr = selectedDateObj.toISOString().split('T')[0]
       let lastTransactionBalance = null
+      let matchCount = 0
+
+      console.log(`🔍 Looking for transactions on: ${selectedDateStr}`)
 
       if (isDescending) {
         // Newest first → find FIRST occurrence of selected date
-        for (const row of parsedData.rows) {
+        for (let i = 0; i < parsedData.rows.length; i++) {
+          const row = parsedData.rows[i]
           const rowDateStr = row[dateColumn]?.toString().trim()
           if (!rowDateStr) continue
 
           const rowDate = parseRowDate(rowDateStr)
           if (!rowDate) continue
 
-          const rowDateISOStr = rowDate.toISOString().split('T')[0]
-          if (rowDateISOStr === selectedDateStr) {
+          const rowDateLocalStr = toLocalDateString(rowDate)
+          if (rowDateLocalStr === selectedDateStr) {
+            matchCount++
             const balance = row[balanceColumn]
+            console.log(`   Match ${matchCount} at row ${i}:`)
+            console.log(`      Raw date value: "${rowDateStr}"`)
+            console.log(`      Parsed date: ${rowDate}`)
+            console.log(`      Local date string: ${rowDateLocalStr}`)
+            console.log(`      Balance: ${balance}`)
             if (balance !== null && balance !== undefined) {
               lastTransactionBalance = parseAmount(balance.toString())
+              console.log(`   ✅ Using this balance: ${lastTransactionBalance}`)
               break
             }
           }
@@ -331,19 +409,29 @@ export function BankImportDialog({
           const rowDate = parseRowDate(rowDateStr)
           if (!rowDate) continue
 
-          const rowDateISOStr = rowDate.toISOString().split('T')[0]
-          if (rowDateISOStr === selectedDateStr) {
+          const rowDateLocalStr = toLocalDateString(rowDate)
+          if (rowDateLocalStr === selectedDateStr) {
+            matchCount++
             const balance = row[balanceColumn]
+            console.log(`   Match ${matchCount} at row ${i}:`)
+            console.log(`      Raw date value: "${rowDateStr}"`)
+            console.log(`      Parsed date: ${rowDate}`)
+            console.log(`      Local date string: ${rowDateLocalStr}`)
+            console.log(`      Balance: ${balance}`)
             if (balance !== null && balance !== undefined) {
               lastTransactionBalance = parseAmount(balance.toString())
+              console.log(`   ✅ Using this balance: ${lastTransactionBalance}`)
               break
             }
           }
         }
       }
 
+      console.log(`🔢 Total matches found: ${matchCount}`)
+
       if (lastTransactionBalance !== null && !isNaN(lastTransactionBalance)) {
         console.log(`✅ Found balance for ${selectedDateStr}: ${lastTransactionBalance}`)
+        console.log(`💾 Updating statementEndingBalance to: ${lastTransactionBalance}`)
         setStatementEndingBalance(lastTransactionBalance.toString())
       } else {
         console.log(`⚠️ Could not find transaction with balance on ${selectedDateStr}`)
@@ -417,7 +505,38 @@ export function BankImportDialog({
   // Step 3: Preview
   // ===========================================================================
 
-  const previewRows = parsedData?.rows.slice(0, 10) || []
+  // Filter rows by date range (same logic as backend import)
+  const getFilteredRows = () => {
+    if (!parsedData || !statementStartDate || !statementEndDate || !selectedDateColumn) {
+      return parsedData?.rows || []
+    }
+
+    const startDateFilter = new Date(statementStartDate)
+    const endDateFilter = new Date(statementEndDate)
+
+    // Helper to parse date from row
+    const parseRowDate = (dateStr: string) => {
+      if (!dateStr) return null
+      const trimmed = dateStr.toString().trim()
+      const spaceIndex = trimmed.indexOf(' ')
+      const cleanDate = spaceIndex !== -1 ? trimmed.substring(0, spaceIndex) : trimmed
+      return parseDate(cleanDate, dateFormat)
+    }
+
+    return parsedData.rows.filter(row => {
+      const dateValue = row[selectedDateColumn]
+      if (!dateValue) return false
+
+      const txDate = parseRowDate(dateValue)
+      if (!txDate) return false
+
+      // Include transactions within the date range (inclusive)
+      return txDate >= startDateFilter && txDate <= endDateFilter
+    })
+  }
+
+  const filteredRows = getFilteredRows()
+  const previewRows = filteredRows.slice(0, 10)
 
   // ===========================================================================
   // Step 4: Import
@@ -580,6 +699,62 @@ export function BankImportDialog({
           )}
         </div>
 
+        {/* Date Column Selection - Show when multiple date columns detected */}
+        {parsedData && availableDateColumns.length > 1 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="flex gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-3 flex-1">
+                <div>
+                  <p className="font-medium text-amber-900 mb-1">Multiple Date Columns Detected</p>
+                  <p className="text-sm text-amber-700">
+                    Your statement has {availableDateColumns.length} date columns. Please select which one to use for date filtering and balance calculation.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dateColumn" className="text-amber-900">
+                    Date Column to Use *
+                  </Label>
+                  <select
+                    id="dateColumn"
+                    value={selectedDateColumn}
+                    onChange={(e) => {
+                      console.log('📅 Date column changed to:', e.target.value)
+                      setSelectedDateColumn(e.target.value)
+                      // Recalculate balance if end date is already set
+                      if (statementEndDate && columnMappings.length > 0) {
+                        console.log('🔄 Recalculating balance with new date column')
+                        recalculateBalanceForDate(statementEndDate)
+                      }
+                    }}
+                    className="flex h-10 w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+                  >
+                    {availableDateColumns.map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-amber-600">
+                    This column will be used for filtering transactions and extracting the checkpoint balance.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Show selected date column when only one is detected */}
+        {parsedData && availableDateColumns.length === 1 && (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+            <div className="flex gap-2 items-start">
+              <div className="text-green-600 text-sm">
+                ✓ <span className="font-medium">Date Column:</span> {availableDateColumns[0]}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Statement Details */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
@@ -598,10 +773,17 @@ export function BankImportDialog({
               type="date"
               value={statementEndDate}
               onChange={(e) => {
+                console.log('🔍 End date changed to:', e.target.value)
+                console.log('   parsedData exists:', !!parsedData)
+                console.log('   columnMappings length:', columnMappings.length)
+                console.log('   columnMappings:', columnMappings.map(m => `${m.csvColumn} -> ${m.mappedTo}`))
                 setStatementEndDate(e.target.value)
                 // Auto-recalculate balance when end date changes
                 if (e.target.value && parsedData && columnMappings.length > 0) {
+                  console.log('✅ Calling recalculateBalanceForDate')
                   recalculateBalanceForDate(e.target.value)
+                } else {
+                  console.log('⚠️ Cannot recalculate - missing data')
                 }
               }}
             />
@@ -823,7 +1005,7 @@ export function BankImportDialog({
         <div className="grid grid-cols-3 gap-4">
           <div className="rounded-lg border p-3">
             <p className="text-sm text-muted-foreground">Total Transactions</p>
-            <p className="text-2xl font-bold">{parsedData?.totalRows || 0}</p>
+            <p className="text-2xl font-bold">{filteredRows.length}</p>
           </div>
           <div className="rounded-lg border p-3">
             <p className="text-sm text-muted-foreground">Statement Period</p>
