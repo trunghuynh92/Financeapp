@@ -254,6 +254,105 @@ export function BankImportDialog({
     }
   }
 
+  // Recalculate balance based on selected end date
+  function recalculateBalanceForDate(selectedDate: string) {
+    if (!parsedData || !selectedDate) return
+
+    try {
+      // Find the balance column mapping
+      const balanceMapping = columnMappings.find(m => m.mappedTo === 'balance')
+      const dateMapping = columnMappings.find(m => m.mappedTo === 'transaction_date')
+
+      if (!balanceMapping || !dateMapping) {
+        console.log('Cannot recalculate: missing balance or date column mapping')
+        return
+      }
+
+      const balanceColumn = balanceMapping.csvColumn
+      const dateColumn = dateMapping.csvColumn
+
+      // Parse the selected date
+      const selectedDateObj = new Date(selectedDate)
+      selectedDateObj.setHours(23, 59, 59, 999)
+
+      // Detect sort order (check first vs last row dates)
+      if (parsedData.rows.length < 2) return
+
+      const firstRowDate = parsedData.rows[0][dateColumn]
+      const lastRowDate = parsedData.rows[parsedData.rows.length - 1][dateColumn]
+
+      if (!firstRowDate || !lastRowDate) return
+
+      // Parse dates using the date format
+      const parseRowDate = (dateStr: string) => {
+        const trimmed = dateStr.toString().trim()
+        const spaceIndex = trimmed.indexOf(' ')
+        const cleanDate = spaceIndex !== -1 ? trimmed.substring(0, spaceIndex) : trimmed
+        return parseDate(cleanDate, dateMapping.dateFormat || dateFormat)
+      }
+
+      const firstDate = parseRowDate(firstRowDate)
+      const lastDate = parseRowDate(lastRowDate)
+
+      if (!firstDate || !lastDate) return
+
+      const isDescending = firstDate > lastDate
+      console.log(`📊 Recalculating balance for ${selectedDate}, order: ${isDescending ? 'DESCENDING' : 'ASCENDING'}`)
+
+      // Find the last transaction on the selected date
+      const selectedDateStr = selectedDateObj.toISOString().split('T')[0]
+      let lastTransactionBalance = null
+
+      if (isDescending) {
+        // Newest first → find FIRST occurrence of selected date
+        for (const row of parsedData.rows) {
+          const rowDateStr = row[dateColumn]?.toString().trim()
+          if (!rowDateStr) continue
+
+          const rowDate = parseRowDate(rowDateStr)
+          if (!rowDate) continue
+
+          const rowDateISOStr = rowDate.toISOString().split('T')[0]
+          if (rowDateISOStr === selectedDateStr) {
+            const balance = row[balanceColumn]
+            if (balance !== null && balance !== undefined) {
+              lastTransactionBalance = parseAmount(balance.toString())
+              break
+            }
+          }
+        }
+      } else {
+        // Oldest first → find LAST occurrence of selected date
+        for (let i = parsedData.rows.length - 1; i >= 0; i--) {
+          const row = parsedData.rows[i]
+          const rowDateStr = row[dateColumn]?.toString().trim()
+          if (!rowDateStr) continue
+
+          const rowDate = parseRowDate(rowDateStr)
+          if (!rowDate) continue
+
+          const rowDateISOStr = rowDate.toISOString().split('T')[0]
+          if (rowDateISOStr === selectedDateStr) {
+            const balance = row[balanceColumn]
+            if (balance !== null && balance !== undefined) {
+              lastTransactionBalance = parseAmount(balance.toString())
+              break
+            }
+          }
+        }
+      }
+
+      if (lastTransactionBalance !== null && !isNaN(lastTransactionBalance)) {
+        console.log(`✅ Found balance for ${selectedDateStr}: ${lastTransactionBalance}`)
+        setStatementEndingBalance(lastTransactionBalance.toString())
+      } else {
+        console.log(`⚠️ Could not find transaction with balance on ${selectedDateStr}`)
+      }
+    } catch (err) {
+      console.error('Error recalculating balance:', err)
+    }
+  }
+
   function canProceedFromStep1(): boolean {
     return (
       file !== null &&
@@ -498,7 +597,13 @@ export function BankImportDialog({
               id="endDate"
               type="date"
               value={statementEndDate}
-              onChange={(e) => setStatementEndDate(e.target.value)}
+              onChange={(e) => {
+                setStatementEndDate(e.target.value)
+                // Auto-recalculate balance when end date changes
+                if (e.target.value && parsedData && columnMappings.length > 0) {
+                  recalculateBalanceForDate(e.target.value)
+                }
+              }}
             />
           </div>
         </div>
