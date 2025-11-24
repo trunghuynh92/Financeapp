@@ -123,7 +123,7 @@ export async function POST(
         console.log('🔍 First row (header):', processedData[0])
         console.log('🔍 Second row data:', processedData[1])
         console.log('🔍 Second row types:', processedData[1].map((cell, idx) => {
-          const isDate = cell instanceof Date
+          const isDate = Object.prototype.toString.call(cell) === '[object Date]'
           return `[${idx}] ${typeof cell} ${isDate ? '(Date)' : ''}: ${cell}`
         }))
       }
@@ -136,10 +136,11 @@ export async function POST(
             if (cell === null || cell === undefined) return ''
 
             // Handle Date objects: convert to ISO date string (YYYY-MM-DD)
-            if (cell instanceof Date) {
-              const year = cell.getFullYear()
-              const month = String(cell.getMonth() + 1).padStart(2, '0')
-              const day = String(cell.getDate()).padStart(2, '0')
+            if (Object.prototype.toString.call(cell) === '[object Date]') {
+              const dateObj = cell as Date
+              const year = dateObj.getFullYear()
+              const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+              const day = String(dateObj.getDate()).padStart(2, '0')
               return `${year}-${month}-${day}`
             }
 
