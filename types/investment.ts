@@ -42,6 +42,7 @@ export interface CreateInvestmentContributionInput {
   contribution_date: string  // Required: Date of contribution
   notes?: string | null  // Optional: Additional notes
   existing_source_transaction_id?: number  // Optional: if provided, links to existing transaction instead of creating new one
+  is_withdrawal?: boolean  // Optional: true for withdrawals, false/undefined for contributions
 }
 
 export interface UpdateInvestmentContributionInput {

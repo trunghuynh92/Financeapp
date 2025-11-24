@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, DollarSign, Calendar, AlertCircle, TrendingUp, User, Receipt, Pencil } from "lucide-react"
+import { Plus, DollarSign, Calendar, AlertCircle, TrendingUp, User, Receipt, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -80,6 +80,9 @@ export function LoanDisbursementListCard({
   const [loanTransactions, setLoanTransactions] = useState<any[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
   const [selectedLoanRef, setSelectedLoanRef] = useState<string>("")
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [deletingLoan, setDeletingLoan] = useState<LoanDisbursementWithAccount | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     fetchDisbursements()
@@ -192,6 +195,38 @@ export function LoanDisbursementListCard({
       console.error("Error fetching loan transactions:", error)
     } finally {
       setLoadingTransactions(false)
+    }
+  }
+
+  function openDeleteDialog(loan: LoanDisbursementWithAccount) {
+    setDeletingLoan(loan)
+    setIsDeleteDialogOpen(true)
+  }
+
+  async function handleDeleteLoan() {
+    if (!deletingLoan) return
+
+    try {
+      setIsDeleting(true)
+      const response = await fetch(`/api/loan-disbursements/${deletingLoan.loan_disbursement_id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete loan disbursement')
+      }
+
+      // Success - refresh the list
+      await fetchDisbursements()
+      setIsDeleteDialogOpen(false)
+      setDeletingLoan(null)
+      onRefresh?.()
+    } catch (error: any) {
+      console.error('Error deleting loan disbursement:', error)
+      alert(error.message || 'Failed to delete loan disbursement. Please try again.')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -415,15 +450,15 @@ export function LoanDisbursementListCard({
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            {loan.status !== 'repaid' && loan.status !== 'written_off' && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRecordPayment(loan.loan_disbursement_id, loan.borrower_name || 'Unknown')}
-                              >
-                                Record Payment
-                              </Button>
-                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openDeleteDialog(loan)}
+                              title="Delete loan disbursement"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -534,6 +569,68 @@ export function LoanDisbursementListCard({
               </Table>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Loan Disbursement</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this loan disbursement?
+            </DialogDescription>
+          </DialogHeader>
+
+          {deletingLoan && (
+            <div className="space-y-4 py-4">
+              <div className="rounded-lg border p-4 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Borrower:</span>
+                  <span className="font-medium">{deletingLoan.borrower_name || 'Unknown'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Principal Amount:</span>
+                  <span className="font-medium">{formatCurrency(deletingLoan.principal_amount, currency as Currency)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Disbursement Date:</span>
+                  <span className="font-medium">{formatDate(deletingLoan.disbursement_date)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Status:</span>
+                  <Badge className={LOAN_STATUS_COLORS[deletingLoan.status]}>
+                    {LOAN_STATUS_LABELS[deletingLoan.status]}
+                  </Badge>
+                </div>
+              </div>
+
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  This will delete the loan disbursement record and all linked transactions in the Loan Receivable account.
+                  The source bank transaction will be unlinked but kept.
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteLoan}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Loan'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>

@@ -6,7 +6,7 @@ export type ReceiptOCRService = 'google_vision' | 'tesseract' | 'manual'
 
 export interface Receipt {
   receipt_id: string
-  main_transaction_id: number | null
+  raw_transaction_id: string | null
   account_id: number | null
   entity_id: string
 
@@ -47,7 +47,7 @@ export interface ReceiptLineItem {
 export interface ReceiptUploadRequest {
   account_id: number
   entity_id: string
-  main_transaction_id?: number
+  raw_transaction_id?: string
   process_ocr?: boolean
 }
 

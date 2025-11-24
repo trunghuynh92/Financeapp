@@ -79,7 +79,7 @@ export function InvestmentContributionListCard({
   async function fetchContributions() {
     try {
       setLoading(true)
-      const response = await fetch(`/api/investment-contributions?account_id=${accountId}`)
+      const response = await fetch(`/api/investment-contributions?investment_account_id=${accountId}`)
 
       if (!response.ok) {
         throw new Error("Failed to fetch investment contributions")

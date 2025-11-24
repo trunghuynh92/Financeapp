@@ -96,17 +96,36 @@ export async function POST(request: NextRequest) {
 
     // If already split, delete existing splits first
     if (existingSplits && existingSplits.length > 0) {
-      const { error: deleteError } = await supabase
+      console.log('Attempting to delete existing splits:', {
+        count: existingSplits.length,
+        raw_transaction_id,
+        ids: existingSplits.map(s => s.main_transaction_id),
+      })
+
+      const { data: deleteData, error: deleteError, count } = await supabase
         .from('main_transaction')
         .delete()
         .eq('raw_transaction_id', raw_transaction_id)
+        .select()
+
+      console.log('Delete result:', {
+        deletedCount: deleteData?.length,
+        error: deleteError,
+        count,
+      })
 
       if (deleteError) {
         console.error('Error deleting existing splits:', deleteError)
         return NextResponse.json(
-          { error: 'Failed to delete existing splits' },
+          { error: 'Failed to delete existing splits', details: deleteError.message },
           { status: 500 }
         )
+      }
+
+      // Verify deletion succeeded
+      if (!deleteData || deleteData.length === 0) {
+        console.error('WARNING: Delete command succeeded but no rows were deleted!')
+        console.error('This likely means RLS blocked the delete')
       }
     }
 

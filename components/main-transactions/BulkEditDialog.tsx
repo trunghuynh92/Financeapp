@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { TransactionType, Category, Branch } from "@/types/main-transaction"
+import { TransactionType, Category, Branch, Project } from "@/types/main-transaction"
 
 interface BulkEditDialogProps {
   open: boolean
@@ -29,6 +29,7 @@ interface BulkEditDialogProps {
   transactionTypes: TransactionType[]
   categories: Category[]
   branches: Branch[]
+  projects: Project[]
 }
 
 export function BulkEditDialog({
@@ -39,12 +40,14 @@ export function BulkEditDialog({
   transactionTypes,
   categories,
   branches,
+  projects,
 }: BulkEditDialogProps) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     transaction_type_id: "unchanged",
     category_id: "unchanged",
     branch_id: "unchanged",
+    project_id: "unchanged",
   })
 
   // Reset form when dialog opens
@@ -54,6 +57,7 @@ export function BulkEditDialog({
         transaction_type_id: "unchanged",
         category_id: "unchanged",
         branch_id: "unchanged",
+        project_id: "unchanged",
       })
     }
   }, [open])
@@ -84,6 +88,14 @@ export function BulkEditDialog({
           updates.branch_id = null
         } else {
           updates.branch_id = parseInt(formData.branch_id)
+        }
+      }
+
+      if (formData.project_id !== "unchanged") {
+        if (formData.project_id === "none") {
+          updates.project_id = null
+        } else {
+          updates.project_id = parseInt(formData.project_id)
         }
       }
 
@@ -223,6 +235,35 @@ export function BulkEditDialog({
                 {branches.map((branch) => (
                   <SelectItem key={branch.branch_id} value={branch.branch_id.toString()}>
                     {branch.branch_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Leave as &quot;No Change&quot; to keep existing values
+            </p>
+          </div>
+
+          {/* Project */}
+          <div className="space-y-2">
+            <Label htmlFor="bulk-project">Project</Label>
+            <Select
+              value={formData.project_id}
+              onValueChange={(value) => setFormData({ ...formData, project_id: value })}
+            >
+              <SelectTrigger id="bulk-project">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unchanged">
+                  <span className="text-muted-foreground">- No Change -</span>
+                </SelectItem>
+                <SelectItem value="none">
+                  <span className="text-muted-foreground">None (Clear project)</span>
+                </SelectItem>
+                {projects.map((project) => (
+                  <SelectItem key={project.project_id} value={project.project_id.toString()}>
+                    {project.project_name}
                   </SelectItem>
                 ))}
               </SelectContent>

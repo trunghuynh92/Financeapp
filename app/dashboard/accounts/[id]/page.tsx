@@ -33,6 +33,7 @@ import { CheckpointHistoryCard } from "@/components/checkpoint-history-card"
 import { BalanceCheckpoint } from "@/types/checkpoint"
 import { DrawdownListCard } from "@/components/drawdown-list-card"
 import { LoanDisbursementListCard } from "@/components/loan-disbursement-list-card"
+import { InvestmentContributionListCard } from "@/components/investment-contribution-list-card"
 
 const AccountTypeIcon = ({ type, className }: { type: AccountType; className?: string }) => {
   const icons = {
@@ -441,6 +442,19 @@ export default function AccountDetailPage({ params }: { params: { id: string } }
       {/* Loan Disbursements (for loan_receivable only) */}
       {account.account_type === 'loan_receivable' && (
         <LoanDisbursementListCard
+          accountId={account.account_id}
+          accountName={account.account_name}
+          currency={account.currency}
+          onRefresh={() => {
+            fetchAccount()
+            fetchCalculatedBalance()
+          }}
+        />
+      )}
+
+      {/* Investment Contributions (for investment only) */}
+      {account.account_type === 'investment' && (
+        <InvestmentContributionListCard
           accountId={account.account_id}
           accountName={account.account_name}
           currency={account.currency}

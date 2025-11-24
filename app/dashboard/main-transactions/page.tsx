@@ -30,6 +30,7 @@ import { AddTransactionDialog } from "@/components/main-transactions/AddTransact
 import { DeleteSplitWarningDialog } from "@/components/main-transactions/DeleteSplitWarningDialog"
 import { ReceiptUploadDialog } from "@/components/receipts/ReceiptUploadDialog"
 import { ReceiptPreviewDialog } from "@/components/receipts/ReceiptPreviewDialog"
+import { ReceiptImageDialog } from "@/components/receipts/ReceiptImageDialog"
 import { useEntity } from "@/contexts/EntityContext"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useToast } from "@/hooks/use-toast"
@@ -134,6 +135,8 @@ export default function MainTransactionsPage() {
   const [previewReceiptId, setPreviewReceiptId] = useState<string | null>(null)
   const [previewAccountId, setPreviewAccountId] = useState<number | null>(null)
   const [attachReceiptTransaction, setAttachReceiptTransaction] = useState<MainTransactionDetails | null>(null)
+  const [viewReceiptDialogOpen, setViewReceiptDialogOpen] = useState(false)
+  const [viewReceiptId, setViewReceiptId] = useState<string | null>(null)
 
   // Delete split warning dialog state
   const [deleteSplitWarningOpen, setDeleteSplitWarningOpen] = useState(false)
@@ -2032,8 +2035,9 @@ export default function MainTransactionsPage() {
                                 size="sm"
                                 onClick={() => {
                                   if (tx.receipt_id) {
-                                    // View receipt via authenticated API endpoint
-                                    window.open(`/api/receipts/${tx.receipt_id}/view`, '_blank')
+                                    // View receipt in dialog
+                                    setViewReceiptId(tx.receipt_id)
+                                    setViewReceiptDialogOpen(true)
                                   } else {
                                     // Attach receipt
                                     setAttachReceiptTransaction(tx)
@@ -2370,6 +2374,18 @@ export default function MainTransactionsPage() {
             setPreviewAccountId(null)
             fetchTransactions()
           }}
+        />
+      )}
+
+      {/* Receipt Image View Dialog */}
+      {viewReceiptId && (
+        <ReceiptImageDialog
+          open={viewReceiptDialogOpen}
+          onOpenChange={(open) => {
+            setViewReceiptDialogOpen(open)
+            if (!open) setViewReceiptId(null)
+          }}
+          receiptId={viewReceiptId}
         />
       )}
 

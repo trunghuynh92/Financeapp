@@ -16,11 +16,12 @@ export async function GET(request: NextRequest) {
     const supabase = createSupabaseServerClient()
     const searchParams = request.nextUrl.searchParams
     const accountId = searchParams.get('account_id')
+    const investmentAccountId = searchParams.get('investment_account_id')
     const entityId = searchParams.get('entity_id')
 
-    if (!accountId && !entityId) {
+    if (!accountId && !investmentAccountId && !entityId) {
       return NextResponse.json(
-        { error: 'Either account_id or entity_id query parameter is required' },
+        { error: 'Either account_id, investment_account_id, or entity_id query parameter is required' },
         { status: 400 }
       )
     }
@@ -42,9 +43,11 @@ export async function GET(request: NextRequest) {
         )
       `)
 
-    // Filter by account_id or entity_id
+    // Filter by account_id, investment_account_id, or entity_id
     if (accountId) {
       query = query.eq('investment_account_id', parseInt(accountId, 10))
+    } else if (investmentAccountId) {
+      query = query.eq('investment_account_id', parseInt(investmentAccountId, 10))
     } else if (entityId) {
       // For entity_id, we need to join through accounts table
       // First get all investment account IDs for this entity
@@ -121,6 +124,7 @@ export async function POST(request: NextRequest) {
     console.log('existing_source_transaction_id:', body.existing_source_transaction_id)
     console.log('source_account_id:', body.source_account_id)
     console.log('investment_account_id:', body.investment_account_id)
+    console.log('is_withdrawal:', body.is_withdrawal)
     console.log('=========================================')
 
     // Validation
@@ -130,6 +134,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Determine if this is a withdrawal or contribution
+    const isWithdrawal = body.is_withdrawal || false
 
     if (body.contribution_amount <= 0) {
       return NextResponse.json(
@@ -265,8 +272,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Step 2: Handle source account transaction (money out from bank/cash)
-    const description = `Investment contribution`
+    // Step 2: Handle source account transaction
+    // For CONTRIBUTION: debit from bank (money out) → credit to investment (money in)
+    // For WITHDRAWAL: credit to bank (money in) ← debit from investment (money out)
+    const description = isWithdrawal ? `Investment withdrawal` : `Investment contribution`
     let raw_transaction_id_1: string
     let sourceMainTransactionId: number | null = null
 
@@ -291,7 +300,7 @@ export async function POST(request: NextRequest) {
       raw_transaction_id_1 = existingMainTxn.raw_transaction_id
       sourceMainTransactionId = existingMainTxn.main_transaction_id
     } else {
-      // Create new source account transaction (money out)
+      // Create new source account transaction
       const timestamp = Date.now()
       const random1 = Math.random().toString(36).substring(2, 9)
       raw_transaction_id_1 = `TXN-${timestamp}-${random1}`
@@ -303,8 +312,9 @@ export async function POST(request: NextRequest) {
           account_id: body.source_account_id,
           transaction_date: body.contribution_date,
           description: description,
-          debit_amount: body.contribution_amount, // Debit = money out from bank/cash
-          credit_amount: null,
+          // CONTRIBUTION: debit (money out), WITHDRAWAL: credit (money in)
+          debit_amount: isWithdrawal ? null : body.contribution_amount,
+          credit_amount: isWithdrawal ? body.contribution_amount : null,
           balance: null, // Will be calculated
           transaction_source: 'user_manual',
           created_by_user_id: null, // original_transaction uses INTEGER, not UUID
@@ -327,15 +337,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 3: Get INV_CONTRIB transaction type
-    const { data: invContribType, error: invContribError } = await supabase
+    // Step 3: Get correct transaction type (INV_CONTRIB or INV_WITHDRAW)
+    const transactionTypeCode = isWithdrawal ? 'INV_WITHDRAW' : 'INV_CONTRIB'
+    const { data: transactionType, error: transactionTypeError } = await supabase
       .from('transaction_types')
       .select('transaction_type_id')
-      .eq('type_code', 'INV_CONTRIB')
+      .eq('type_code', transactionTypeCode)
       .single()
 
-    if (invContribError || !invContribType) {
-      console.error('Error finding INV_CONTRIB type:', invContribError)
+    if (transactionTypeError || !transactionType) {
+      console.error(`Error finding ${transactionTypeCode} type:`, transactionTypeError)
       // Rollback
       await supabase.from('investment_contribution').delete().eq('contribution_id', contribution.contribution_id)
       if (!body.existing_source_transaction_id) {
@@ -343,7 +354,7 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json(
-        { error: 'INV_CONTRIB transaction type not found. Ensure Migration 065 has been run.' },
+        { error: `${transactionTypeCode} transaction type not found. Ensure migration has been run.` },
         { status: 500 }
       )
     }
@@ -354,7 +365,7 @@ export async function POST(request: NextRequest) {
       const { error: mainTxnError } = await supabase
         .from('main_transaction')
         .update({
-          transaction_type_id: invContribType.transaction_type_id,
+          transaction_type_id: transactionType.transaction_type_id,
           description: description,
           investment_contribution_id: contribution.contribution_id,
         })
@@ -397,12 +408,13 @@ export async function POST(request: NextRequest) {
       console.log('=== Updating existing source transaction ===')
       console.log('existing_source_transaction_id:', body.existing_source_transaction_id)
       console.log('contribution_id:', contribution.contribution_id)
-      console.log('invContribType.transaction_type_id:', invContribType.transaction_type_id)
+      console.log('transaction_type_id:', transactionType.transaction_type_id)
+      console.log('transaction_type_code:', transactionTypeCode)
 
       const { data: linkData, error: linkError, count } = await supabase
         .from('main_transaction')
         .update({
-          transaction_type_id: invContribType.transaction_type_id,
+          transaction_type_id: transactionType.transaction_type_id,
           investment_contribution_id: contribution.contribution_id,
         })
         .eq('main_transaction_id', body.existing_source_transaction_id)
@@ -433,7 +445,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 5: Create second INV_CONTRIB transaction on investment account (asset increases)
+    // Step 5: Create paired transaction on investment account
+    // For CONTRIBUTION: credit (asset increases)
+    // For WITHDRAWAL: debit (asset decreases)
     const timestamp2 = Date.now()
     const random2 = Math.random().toString(36).substring(2, 9)
     const raw_transaction_id_2 = `TXN-${timestamp2}-${random2}`
@@ -445,8 +459,9 @@ export async function POST(request: NextRequest) {
         account_id: investmentAccountId, // Investment account
         transaction_date: body.contribution_date,
         description: description,
-        credit_amount: body.contribution_amount, // Credit = asset increases (investment)
-        debit_amount: null,
+        // CONTRIBUTION: credit (money in), WITHDRAWAL: debit (money out)
+        credit_amount: isWithdrawal ? null : body.contribution_amount,
+        debit_amount: isWithdrawal ? body.contribution_amount : null,
         balance: null,
         transaction_source: 'user_manual',
         created_by_user_id: null, // original_transaction uses INTEGER, not UUID
@@ -469,17 +484,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Step 6: Update investment main_transaction - also use INV_CONTRIB type
-    // Both sides of investment contribution use INV_CONTRIB
-    // (INV_WITHDRAW is only used when withdrawing from investment)
+    // Step 6: Update investment main_transaction with correct type
+    // Both sides use the same type (either INV_CONTRIB or INV_WITHDRAW)
     console.log('=== Updating investment account transaction ===')
     console.log('raw_transaction_id_2:', raw_transaction_id_2)
     console.log('contribution_id:', contribution.contribution_id)
+    console.log('transaction_type_code:', transactionTypeCode)
 
     const { data: investmentMainData, error: investmentMainError, count: investmentCount } = await supabase
       .from('main_transaction')
       .update({
-        transaction_type_id: invContribType.transaction_type_id, // Reuse INV_CONTRIB type
+        transaction_type_id: transactionType.transaction_type_id,
         description: description,
         investment_contribution_id: contribution.contribution_id,
       })
