@@ -20,6 +20,29 @@ BEGIN
 END $$;
 
 -- ============================================================================
+-- STEP 0: Drop all dependent views
+-- ============================================================================
+
+DO $$
+BEGIN
+  RAISE NOTICE 'Dropping dependent views...';
+END $$;
+
+-- Drop all views that depend on transaction_date columns
+DROP VIEW IF EXISTS main_transaction_details CASCADE;
+DROP VIEW IF EXISTS unmatched_transfers CASCADE;
+DROP VIEW IF EXISTS debt_summary CASCADE;
+DROP VIEW IF EXISTS amendment_history CASCADE;
+DROP VIEW IF EXISTS budget_overview CASCADE;
+DROP VIEW IF EXISTS contract_overview CASCADE;
+DROP VIEW IF EXISTS scheduled_payment_overview CASCADE;
+
+DO $$
+BEGIN
+  RAISE NOTICE '✓ All dependent views dropped';
+END $$;
+
+-- ============================================================================
 -- STEP 1: Convert original_transaction.transaction_date
 -- ============================================================================
 
@@ -27,9 +50,6 @@ DO $$
 BEGIN
   RAISE NOTICE 'Converting original_transaction.transaction_date to DATE...';
 END $$;
-
--- Drop dependent views first
-DROP VIEW IF EXISTS main_transaction_details CASCADE;
 
 -- Convert to DATE type (PostgreSQL automatically converts TIMESTAMPTZ to DATE)
 ALTER TABLE original_transaction
@@ -225,7 +245,70 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- STEP 7: Update indexes (PostgreSQL automatically handles these)
+-- STEP 7: Recreate other dependent views
+-- ============================================================================
+
+DO $$
+BEGIN
+  RAISE NOTICE 'Recreating other dependent views...';
+END $$;
+
+-- Recreate unmatched_transfers view
+CREATE VIEW unmatched_transfers AS
+SELECT
+  mt.main_transaction_id,
+  mt.raw_transaction_id,
+  mt.account_id,
+  mt.amount,
+  mt.transaction_direction,
+  mt.transaction_date,
+  mt.description,
+  mt.notes,
+  a.account_name,
+  a.bank_name,
+  e.name AS entity_name,
+  tt.type_code,
+  tt.type_display_name AS transaction_type
+FROM main_transaction mt
+JOIN accounts a ON mt.account_id = a.account_id
+JOIN entities e ON a.entity_id = e.id
+JOIN transaction_types tt ON mt.transaction_type_id = tt.transaction_type_id
+WHERE tt.type_code IN ('TRF_OUT', 'TRF_IN')
+  AND mt.transfer_matched_transaction_id IS NULL
+ORDER BY mt.transaction_date DESC;
+
+-- Recreate debt_summary view (if it exists in migrations)
+CREATE OR REPLACE VIEW debt_summary AS
+SELECT
+  dd.debt_drawdown_id,
+  dd.account_id,
+  dd.business_partner_id,
+  bp.partner_name,
+  dd.drawdown_date,
+  dd.principal_amount,
+  dd.interest_rate,
+  dd.due_date,
+  dd.notes,
+  dd.status,
+  COALESCE(SUM(dp.payment_amount), 0) AS total_paid,
+  dd.principal_amount - COALESCE(SUM(dp.payment_amount), 0) AS remaining_balance
+FROM debt_drawdowns dd
+LEFT JOIN debt_paybacks dp ON dd.debt_drawdown_id = dp.debt_drawdown_id
+LEFT JOIN business_partners bp ON dd.business_partner_id = bp.partner_id
+GROUP BY dd.debt_drawdown_id, dd.account_id, dd.business_partner_id, bp.partner_name,
+         dd.drawdown_date, dd.principal_amount, dd.interest_rate, dd.due_date,
+         dd.notes, dd.status;
+
+-- Note: Other views (budget_overview, contract_overview, scheduled_payment_overview, amendment_history)
+-- will be recreated by their respective migration files when needed
+
+DO $$
+BEGIN
+  RAISE NOTICE '✓ Other views recreated';
+END $$;
+
+-- ============================================================================
+-- STEP 8: Update indexes (PostgreSQL automatically handles these)
 -- ============================================================================
 
 DO $$
