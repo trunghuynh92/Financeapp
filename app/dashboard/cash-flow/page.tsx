@@ -65,6 +65,17 @@ interface CashFlowData {
   months_until_negative: number | null
   projections: MonthlyProjection[]
   version: string // NEW in v2.0
+  liquidity?: { // NEW in v3.0
+    current_ratio: number
+    quick_ratio: number
+    cash_ratio: number
+    working_capital: number
+  }
+  runway?: { // NEW in v3.0
+    will_run_out_of_cash: boolean
+    months_of_runway: number | null
+    runout_date: string | null
+  }
 }
 
 export default function CashFlowPage() {
