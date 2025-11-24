@@ -115,7 +115,7 @@ export interface ImportConfig {
 // ==============================================================================
 
 export interface ImportedTransactionData {
-  transaction_date: Date
+  transaction_date: string  // ISO date string (YYYY-MM-DD)
   description: string | null
   debit_amount: number | null
   credit_amount: number | null

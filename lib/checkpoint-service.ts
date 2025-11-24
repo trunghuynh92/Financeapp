@@ -15,6 +15,21 @@ import type {
 import { CHECKPOINT_CONFIG } from '@/types/checkpoint'
 
 // ==============================================================================
+// Helper Functions
+// ==============================================================================
+
+/**
+ * Converts a Date object to ISO date string (YYYY-MM-DD) without timezone conversion
+ * This is timezone-safe: 2025-03-01 midnight GMT+7 → "2025-03-01" (not "2025-02-28"!)
+ */
+function toISODateString(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+// ==============================================================================
 // Core Function 1: Calculate Balance Up To Date
 // ==============================================================================
 
@@ -28,10 +43,12 @@ export async function calculateBalanceUpToDate(
 ): Promise<BalanceCalculation> {
   const supabase = createSupabaseServerClient()
   try {
+    const upToDateStr = toISODateString(upToDate)
+
     // Use the database function for accurate calculation
     const { data, error } = await supabase.rpc('calculate_balance_up_to_date', {
       p_account_id: accountId,
-      p_up_to_date: upToDate.toISOString(),
+      p_up_to_date: upToDateStr,
     })
 
     if (error) {
@@ -44,12 +61,12 @@ export async function calculateBalanceUpToDate(
       .from('original_transaction')
       .select('*', { count: 'exact', head: true })
       .eq('account_id', accountId)
-      .lte('transaction_date', upToDate.toISOString())
+      .lte('transaction_date', upToDateStr)
       .eq('is_balance_adjustment', false)
 
     return {
       account_id: accountId,
-      up_to_date: upToDate.toISOString(),
+      up_to_date: upToDateStr,
       calculated_balance: data || 0,
       transaction_count: count || 0,
     }
@@ -132,7 +149,7 @@ export async function createOrUpdateBalanceAdjustmentTransaction(
 
     const transactionData = {
       account_id,
-      transaction_date: new Date(checkpoint_date),
+      transaction_date: toISODateString(checkpoint_date),  // Convert Date to ISO date string
       description: CHECKPOINT_CONFIG.BALANCE_ADJUSTMENT_DESCRIPTION,
       credit_amount: creditAmount,
       debit_amount: debitAmount,
@@ -166,7 +183,7 @@ export async function createOrUpdateBalanceAdjustmentTransaction(
         .insert({
           raw_transaction_id: raw_transaction_id,
           account_id: transactionData.account_id,
-          transaction_date: transactionData.transaction_date?.toISOString(),
+          transaction_date: transactionData.transaction_date,  // Already a date string
           description: transactionData.description,
           credit_amount: transactionData.credit_amount,
           debit_amount: transactionData.debit_amount,
@@ -213,11 +230,13 @@ export async function createOrUpdateCheckpoint(
 
   try {
     // Step 1: Check if checkpoint already exists for this account and date
+    const checkpointDateStr = toISODateString(checkpoint_date)
+
     const { data: existing, error: fetchError } = await supabase
       .from('balance_checkpoints')
       .select('*')
       .eq('account_id', account_id)
-      .eq('checkpoint_date', checkpoint_date.toISOString())
+      .eq('checkpoint_date', checkpointDateStr)
       .maybeSingle()
 
     if (fetchError) {
@@ -250,7 +269,7 @@ export async function createOrUpdateCheckpoint(
         .from('balance_checkpoints')
         .insert({
           account_id,
-          checkpoint_date: checkpoint_date.toISOString(),
+          checkpoint_date: checkpointDateStr,  // Already converted to date string
           declared_balance,
           calculated_balance: 0, // Will be recalculated
           adjustment_amount: 0,   // Will be recalculated
@@ -476,7 +495,8 @@ export async function recalculateAllCheckpoints(
 
     // Process each checkpoint in chronological order
     for (const checkpoint of allCheckpoints) {
-      const checkpointDate = new Date(checkpoint.checkpoint_date)
+      // checkpoint_date is already a date string from database
+      const checkpointDateStr = checkpoint.checkpoint_date
 
       // Calculate balance from:
       // 1. Non-adjustment transactions up to checkpoint date
@@ -492,7 +512,7 @@ export async function recalculateAllCheckpoints(
           .select('credit_amount, debit_amount')
           .eq('account_id', account_id)
           .eq('is_balance_adjustment', false)
-          .lte('transaction_date', checkpointDate.toISOString())
+          .lte('transaction_date', checkpointDateStr)
           .range(page * pageSize, (page + 1) * pageSize - 1)
 
         if (txError) {
@@ -518,8 +538,9 @@ export async function recalculateAllCheckpoints(
 
       // 2. Adjustment transactions from PREVIOUS checkpoints only (by date)
       // Get checkpoints with earlier dates
+      // checkpoint_date is already a date string, can compare directly
       const previousCheckpoints = allCheckpoints.filter(cp =>
-        new Date(cp.checkpoint_date) < checkpointDate
+        cp.checkpoint_date < checkpointDateStr
       )
 
       if (previousCheckpoints.length > 0) {
@@ -601,7 +622,7 @@ export async function recalculateAllCheckpoints(
           .insert({
             raw_transaction_id,
             account_id,
-            transaction_date: checkpointDate.toISOString(),
+            transaction_date: checkpointDateStr,  // Already a date string
             description: CHECKPOINT_CONFIG.BALANCE_ADJUSTMENT_DESCRIPTION,
             credit_amount: creditAmount,
             debit_amount: debitAmount,
@@ -863,15 +884,16 @@ export async function getCheckpointSummary(accountId: number) {
 
     const reconciledCount = data.filter(cp => cp.is_reconciled).length
     const totalAdjustment = data.reduce((sum, cp) => sum + cp.adjustment_amount, 0)
-    const dates = data.map(cp => new Date(cp.checkpoint_date).getTime())
+    // checkpoint_date is already a string (YYYY-MM-DD), can compare directly
+    const dates = data.map(cp => cp.checkpoint_date).sort()
 
     return {
       total_checkpoints: data.length,
       reconciled_checkpoints: reconciledCount,
       unreconciled_checkpoints: data.length - reconciledCount,
       total_adjustment_amount: totalAdjustment,
-      earliest_checkpoint_date: new Date(Math.min(...dates)).toISOString(),
-      latest_checkpoint_date: new Date(Math.max(...dates)).toISOString(),
+      earliest_checkpoint_date: dates[0],  // Already a date string
+      latest_checkpoint_date: dates[dates.length - 1],  // Already a date string
     }
   } catch (error) {
     console.error('Error in getCheckpointSummary:', error)

@@ -26,6 +26,21 @@ import type {
 } from '@/types/import'
 
 // ==============================================================================
+// Helper Functions
+// ==============================================================================
+
+/**
+ * Converts a Date object to ISO date string (YYYY-MM-DD) without timezone conversion
+ * This is timezone-safe: 2025-03-01 midnight GMT+7 → "2025-03-01" (not "2025-02-28"!)
+ */
+function toISODateString(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+// ==============================================================================
 // POST /api/accounts/[id]/import
 // Import bank statement CSV and create checkpoint
 // ==============================================================================
@@ -217,8 +232,12 @@ export async function POST(
     if (endDateFilter) endDateFilter.setHours(23, 59, 59, 999)
 
     console.log(`📊 Processing ${parsedCSV.rows.length} rows from import...`)
-    if (startDateFilter && endDateFilter) {
-      console.log(`📅 Filtering transactions between ${startDateFilter.toISOString().split('T')[0]} and ${endDateFilter.toISOString().split('T')[0]}`)
+    // Convert date filters to ISO date strings for comparison
+    const startDateStr = startDateFilter ? toISODateString(startDateFilter) : null
+    const endDateStr = endDateFilter ? toISODateString(endDateFilter) : null
+
+    if (startDateStr && endDateStr) {
+      console.log(`📅 Filtering transactions between ${startDateStr} and ${endDateStr}`)
     }
 
     for (let i = 0; i < parsedCSV.rows.length; i++) {
@@ -238,13 +257,12 @@ export async function POST(
         )
 
         if (transactionData) {
-          // Filter by date range if specified
-          if (startDateFilter && endDateFilter && transactionData.transaction_date) {
-            const txDate = new Date(transactionData.transaction_date)
-            if (txDate < startDateFilter || txDate > endDateFilter) {
+          // Filter by date range if specified (simple string comparison works for ISO dates)
+          if (startDateStr && endDateStr && transactionData.transaction_date) {
+            if (transactionData.transaction_date < startDateStr || transactionData.transaction_date > endDateStr) {
               dateFilteredCount++
               if (dateFilteredCount <= 5) {
-                console.log(`📅 Row ${rowIndex}: Filtering out transaction outside date range (${txDate.toISOString().split('T')[0]})`)
+                console.log(`📅 Row ${rowIndex}: Filtering out transaction outside date range (${transactionData.transaction_date})`)
               }
               continue // Skip this transaction
             }
@@ -312,12 +330,13 @@ export async function POST(
     // Detect and fix descending order (Techcombank format)
     // If transactions are in descending chronological order, reverse the sequence numbers
     if (transactionsToInsert.length >= 2) {
-      const firstDate = new Date(transactionsToInsert[0].transaction_date)
-      const lastDate = new Date(transactionsToInsert[transactionsToInsert.length - 1].transaction_date)
+      // transaction_date is already a string (YYYY-MM-DD), can compare directly
+      const firstDate = transactionsToInsert[0].transaction_date
+      const lastDate = transactionsToInsert[transactionsToInsert.length - 1].transaction_date
 
       // If first transaction is LATER than last transaction, we have descending order
       if (firstDate > lastDate) {
-        console.log(`🔄 Detected descending order import (first: ${firstDate.toISOString()}, last: ${lastDate.toISOString()})`)
+        console.log(`🔄 Detected descending order import (first: ${firstDate}, last: ${lastDate})`)
         console.log(`   Reversing transaction sequences to preserve chronological order...`)
 
         const totalTransactions = transactionsToInsert.length
@@ -331,7 +350,7 @@ export async function POST(
 
         console.log(`✅ Reversed ${totalTransactions} transaction sequences`)
       } else {
-        console.log(`✅ Transactions in ascending order (first: ${firstDate.toISOString()}, last: ${lastDate.toISOString()})`)
+        console.log(`✅ Transactions in ascending order (first: ${firstDate}, last: ${lastDate})`)
       }
     }
 
@@ -360,14 +379,17 @@ export async function POST(
       minDate.setDate(minDate.getDate() - 7)
       maxDate.setDate(maxDate.getDate() + 7)
 
-      console.log(`📅 Checking duplicates in date range: ${minDate.toISOString().split('T')[0]} to ${maxDate.toISOString().split('T')[0]}`)
+      const minDateStr = toISODateString(minDate)
+      const maxDateStr = toISODateString(maxDate)
+
+      console.log(`📅 Checking duplicates in date range: ${minDateStr} to ${maxDateStr}`)
 
       const { data: existingTransactions, error: fetchError } = await supabase
         .from('original_transaction')
         .select('raw_transaction_id, transaction_date, description, debit_amount, credit_amount, bank_reference')
         .eq('account_id', accountId)
-        .gte('transaction_date', minDate.toISOString())
-        .lte('transaction_date', maxDate.toISOString())
+        .gte('transaction_date', minDateStr)
+        .lte('transaction_date', maxDateStr)
 
       if (fetchError) {
         console.warn('⚠️ Could not fetch existing transactions for duplicate check:', fetchError.message)
@@ -378,10 +400,10 @@ export async function POST(
       if (existingTransactions) {
         for (const tx of existingTransactions) {
           // Create a composite key: date + amount + description (first 50 chars)
-          const dateStr = new Date(tx.transaction_date).toISOString().split('T')[0]
+          // transaction_date is already a date string (YYYY-MM-DD)
           const amount = tx.debit_amount || tx.credit_amount || 0
           const descPart = (tx.description || '').substring(0, 50).toLowerCase().trim()
-          const key = `${dateStr}|${amount}|${descPart}`
+          const key = `${tx.transaction_date}|${amount}|${descPart}`
 
           // Store in map (may have multiple transactions with same key)
           if (!existingMap.has(key)) {
@@ -399,10 +421,10 @@ export async function POST(
         const rowIndex = i + 2 // Match the rowIndex used earlier
 
         // Create key for this transaction
-        const dateStr = new Date(newTx.transaction_date).toISOString().split('T')[0]
+        // transaction_date is already a date string (YYYY-MM-DD)
         const amount = newTx.debit_amount || newTx.credit_amount || 0
         const descPart = (newTx.description || '').substring(0, 50).toLowerCase().trim()
-        const key = `${dateStr}|${amount}|${descPart}`
+        const key = `${newTx.transaction_date}|${amount}|${descPart}`
 
         const possibleDuplicates = existingMap.get(key) || []
 
@@ -412,7 +434,8 @@ export async function POST(
 
         for (const existingTx of possibleDuplicates) {
           // More detailed comparison
-          const sameDate = new Date(existingTx.transaction_date).toISOString().split('T')[0] === dateStr
+          // Both dates are already date strings (YYYY-MM-DD), can compare directly
+          const sameDate = existingTx.transaction_date === newTx.transaction_date
           const sameDebit = (existingTx.debit_amount || 0) === (newTx.debit_amount || 0)
           const sameCredit = (existingTx.credit_amount || 0) === (newTx.credit_amount || 0)
           const sameDesc = (existingTx.description || '').toLowerCase().trim() === (newTx.description || '').toLowerCase().trim()
@@ -431,7 +454,7 @@ export async function POST(
         if (isDuplicate && matchedTx) {
           duplicateWarnings.push({
             importedTransaction: {
-              transaction_date: new Date(newTx.transaction_date),
+              transaction_date: newTx.transaction_date,  // Already a string
               description: newTx.description,
               debit_amount: newTx.debit_amount,
               credit_amount: newTx.credit_amount,
@@ -545,30 +568,31 @@ export async function POST(
       console.log('🔍 Attempting to extract checkpoint balance from last transaction...')
 
       // Detect sort order: check if transactions are in descending order (newest first)
-      const firstTxDate = new Date(transactionsToInsert[0].transaction_date)
-      const lastTxDate = new Date(transactionsToInsert[transactionsToInsert.length - 1].transaction_date)
-      const isDescending = firstTxDate > lastTxDate
+      // transaction_date is already a string (YYYY-MM-DD), can compare directly
+      const firstTxDate = transactionsToInsert[0].transaction_date
+      const lastTxDate = transactionsToInsert[transactionsToInsert.length - 1].transaction_date
+      const isDescending = firstTxDate > lastTxDate  // String comparison works for ISO dates
 
       console.log(`📊 Transaction order: ${isDescending ? 'DESCENDING (newest first)' : 'ASCENDING (oldest first)'}`)
-      console.log(`   First tx date: ${firstTxDate.toISOString().split('T')[0]}`)
-      console.log(`   Last tx date: ${lastTxDate.toISOString().split('T')[0]}`)
+      console.log(`   First tx date: ${firstTxDate}`)
+      console.log(`   Last tx date: ${lastTxDate}`)
 
       // Find the chronologically LAST transaction on the checkpoint date
-      const checkpointDateStr = checkpointDate.toISOString().split('T')[0]
+      const checkpointDateStr = toISODateString(checkpointDate)
       let lastTransactionOnEndDate = null
 
       if (isDescending) {
         // Newest first → FIRST occurrence of checkpoint date = last chronologically
         lastTransactionOnEndDate = transactionsToInsert.find(tx => {
-          const txDateStr = new Date(tx.transaction_date).toISOString().split('T')[0]
-          return txDateStr === checkpointDateStr
+          // transaction_date is already a string (YYYY-MM-DD)
+          return tx.transaction_date === checkpointDateStr
         })
       } else {
         // Oldest first → LAST occurrence of checkpoint date = last chronologically
         // Search from end of array
         for (let i = transactionsToInsert.length - 1; i >= 0; i--) {
-          const txDateStr = new Date(transactionsToInsert[i].transaction_date).toISOString().split('T')[0]
-          if (txDateStr === checkpointDateStr) {
+          // transaction_date is already a string (YYYY-MM-DD)
+          if (transactionsToInsert[i].transaction_date === checkpointDateStr) {
             lastTransactionOnEndDate = transactionsToInsert[i]
             break
           }
@@ -759,7 +783,8 @@ function processRow(
         if (!date) {
           throw new Error(`Invalid date format: ${value}`)
         }
-        transactionData.transaction_date = date.toISOString()
+        // Convert Date to ISO date string (YYYY-MM-DD) without timezone conversion
+        transactionData.transaction_date = toISODateString(date)
         hasRequiredFields = true
         break
       }
