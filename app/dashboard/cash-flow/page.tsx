@@ -70,11 +70,17 @@ interface CashFlowData {
     quick_ratio: number
     cash_ratio: number
     working_capital: number
+    total_liquid_assets: number
+    total_investments: number
+    investment_balance: number
+    receivables_balance: number
   }
   runway?: { // NEW in v3.0
     will_run_out_of_cash: boolean
     months_of_runway: number | null
     runout_date: string | null
+    cash_runway_months: number
+    liquidity_runway_months: number
   }
 }
 
