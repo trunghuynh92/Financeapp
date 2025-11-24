@@ -259,30 +259,9 @@ WHERE tt.type_code IN ('TRF_OUT', 'TRF_IN')
   AND mt.transfer_matched_transaction_id IS NULL
 ORDER BY mt.transaction_date DESC;
 
--- Recreate debt_summary view (if it exists in migrations)
-CREATE OR REPLACE VIEW debt_summary AS
-SELECT
-  dd.debt_drawdown_id,
-  dd.account_id,
-  dd.business_partner_id,
-  bp.partner_name,
-  dd.drawdown_date,
-  dd.principal_amount,
-  dd.interest_rate,
-  dd.due_date,
-  dd.notes,
-  dd.status,
-  COALESCE(SUM(dp.payment_amount), 0) AS total_paid,
-  dd.principal_amount - COALESCE(SUM(dp.payment_amount), 0) AS remaining_balance
-FROM debt_drawdowns dd
-LEFT JOIN debt_paybacks dp ON dd.debt_drawdown_id = dp.debt_drawdown_id
-LEFT JOIN business_partners bp ON dd.business_partner_id = bp.partner_id
-GROUP BY dd.debt_drawdown_id, dd.account_id, dd.business_partner_id, bp.partner_name,
-         dd.drawdown_date, dd.principal_amount, dd.interest_rate, dd.due_date,
-         dd.notes, dd.status;
-
--- Note: Other views (budget_overview, contract_overview, scheduled_payment_overview, amendment_history)
--- will be recreated by their respective migration files when needed
+-- Note: Other views (debt_summary, budget_overview, contract_overview,
+-- scheduled_payment_overview, amendment_history) will be recreated by
+-- their respective migration files when needed
 
 DO $$
 BEGIN
@@ -356,7 +335,6 @@ BEGIN
   RAISE NOTICE 'Recreated views:';
   RAISE NOTICE '  - main_transaction_details';
   RAISE NOTICE '  - unmatched_transfers';
-  RAISE NOTICE '  - debt_summary';
   RAISE NOTICE '';
   RAISE NOTICE 'Benefits:';
   RAISE NOTICE '  ✓ No more timezone conversion bugs';
