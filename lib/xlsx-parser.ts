@@ -512,8 +512,8 @@ function extractStatementMetadata(
 
     // Handle Date objects directly (from Excel with cellDates: true)
     let parsed: Date | null = null
-    if (dateValue instanceof Date) {
-      parsed = dateValue
+    if (Object.prototype.toString.call(dateValue) === '[object Date]') {
+      parsed = dateValue as unknown as Date
     } else {
       // Try to parse date string
       parsed = tryParseDate(String(dateValue))
