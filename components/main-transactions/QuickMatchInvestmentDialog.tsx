@@ -264,7 +264,7 @@ export function QuickMatchInvestmentDialog({
             <ul className="list-disc list-inside space-y-1 text-blue-800">
               <li>A paired transaction will be created in the selected investment account</li>
               <li>Both transactions will be linked together</li>
-              <li>Green "Matched Investment" badges will appear on both</li>
+              <li>Green &quot;Matched Investment&quot; badges will appear on both</li>
             </ul>
           </div>
         </div>

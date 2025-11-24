@@ -743,7 +743,7 @@ export function AddTransactionDialog({
                   <p className="text-sm text-red-500">{errors.debt_account_id}</p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Select which credit line or term loan you're paying back
+                  Select which credit line or term loan you&apos;re paying back
                 </p>
               </div>
 

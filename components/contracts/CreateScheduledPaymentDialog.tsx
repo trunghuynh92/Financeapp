@@ -250,7 +250,7 @@ export function CreateScheduledPaymentDialog({
               required
             />
             <p className="text-xs text-muted-foreground">
-              Give this payment schedule a descriptive name (e.g., "Year 1" for first year rent at 35mil)
+              Give this payment schedule a descriptive name (e.g., &quot;Year 1&quot; for first year rent at 35mil)
             </p>
           </div>
 
