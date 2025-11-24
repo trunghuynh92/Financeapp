@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
+interface ApplyAmendmentResult {
+  instances_updated: number
+  old_total: number
+  new_total: number
+}
+
 // POST /api/contracts/[id]/amendments/[amendmentId]/apply - Apply amendment to instances
 export async function POST(
   request: NextRequest,
@@ -41,12 +47,12 @@ export async function POST(
     // Apply amendment using database function
     const { data: result, error: applyError } = await supabase
       .rpc('apply_amendment_to_instances', { p_amendment_id: amendmentId })
-      .single()
+      .single<ApplyAmendmentResult>()
 
-    if (applyError) {
+    if (applyError || !result) {
       console.error('Error applying amendment:', applyError)
       return NextResponse.json(
-        { error: 'Failed to apply amendment', details: applyError.message },
+        { error: 'Failed to apply amendment', details: applyError?.message },
         { status: 500 }
       )
     }
