@@ -96,7 +96,16 @@ export async function POST(
     const buffer = Buffer.from(arrayBuffer)
 
     // Initialize Google Cloud Vision client
-    const client = new vision.ImageAnnotatorClient()
+    // Support both file-based credentials (local) and explicit credentials (Vercel)
+    const client = process.env.GOOGLE_CLOUD_PROJECT_ID
+      ? new vision.ImageAnnotatorClient({
+          credentials: {
+            project_id: process.env.GOOGLE_CLOUD_PROJECT_ID,
+            private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+            client_email: process.env.GOOGLE_CLOUD_CLIENT_EMAIL,
+          },
+        })
+      : new vision.ImageAnnotatorClient() // Uses GOOGLE_APPLICATION_CREDENTIALS
 
     // Perform OCR
     const [result] = await client.textDetection({
