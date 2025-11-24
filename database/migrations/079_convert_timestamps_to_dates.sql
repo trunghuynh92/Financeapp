@@ -95,12 +95,20 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- STEP 4: Skip account_balance (table doesn't exist)
+-- STEP 4: Convert account_balance.balance_date
 -- ============================================================================
 
 DO $$
 BEGIN
-  RAISE NOTICE 'Skipping account_balance (table does not exist in schema)';
+  RAISE NOTICE 'Converting account_balance.balance_date to DATE...';
+END $$;
+
+ALTER TABLE account_balance
+  ALTER COLUMN balance_date TYPE DATE;
+
+DO $$
+BEGIN
+  RAISE NOTICE '✓ account_balance.balance_date converted to DATE';
 END $$;
 
 -- ============================================================================
@@ -259,7 +267,36 @@ WHERE tt.type_code IN ('TRF_OUT', 'TRF_IN')
   AND mt.transfer_matched_transaction_id IS NULL
 ORDER BY mt.transaction_date DESC;
 
--- Note: Other views (debt_summary, budget_overview, contract_overview,
+-- Recreate debt_summary view
+CREATE VIEW debt_summary AS
+SELECT
+  a.account_id,
+  a.account_name,
+  a.account_type,
+  a.bank_name,
+  a.credit_limit,
+  e.id as entity_id,
+  e.name as entity_name,
+  COUNT(dd.drawdown_id) as total_drawdowns,
+  COUNT(CASE WHEN dd.status = 'active' THEN 1 END) as active_drawdowns,
+  COUNT(CASE WHEN dd.status = 'settled' THEN 1 END) as settled_drawdowns,
+  COUNT(CASE WHEN dd.status = 'overdue' THEN 1 END) as overdue_drawdowns,
+  COALESCE(SUM(dd.original_amount), 0) as total_borrowed,
+  COALESCE(SUM(CASE WHEN dd.status IN ('active', 'overdue') THEN dd.remaining_balance ELSE 0 END), 0) as total_outstanding,
+  COALESCE(SUM(dd.original_amount - dd.remaining_balance), 0) as total_paid,
+  CASE
+    WHEN a.credit_limit IS NOT NULL
+    THEN a.credit_limit - COALESCE(SUM(CASE WHEN dd.status IN ('active', 'overdue') THEN dd.remaining_balance ELSE 0 END), 0)
+    ELSE NULL
+  END as available_credit
+FROM accounts a
+JOIN entities e ON a.entity_id = e.id
+LEFT JOIN debt_drawdown dd ON a.account_id = dd.account_id
+WHERE a.account_type IN ('credit_line', 'term_loan')
+GROUP BY a.account_id, a.account_name, a.account_type, a.bank_name, a.credit_limit, e.id, e.name
+ORDER BY a.account_name;
+
+-- Note: Other views (budget_overview, contract_overview,
 -- scheduled_payment_overview, amendment_history) will be recreated by
 -- their respective migration files when needed
 
@@ -287,6 +324,7 @@ DECLARE
   v_ot_type text;
   v_mt_type text;
   v_cp_type text;
+  v_ab_type text;
 BEGIN
   RAISE NOTICE '';
   RAISE NOTICE '=== VERIFICATION ===';
@@ -304,11 +342,16 @@ BEGIN
   FROM information_schema.columns
   WHERE table_name = 'balance_checkpoints' AND column_name = 'checkpoint_date';
 
+  SELECT data_type INTO v_ab_type
+  FROM information_schema.columns
+  WHERE table_name = 'account_balance' AND column_name = 'balance_date';
+
   RAISE NOTICE 'original_transaction.transaction_date: %', v_ot_type;
   RAISE NOTICE 'main_transaction.transaction_date: %', v_mt_type;
   RAISE NOTICE 'balance_checkpoints.checkpoint_date: %', v_cp_type;
+  RAISE NOTICE 'account_balance.balance_date: %', v_ab_type;
 
-  IF v_ot_type = 'date' AND v_mt_type = 'date' AND v_cp_type = 'date' THEN
+  IF v_ot_type = 'date' AND v_mt_type = 'date' AND v_cp_type = 'date' AND v_ab_type = 'date' THEN
     RAISE NOTICE '';
     RAISE NOTICE '✅ SUCCESS: All business date columns converted to DATE type';
   ELSE
@@ -328,6 +371,7 @@ BEGIN
   RAISE NOTICE '  - original_transaction.transaction_date (TIMESTAMPTZ → DATE)';
   RAISE NOTICE '  - main_transaction.transaction_date (TIMESTAMPTZ → DATE)';
   RAISE NOTICE '  - balance_checkpoints.checkpoint_date (TIMESTAMPTZ → DATE)';
+  RAISE NOTICE '  - account_balance.balance_date (TIMESTAMPTZ → DATE)';
   RAISE NOTICE '';
   RAISE NOTICE 'Updated functions:';
   RAISE NOTICE '  - calculate_balance_up_to_date (now accepts DATE)';
@@ -335,6 +379,7 @@ BEGIN
   RAISE NOTICE 'Recreated views:';
   RAISE NOTICE '  - main_transaction_details';
   RAISE NOTICE '  - unmatched_transfers';
+  RAISE NOTICE '  - debt_summary';
   RAISE NOTICE '';
   RAISE NOTICE 'Benefits:';
   RAISE NOTICE '  ✓ No more timezone conversion bugs';
