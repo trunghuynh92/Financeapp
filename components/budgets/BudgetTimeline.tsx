@@ -322,7 +322,7 @@ export function BudgetTimeline({ budgets, onEdit, onDelete }: BudgetTimelineProp
                               </svg>
                             </button>
                             <button
-                              onClick={() => onDelete(budget.budget_id, budget.budget_name)}
+                              onClick={() => onDelete(budget.budget_id, budget.budget_name || 'Unnamed Budget')}
                               className="p-1 hover:bg-red-100 text-red-600 rounded transition-colors"
                               title="Delete"
                             >
