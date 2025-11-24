@@ -71,7 +71,7 @@ export function PaymentTimeline({ payments, onEdit, onDelete }: PaymentTimelineP
     return `${days}d`
   }
 
-  const getStatusIcon = (schedule: ScheduledPayment) => {
+  const getStatusIcon = (schedule: ScheduledPaymentOverview) => {
     if (schedule.status === 'completed') {
       return <CheckCircle className="h-4 w-4 text-green-600" />
     }
@@ -81,7 +81,7 @@ export function PaymentTimeline({ payments, onEdit, onDelete }: PaymentTimelineP
     return <CheckCircle className="h-4 w-4 text-green-600" />
   }
 
-  const getProgress = (schedule: ScheduledPayment) => {
+  const getProgress = (schedule: ScheduledPaymentOverview) => {
     const paid = schedule.paid_count || 0
     const total = paid + (schedule.pending_count || 0)
     return total > 0 ? (paid / total) * 100 : 0
