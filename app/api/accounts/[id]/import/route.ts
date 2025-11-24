@@ -122,9 +122,10 @@ export async function POST(
       if (processedData.length > 1) {
         console.log('🔍 First row (header):', processedData[0])
         console.log('🔍 Second row data:', processedData[1])
-        console.log('🔍 Second row types:', processedData[1].map((cell, idx) =>
-          `[${idx}] ${typeof cell} ${cell && typeof cell === 'object' && cell instanceof Date ? '(Date)' : ''}: ${cell}`
-        ))
+        console.log('🔍 Second row types:', processedData[1].map((cell, idx) => {
+          const isDate = cell instanceof Date
+          return `[${idx}] ${typeof cell} ${isDate ? '(Date)' : ''}: ${cell}`
+        }))
       }
 
       // Convert to CSV text format for existing parser
