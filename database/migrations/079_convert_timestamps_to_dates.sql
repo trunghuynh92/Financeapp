@@ -51,9 +51,11 @@ BEGIN
   RAISE NOTICE 'Converting original_transaction.transaction_date to DATE...';
 END $$;
 
--- Convert to DATE type (PostgreSQL automatically converts TIMESTAMPTZ to DATE)
+-- Convert to DATE type using Asia/Bangkok timezone (GMT+7)
+-- IMPORTANT: Must use AT TIME ZONE to convert to local date, not UTC date
 ALTER TABLE original_transaction
-  ALTER COLUMN transaction_date TYPE DATE;
+  ALTER COLUMN transaction_date TYPE DATE
+  USING (transaction_date AT TIME ZONE 'Asia/Bangkok')::DATE;
 
 DO $$
 BEGIN
@@ -69,8 +71,10 @@ BEGIN
   RAISE NOTICE 'Converting main_transaction.transaction_date to DATE...';
 END $$;
 
+-- Convert to DATE type using Asia/Bangkok timezone (GMT+7)
 ALTER TABLE main_transaction
-  ALTER COLUMN transaction_date TYPE DATE;
+  ALTER COLUMN transaction_date TYPE DATE
+  USING (transaction_date AT TIME ZONE 'Asia/Bangkok')::DATE;
 
 DO $$
 BEGIN
@@ -86,8 +90,10 @@ BEGIN
   RAISE NOTICE 'Converting balance_checkpoints.checkpoint_date to DATE...';
 END $$;
 
+-- Convert to DATE type using Asia/Bangkok timezone (GMT+7)
 ALTER TABLE balance_checkpoints
-  ALTER COLUMN checkpoint_date TYPE DATE;
+  ALTER COLUMN checkpoint_date TYPE DATE
+  USING (checkpoint_date AT TIME ZONE 'Asia/Bangkok')::DATE;
 
 DO $$
 BEGIN
@@ -107,7 +113,8 @@ BEGIN
     AND table_name = 'account_balance'
   ) THEN
     RAISE NOTICE 'Converting account_balance.balance_date to DATE...';
-    ALTER TABLE public.account_balance ALTER COLUMN balance_date TYPE DATE;
+    ALTER TABLE public.account_balance ALTER COLUMN balance_date TYPE DATE
+      USING (balance_date AT TIME ZONE 'Asia/Bangkok')::DATE;
     RAISE NOTICE 'OK: account_balance.balance_date converted to DATE';
   ELSE
     RAISE NOTICE 'Skipping account_balance (table does not exist in public schema)';
