@@ -2194,6 +2194,7 @@ export default function MainTransactionsPage() {
         open={bulkEditDialogOpen}
         onOpenChange={setBulkEditDialogOpen}
         selectedIds={selectedIds}
+        selectedTransactions={transactions.filter(tx => selectedIds.has(tx.main_transaction_id))}
         onSuccess={handleBulkEditSuccess}
         transactionTypes={transactionTypes}
         categories={categories}

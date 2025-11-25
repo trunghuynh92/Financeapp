@@ -19,12 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { TransactionType, Category, Branch, Project } from "@/types/main-transaction"
+import { TransactionType, Category, Branch, Project, MainTransactionDetails } from "@/types/main-transaction"
 
 interface BulkEditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   selectedIds: Set<number>
+  selectedTransactions: MainTransactionDetails[]
   onSuccess: () => void
   transactionTypes: TransactionType[]
   categories: Category[]
@@ -36,6 +37,7 @@ export function BulkEditDialog({
   open,
   onOpenChange,
   selectedIds,
+  selectedTransactions,
   onSuccess,
   transactionTypes,
   categories,
@@ -49,6 +51,26 @@ export function BulkEditDialog({
     branch_id: "unchanged",
     project_id: "unchanged",
   })
+
+  // Determine if all selected transactions are credit or debit
+  const allCredit = selectedTransactions.every(tx => tx.transaction_direction === 'credit')
+  const allDebit = selectedTransactions.every(tx => tx.transaction_direction === 'debit')
+  const isMixed = !allCredit && !allDebit
+
+  // Credit transaction type codes (money IN)
+  const creditTypeCodes = ['INC', 'TRF_IN', 'DEBT_TAKE', 'LOAN_COLLECT', 'INV_WITHDRAW', 'CC_PAY']
+
+  // Debit transaction type codes (money OUT)
+  const debitTypeCodes = ['EXP', 'TRF_OUT', 'DEBT_PAY', 'INV', 'LOAN_DISBURSE', 'CC_CHARGE', 'INV_CONTRIB']
+
+  // Filter transaction types based on selection
+  const filteredTransactionTypes = isMixed
+    ? [] // Don't allow any type selection for mixed transactions
+    : allCredit
+      ? transactionTypes.filter(t => creditTypeCodes.includes(t.type_code))
+      : allDebit
+        ? transactionTypes.filter(t => debitTypeCodes.includes(t.type_code))
+        : transactionTypes
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -145,6 +167,16 @@ export function BulkEditDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Warning for mixed selection */}
+          {isMixed && (
+            <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3">
+              <p className="text-sm text-yellow-800">
+                <strong>Mixed Selection:</strong> You have selected both credit (money in) and debit (money out) transactions.
+                Transaction type editing is disabled. Please select only credit or only debit transactions to change their type.
+              </p>
+            </div>
+          )}
+
           {/* Transaction Type */}
           <div className="space-y-2">
             <Label htmlFor="bulk-type">Transaction Type</Label>
@@ -158,6 +190,7 @@ export function BulkEditDialog({
                   category_id: value !== "unchanged" ? "unchanged" : formData.category_id
                 })
               }}
+              disabled={isMixed}
             >
               <SelectTrigger id="bulk-type">
                 <SelectValue />
@@ -166,7 +199,7 @@ export function BulkEditDialog({
                 <SelectItem value="unchanged">
                   <span className="text-muted-foreground">- No Change -</span>
                 </SelectItem>
-                {transactionTypes.map((type) => (
+                {filteredTransactionTypes.map((type) => (
                   <SelectItem key={type.transaction_type_id} value={type.transaction_type_id.toString()}>
                     {type.type_display_name}
                   </SelectItem>
@@ -174,7 +207,14 @@ export function BulkEditDialog({
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Leave as &quot;No Change&quot; to keep existing values
+              {isMixed
+                ? "Transaction type editing disabled for mixed credit/debit selection"
+                : allCredit
+                  ? "Only credit (money in) transaction types available"
+                  : allDebit
+                    ? "Only debit (money out) transaction types available"
+                    : "Leave as \"No Change\" to keep existing values"
+              }
             </p>
           </div>
 
