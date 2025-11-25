@@ -25,17 +25,12 @@ END $$;
 DO $$
 BEGIN
   RAISE NOTICE 'Fixing original_transaction dates (adding 1 day)...';
-END $$;
 
-UPDATE original_transaction
-SET transaction_date = transaction_date + INTERVAL '1 day';
+  -- Use a simple UPDATE - PostgreSQL will handle it efficiently
+  UPDATE original_transaction
+  SET transaction_date = transaction_date + 1;
 
-DO $$
-DECLARE
-  v_count INTEGER;
-BEGIN
-  SELECT COUNT(*) INTO v_count FROM original_transaction;
-  RAISE NOTICE 'OK: Fixed % rows in original_transaction', v_count;
+  RAISE NOTICE 'OK: Fixed % rows in original_transaction', (SELECT COUNT(*) FROM original_transaction);
 END $$;
 
 -- ============================================================================
@@ -45,17 +40,11 @@ END $$;
 DO $$
 BEGIN
   RAISE NOTICE 'Fixing main_transaction dates (adding 1 day)...';
-END $$;
 
-UPDATE main_transaction
-SET transaction_date = transaction_date + INTERVAL '1 day';
+  UPDATE main_transaction
+  SET transaction_date = transaction_date + 1;
 
-DO $$
-DECLARE
-  v_count INTEGER;
-BEGIN
-  SELECT COUNT(*) INTO v_count FROM main_transaction;
-  RAISE NOTICE 'OK: Fixed % rows in main_transaction', v_count;
+  RAISE NOTICE 'OK: Fixed % rows in main_transaction', (SELECT COUNT(*) FROM main_transaction);
 END $$;
 
 -- ============================================================================
@@ -65,17 +54,11 @@ END $$;
 DO $$
 BEGIN
   RAISE NOTICE 'Fixing balance_checkpoints dates (adding 1 day)...';
-END $$;
 
-UPDATE balance_checkpoints
-SET checkpoint_date = checkpoint_date + INTERVAL '1 day';
+  UPDATE balance_checkpoints
+  SET checkpoint_date = checkpoint_date + 1;
 
-DO $$
-DECLARE
-  v_count INTEGER;
-BEGIN
-  SELECT COUNT(*) INTO v_count FROM balance_checkpoints;
-  RAISE NOTICE 'OK: Fixed % rows in balance_checkpoints', v_count;
+  RAISE NOTICE 'OK: Fixed % rows in balance_checkpoints', (SELECT COUNT(*) FROM balance_checkpoints);
 END $$;
 
 -- ============================================================================
@@ -92,14 +75,9 @@ BEGIN
     RAISE NOTICE 'Fixing account_balance dates (adding 1 day)...';
 
     UPDATE account_balance
-    SET balance_date = balance_date + INTERVAL '1 day';
+    SET balance_date = balance_date + 1;
 
-    DECLARE
-      v_count INTEGER;
-    BEGIN
-      SELECT COUNT(*) INTO v_count FROM account_balance;
-      RAISE NOTICE 'OK: Fixed % rows in account_balance', v_count;
-    END;
+    RAISE NOTICE 'OK: Fixed % rows in account_balance', (SELECT COUNT(*) FROM account_balance);
   ELSE
     RAISE NOTICE 'Skipping account_balance (table does not exist)';
   END IF;
