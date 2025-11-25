@@ -149,7 +149,7 @@ export async function createOrUpdateBalanceAdjustmentTransaction(
 
     const transactionData = {
       account_id,
-      transaction_date: toISODateString(checkpoint_date),  // Convert Date to ISO date string
+      transaction_date: checkpoint_date,  // Already ISO date string format
       description: CHECKPOINT_CONFIG.BALANCE_ADJUSTMENT_DESCRIPTION,
       credit_amount: creditAmount,
       debit_amount: debitAmount,

@@ -329,7 +329,7 @@ export function BankImportDialog({
       for (const row of parsedData.rows) {
         const dateVal = row[dateColumn]
         if (dateVal !== null && dateVal !== undefined && dateVal !== '') {
-          const parsed = parseRowDate(dateVal)
+          const parsed = parseRowDate(String(dateVal))
           if (parsed) {
             firstRowDate = dateVal
             firstDate = parsed
@@ -344,7 +344,7 @@ export function BankImportDialog({
       for (let i = parsedData.rows.length - 1; i >= 0; i--) {
         const dateVal = parsedData.rows[i][dateColumn]
         if (dateVal !== null && dateVal !== undefined && dateVal !== '') {
-          const parsed = parseRowDate(dateVal)
+          const parsed = parseRowDate(String(dateVal))
           if (parsed) {
             lastRowDate = dateVal
             lastDate = parsed
@@ -527,7 +527,7 @@ export function BankImportDialog({
       const dateValue = row[selectedDateColumn]
       if (!dateValue) return false
 
-      const txDate = parseRowDate(dateValue)
+      const txDate = parseRowDate(String(dateValue))
       if (!txDate) return false
 
       // Include transactions within the date range (inclusive)

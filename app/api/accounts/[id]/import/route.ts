@@ -294,7 +294,7 @@ export async function POST(
             success: true,
             rowIndex,
             data: {
-              transaction_date: new Date(transactionData.transaction_date),
+              transaction_date: transactionData.transaction_date,
               description: transactionData.description,
               debit_amount: transactionData.debit_amount,
               credit_amount: transactionData.credit_amount,
