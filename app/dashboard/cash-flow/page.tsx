@@ -317,12 +317,16 @@ export default function CashFlowPage() {
                       <div>
                         <div className="text-sm text-muted-foreground">Cash Runway</div>
                         <div className="text-xl font-bold">
-                          {data.runway.cash_runway_months === Infinity
-                            ? `${monthsAhead}+`
-                            : `${data.runway.cash_runway_months.toFixed(1)}mo`}
+                          {data.runway.cash_runway_months === null || data.runway.cash_runway_months === undefined
+                            ? "N/A"
+                            : data.runway.cash_runway_months === Infinity
+                              ? `${monthsAhead}+`
+                              : `${data.runway.cash_runway_months.toFixed(1)}mo`}
                         </div>
                       </div>
-                      {data.runway.liquidity_runway_months !== data.runway.cash_runway_months && (
+                      {data.runway.liquidity_runway_months !== null &&
+                       data.runway.liquidity_runway_months !== undefined &&
+                       data.runway.liquidity_runway_months !== data.runway.cash_runway_months && (
                         <div className="pt-2 border-t">
                           <div className="text-sm text-muted-foreground">With Liquidation</div>
                           <div className="text-xl font-bold text-blue-600">
