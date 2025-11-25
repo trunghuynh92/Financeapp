@@ -1,30 +1,64 @@
 # Database Schema Documentation
 
-**Last Updated**: 2025-01-19
+**Last Updated**: 2025-11-25
 **Database**: PostgreSQL 15+ via Supabase
-**Current Migration**: 063_fix_schema_issues.sql (67 migrations total)
+**Current Migration**: 086_fix_debt_drawdown_duplicate_constraint.sql (86 migrations total)
+
+> ⚠️ **IMPORTANT**: This file is the SINGLE SOURCE OF TRUTH for the current database schema.
+> Always refer to THIS file instead of individual migration files, as migrations may contain outdated information.
+
+## How to Keep This File Updated
+
+**After running any migration**, update this file using:
+
+```bash
+# Connect to Supabase and update SCHEMA.md
+PGPASSWORD="your-password" psql "postgresql://postgres.mflyrbzriksgjutlalkf:your-password@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres" << 'EOF'
+-- Get current table count and list
+SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';
+\dt
+\dv
+EOF
+```
+
+**Then update**:
+1. Migration number at top
+2. Last Updated date
+3. Table count and list
+4. Key Changes section with what changed
+
+This ensures Claude and developers always see the CURRENT state, not historical migrations.
 
 ---
 
 ## Quick Reference
 
-**Tables**: 22 total
+**Tables**: 24 total
 - Core: users, entities, entity_users
 - Financial: accounts, categories, transaction_types, original_transaction, main_transaction
-- Tracking: account_balances, balance_checkpoints, import_batches
+- Tracking: balance_checkpoints, import_batch (⚠️ account_balances REMOVED in migration 084)
 - Organization: branches, projects
 - Partners: business_partners
-- Loans: loan_disbursement, drawdowns
+- Loans: loan_disbursement, debt_drawdown
 - Contracts: contracts, contract_amendments
 - Scheduled Payments: scheduled_payments, scheduled_payment_instances
 - Budgets: category_budgets
+- Investments: investment_contribution
+- Receipts: receipts
 
-**Views**: 2 main views
+**Views**: 3 main views
 - main_transaction_details
-- scheduled_payment_overview
+- scheduled_payment_overview (deprecated)
+- debt_summary
 
-**Functions**: 20+ RPC functions
+**Functions**: 15+ RPC functions (reduced after migrations 085-086)
 **Triggers**: 15+ active triggers
+
+**Key Changes (Migrations 079-086)**:
+- ✅ transaction_date changed from TIMESTAMPTZ → DATE (eliminates timezone bugs)
+- ✅ account_balances table REMOVED (use calculate_balance_up_to_date RPC instead)
+- ✅ All CASCADE DELETE constraints fixed for entity deletion
+- ✅ Obsolete functions removed (create_account_balance, sync_account_balance_from_checkpoints, trigger_recalculate_checkpoints)
 
 ---
 
