@@ -64,18 +64,7 @@ BEGIN
   RAISE NOTICE 'OK: investment_contribution';
 END $$;
 
--- receipts
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'receipts') THEN
-    RAISE NOTICE 'Fixing receipts.account_id...';
-    ALTER TABLE receipts DROP CONSTRAINT IF EXISTS receipts_account_id_fkey;
-    ALTER TABLE receipts
-      ADD CONSTRAINT receipts_account_id_fkey
-      FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE;
-    RAISE NOTICE 'OK: receipts';
-  END IF;
-END $$;
+-- receipts already has CASCADE in migration 075, skip
 
 -- balance_checkpoints
 DO $$
