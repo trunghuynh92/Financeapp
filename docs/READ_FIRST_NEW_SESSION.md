@@ -5,6 +5,22 @@
 
 ---
 
+## 0. First Thing: Get Database Access
+
+**Before doing anything**, read the Supabase credentials:
+
+```bash
+cat "docs/Connect to Supabase/Connect to Supabase.md"
+```
+
+This file contains:
+- Database connection string
+- Password
+
+You'll need these to check current schema, run migrations, and verify database state.
+
+---
+
 ## 1. Project Context
 
 **Project Name**: Finance SaaS Application
@@ -219,11 +235,30 @@ const { data } = await supabase.rpc('calculate_balance_up_to_date', {
 - Must contain: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
 ### 7.2 Database Connection
-```bash
-# Session pooler (for queries)
-postgresql://postgres.mflyrbzriksgjutlalkf:[PASSWORD]@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres
 
-# Current password stored separately (ask user if needed)
+**Credentials are stored locally in**: `docs/Connect to Supabase/Connect to Supabase.md`
+
+This file is **NOT tracked in git** (.gitignore) for security.
+
+To connect to Supabase database:
+```bash
+# Read the credentials file first
+cat "docs/Connect to Supabase/Connect to Supabase.md"
+
+# Then use the connection string with password
+PGPASSWORD="password-from-file" psql "postgresql://postgres.mflyrbzriksgjutlalkf:password-from-file@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres"
+```
+
+**Example queries**:
+```bash
+# List all tables
+PGPASSWORD="..." psql "postgresql://..." -c "\dt"
+
+# Describe a table
+PGPASSWORD="..." psql "postgresql://..." -c "\d accounts"
+
+# Run a query
+PGPASSWORD="..." psql "postgresql://..." -c "SELECT count(*) FROM entities;"
 ```
 
 ### 7.3 Dev Server
