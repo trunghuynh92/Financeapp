@@ -49,14 +49,18 @@ BEGIN
   RAISE NOTICE 'OK: loan_disbursement';
 END $$;
 
--- investment_contribution
+-- investment_contribution (has investment_account_id and source_account_id)
 DO $$
 BEGIN
-  RAISE NOTICE 'Fixing investment_contribution.account_id...';
-  ALTER TABLE investment_contribution DROP CONSTRAINT IF EXISTS investment_contribution_account_id_fkey;
+  RAISE NOTICE 'Fixing investment_contribution foreign keys...';
+
+  -- investment_account_id already has CASCADE (from migration 064)
+  -- source_account_id has RESTRICT - change to CASCADE
+  ALTER TABLE investment_contribution DROP CONSTRAINT IF EXISTS investment_contribution_source_account_id_fkey;
   ALTER TABLE investment_contribution
-    ADD CONSTRAINT investment_contribution_account_id_fkey
-    FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE;
+    ADD CONSTRAINT investment_contribution_source_account_id_fkey
+    FOREIGN KEY (source_account_id) REFERENCES accounts(account_id) ON DELETE CASCADE;
+
   RAISE NOTICE 'OK: investment_contribution';
 END $$;
 
