@@ -34,7 +34,29 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- STEP 2: Fix import_batch foreign key
+-- STEP 2: Fix main_transaction foreign key
+-- ============================================================================
+
+DO $$
+BEGIN
+  RAISE NOTICE 'Fixing main_transaction.account_id foreign key...';
+
+  -- Drop the old constraint
+  ALTER TABLE main_transaction
+    DROP CONSTRAINT IF EXISTS main_transaction_account_id_fkey;
+
+  -- Add new constraint with CASCADE
+  ALTER TABLE main_transaction
+    ADD CONSTRAINT main_transaction_account_id_fkey
+    FOREIGN KEY (account_id)
+    REFERENCES accounts(account_id)
+    ON DELETE CASCADE;
+
+  RAISE NOTICE 'OK: main_transaction now cascades on account deletion';
+END $$;
+
+-- ============================================================================
+-- STEP 3: Fix import_batch foreign key
 -- ============================================================================
 
 DO $$
@@ -101,6 +123,7 @@ BEGIN
   RAISE NOTICE '';
   RAISE NOTICE 'Changes made:';
   RAISE NOTICE '  - original_transaction.account_id: RESTRICT -> CASCADE';
+  RAISE NOTICE '  - main_transaction.account_id: RESTRICT -> CASCADE';
   RAISE NOTICE '  - import_batch.account_id: RESTRICT -> CASCADE';
   RAISE NOTICE '';
   RAISE NOTICE 'Cascade chain now:';
