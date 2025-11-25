@@ -260,30 +260,17 @@ export async function POST(request: NextRequest) {
           checkpointWarning = `Account created successfully, but checkpoint creation failed: ${checkpointError.message}. Please check server logs.`
         }
       } else {
-        // Legacy behavior: Just update account_balances directly
-        // Note: This doesn't follow "No money without origin" principle
-        console.log('No opening_balance_date provided, using legacy balance update')
-
-        const { error: balanceError } = await supabase
-          .from('account_balances')
-          .update({ current_balance: body.initial_balance })
-          .eq('account_id', newAccount.account_id)
-
-        if (balanceError) {
-          console.error('❌ Error setting initial balance:', balanceError)
-          checkpointWarning = `Account created successfully, but balance update failed: ${balanceError.message}`
-        } else {
-          console.log('✅ Legacy balance updated successfully')
-        }
+        // No opening_balance_date provided - skip initial balance
+        // Account will start with 0 balance
+        console.log('No opening_balance_date provided, account starts with 0 balance')
       }
     }
 
-    // Fetch the complete account with balance and entity
+    // Fetch the complete account with entity
     const { data: completeAccount } = await supabase
       .from('accounts')
       .select(`
         *,
-        balance:account_balances(current_balance, last_updated),
         entity:entities(id, name, type)
       `)
       .eq('account_id', newAccount.account_id)

@@ -496,27 +496,23 @@ export async function getAccountBalancesByType(
     return { cash: [], investments: [], total_cash: 0, total_investments: 0 }
   }
 
-  // Get balances for those accounts
-  const { data: balances, error: balancesError } = await supabase
-    .from('account_balances')
-    .select('account_id, current_balance')
-    .in('account_id', accountIds)
+  // Calculate balances for those accounts using RPC function
+  const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+  const accountsWithBalances: AccountBalance[] = []
 
-  if (balancesError) {
-    console.error('Error fetching account balances:', balancesError)
-    return { cash: [], investments: [], total_cash: 0, total_investments: 0 }
-  }
+  for (const acc of (accounts || [])) {
+    const { data: balance } = await supabase.rpc('calculate_balance_up_to_date', {
+      p_account_id: acc.account_id,
+      p_up_to_date: today,
+    })
 
-  // Merge account info with balances
-  const accountsWithBalances: AccountBalance[] = (accounts || []).map((acc: any) => {
-    const balance = balances?.find(b => b.account_id === acc.account_id)
-    return {
+    accountsWithBalances.push({
       account_id: acc.account_id,
       account_name: acc.account_name,
       account_type: acc.account_type,
-      current_balance: balance?.current_balance || 0
-    }
-  })
+      current_balance: balance || 0
+    })
+  }
 
   // Separate cash accounts from investment accounts
   const cashAccounts = accountsWithBalances.filter(a => 

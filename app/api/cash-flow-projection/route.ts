@@ -116,19 +116,18 @@ export async function GET(request: NextRequest) {
 
     const accountIds = accounts?.map(a => a.account_id) || []
 
-    // Then get balances for those accounts
+    // Get current balances by calculating from transactions
     let currentBalance = 0
     if (accountIds.length > 0) {
-      const { data: balances, error: balancesError } = await supabase
-        .from('account_balances')
-        .select('current_balance')
-        .in('account_id', accountIds)
-
-      if (balancesError) {
-        console.error('Error fetching balances:', balancesError)
+      // Calculate balance for each account up to today
+      const today = new Date()
+      for (const accountId of accountIds) {
+        const { data: balance } = await supabase.rpc('calculate_balance_up_to_date', {
+          p_account_id: accountId,
+          p_up_to_date: today.toISOString().split('T')[0], // YYYY-MM-DD
+        })
+        currentBalance += (balance || 0)
       }
-
-      currentBalance = balances?.reduce((sum, b) => sum + (b.current_balance || 0), 0) || 0
     }
 
     // === CASH FLOW SYSTEM 2.0: Calculate predicted income (once for all months) ===

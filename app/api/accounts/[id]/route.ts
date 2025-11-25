@@ -19,7 +19,6 @@ export async function GET(
       .from('accounts')
       .select(`
         *,
-        balance:account_balances(current_balance, last_updated, last_transaction_id),
         entity:entities(id, name, type)
       `)
       .eq('account_id', accountId)
@@ -104,7 +103,6 @@ export async function PATCH(
       .eq('account_id', accountId)
       .select(`
         *,
-        balance:account_balances(current_balance, last_updated),
         entity:entities(id, name, type)
       `)
       .single()
