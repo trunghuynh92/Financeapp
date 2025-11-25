@@ -306,9 +306,6 @@ export async function createOrUpdateCheckpoint(
     // Step 4: Update account opening balance date
     await updateAccountOpeningBalanceDate(account_id)
 
-    // Step 5: Sync account_balances table with calculated balance
-    await syncAccountBalance(account_id)
-
     return finalCheckpoint
   } catch (error) {
     console.error('Error in createOrUpdateCheckpoint:', error)
@@ -317,116 +314,7 @@ export async function createOrUpdateCheckpoint(
 }
 
 // ==============================================================================
-// Helper Function: Sync account_balances from Calculated Balance
-// ==============================================================================
-
-/**
- * Syncs account_balances.current_balance with the latest calculated balance
- * Called after checkpoint creation/update to keep balance cache in sync
- *
- * account_balances table now serves as a cached/computed value:
- * - Source of truth = checkpoints + transactions
- * - account_balances = cached for quick queries
- */
-export async function syncAccountBalance(accountId: number): Promise<void> {
-  const supabase = createSupabaseServerClient()
-
-  try {
-    console.log(`Syncing account_balances for account ${accountId}...`)
-
-    // Get the most recent checkpoint to determine current balance
-    const { data: latestCheckpoint, error: checkpointError } = await supabase
-      .from('balance_checkpoints')
-      .select('*')
-      .eq('account_id', accountId)
-      .order('checkpoint_date', { ascending: false })
-      .order('checkpoint_id', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (checkpointError) {
-      throw new Error(`Failed to fetch latest checkpoint: ${checkpointError.message}`)
-    }
-
-    let calculatedBalance = 0
-
-    if (latestCheckpoint) {
-      // If checkpoint exists, current balance = calculated + adjustment
-      // (adjustment represents the unexplained amount)
-      calculatedBalance = latestCheckpoint.calculated_balance + latestCheckpoint.adjustment_amount
-      console.log(`Latest checkpoint found:`, {
-        checkpoint_date: latestCheckpoint.checkpoint_date,
-        declared_balance: latestCheckpoint.declared_balance,
-        calculated_balance: latestCheckpoint.calculated_balance,
-        adjustment_amount: latestCheckpoint.adjustment_amount,
-        total: calculatedBalance,
-      })
-    } else {
-      // No checkpoint - calculate from all transactions
-      // Use pagination to avoid 1000 row limit
-      let totalCredit = 0
-      let totalDebit = 0
-      let page = 0
-      const pageSize = 1000
-      let transactionCount = 0
-
-      while (true) {
-        const { data: transactions, error: txError } = await supabase
-          .from('original_transaction')
-          .select('credit_amount, debit_amount')
-          .eq('account_id', accountId)
-          .eq('is_balance_adjustment', false)
-          .range(page * pageSize, (page + 1) * pageSize - 1)
-
-        if (txError) {
-          throw new Error(`Failed to fetch transactions: ${txError.message}`)
-        }
-
-        if (!transactions || transactions.length === 0) {
-          break
-        }
-
-        // Calculate balance: sum(credits) - sum(debits)
-        for (const tx of transactions) {
-          if (tx.credit_amount) totalCredit += tx.credit_amount
-          if (tx.debit_amount) totalDebit += tx.debit_amount
-        }
-
-        transactionCount += transactions.length
-
-        if (transactions.length < pageSize) {
-          break
-        }
-
-        page++
-      }
-
-      calculatedBalance = totalCredit - totalDebit
-      console.log(`No checkpoint found, calculated from ${transactionCount} transactions: ${calculatedBalance}`)
-    }
-
-    // Update account_balances table
-    const { error: updateError } = await supabase
-      .from('account_balances')
-      .update({
-        current_balance: calculatedBalance,
-        last_updated: new Date().toISOString(),
-      })
-      .eq('account_id', accountId)
-
-    if (updateError) {
-      throw new Error(`Failed to update account_balances: ${updateError.message}`)
-    }
-
-    console.log(`✅ account_balances synced successfully for account ${accountId}: ${calculatedBalance}`)
-  } catch (error) {
-    console.error('Error in syncAccountBalance:', error)
-    throw error
-  }
-}
-
-// ==============================================================================
-// Core Function 4: Recalculate All Checkpoints
+// Core Function 3: Recalculate All Checkpoints
 // ==============================================================================
 
 /**
@@ -655,9 +543,6 @@ export async function recalculateAllCheckpoints(
     // Update account opening balance date
     await updateAccountOpeningBalanceDate(account_id)
 
-    // Sync account_balances with latest calculated balance
-    await syncAccountBalance(account_id)
-
     return results
   } catch (error) {
     console.error('Error in recalculateAllCheckpoints:', error)
@@ -814,9 +699,6 @@ export async function deleteCheckpoint(checkpointId: number): Promise<void> {
 
     // Update account opening balance date
     await updateAccountOpeningBalanceDate(accountId)
-
-    // Sync account balance
-    await syncAccountBalance(accountId)
   } catch (error) {
     console.error('Error in deleteCheckpoint:', error)
     throw error
