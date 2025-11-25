@@ -41,7 +41,11 @@ DO $$
 BEGIN
   RAISE NOTICE 'Fixing main_transaction.account_id foreign key...';
 
-  -- Drop the old constraint
+  -- Drop the old constraint (named fk_account in the original migration)
+  ALTER TABLE main_transaction
+    DROP CONSTRAINT IF EXISTS fk_account;
+
+  -- Also try the auto-generated name just in case
   ALTER TABLE main_transaction
     DROP CONSTRAINT IF EXISTS main_transaction_account_id_fkey;
 
