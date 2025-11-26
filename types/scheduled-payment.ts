@@ -14,7 +14,7 @@ export type ContractType = 'lease' | 'service' | 'construction' | 'subscription'
 
 export type ScheduledPaymentStatus = 'active' | 'completed' | 'cancelled'
 
-export type PaymentInstanceStatus = 'pending' | 'paid' | 'overdue' | 'cancelled'
+export type PaymentInstanceStatus = 'pending' | 'paid' | 'partial' | 'overdue' | 'cancelled'
 
 // ==============================================================================
 // Main Interfaces
