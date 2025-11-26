@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
+// Disable caching for this route
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 /**
  * GET /api/reports/income-expense
  * Fetch income and expense data aggregated by time period
@@ -86,30 +90,130 @@ export async function GET(request: NextRequest) {
         })
       }
 
-      // Now fetch transactions for these accounts
-      const { data: queryData, error: queryError } = await supabase
-        .from('main_transaction')
-        .select(`
-          transaction_date,
-          amount,
-          transaction_direction,
-          transaction_type_id,
-          transaction_types!main_transaction_transaction_type_id_fkey!inner (
-            type_code
-          )
-        `)
-        .in('account_id', accountIds)
-        .gte('transaction_date', startDate.toISOString().split('T')[0])
-        .lte('transaction_date', endDate.toISOString().split('T')[0])
-        .in('transaction_types.type_code', ['INC', 'EXP'])
+      // Get transaction_type_ids for INC and EXP
+      const { data: typeData, error: typeError } = await supabase
+        .from('transaction_types')
+        .select('transaction_type_id, type_code')
+        .in('type_code', ['INC', 'EXP'])
 
-      if (queryError) {
-        console.error('Query error:', queryError)
-        return NextResponse.json({ error: queryError.message }, { status: 500 })
+      if (typeError) {
+        console.error('Transaction types query error:', typeError)
+        return NextResponse.json({ error: typeError.message }, { status: 500 })
+      }
+
+      const incExpTypeIds = typeData?.map(t => t.transaction_type_id) || []
+      const incTypeId = typeData?.find(t => t.type_code === 'INC')?.transaction_type_id
+      const expTypeId = typeData?.find(t => t.type_code === 'EXP')?.transaction_type_id
+
+      if (incExpTypeIds.length === 0) {
+        return NextResponse.json({
+          data: [],
+          metadata: {
+            start_date: startDate.toISOString(),
+            end_date: endDate.toISOString(),
+            granularity,
+            entity_id: entityId,
+          },
+        })
+      }
+
+      // Now fetch transactions for these accounts filtered by transaction_type_id
+      // Use range() to get all transactions - Supabase defaults to 1000 rows max
+      // We need to paginate through all results if there are more than 1000
+      const PAGE_SIZE = 1000
+      let allQueryData: any[] = []
+      let offset = 0
+      let hasMore = true
+
+      while (hasMore) {
+        const { data: pageData, error: pageError } = await supabase
+          .from('main_transaction')
+          .select(`
+            transaction_date,
+            amount,
+            transaction_direction,
+            transaction_type_id
+          `)
+          .in('account_id', accountIds)
+          .gte('transaction_date', startDate.toISOString().split('T')[0])
+          .lte('transaction_date', endDate.toISOString().split('T')[0])
+          .in('transaction_type_id', incExpTypeIds)
+          .order('main_transaction_id', { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1)
+
+        if (pageError) {
+          console.error('Query error at offset', offset, ':', pageError)
+          return NextResponse.json({ error: pageError.message }, { status: 500 })
+        }
+
+        if (pageData && pageData.length > 0) {
+          allQueryData = allQueryData.concat(pageData)
+          offset += PAGE_SIZE
+          hasMore = pageData.length === PAGE_SIZE
+        } else {
+          hasMore = false
+        }
+
+        // Safety limit to prevent infinite loops
+        if (offset > 100000) {
+          console.warn('[Income-Expense Report] Safety limit reached at offset', offset)
+          hasMore = false
+        }
+      }
+
+      const queryData = allQueryData
+
+      // Debug logging
+      console.log('[Income-Expense Report] Query results:', {
+        totalTransactions: queryData?.length,
+        incTypeId,
+        expTypeId,
+        incTypeIdType: typeof incTypeId,
+        accountIds: accountIds.length,
+        accountIdsList: accountIds,
+        dateRange: { start: startDate.toISOString().split('T')[0], end: endDate.toISOString().split('T')[0] }
+      })
+
+      // Detailed transaction type check
+      if (queryData && queryData.length > 0) {
+        const sampleTxn = queryData[0]
+        console.log('[Income-Expense Report] Sample transaction:', sampleTxn)
+        console.log('[Income-Expense Report] Sample txn type comparison:', {
+          txnTypeId: sampleTxn.transaction_type_id,
+          txnTypeIdType: typeof sampleTxn.transaction_type_id,
+          incTypeId,
+          incTypeIdType: typeof incTypeId,
+          isEqual: sampleTxn.transaction_type_id === incTypeId,
+          isStrictEqual: sampleTxn.transaction_type_id === incTypeId,
+        })
+
+        // Count income vs expense transactions
+        let incomeCount = 0, expenseCount = 0, otherCount = 0
+        let incomeTotal = 0, expenseTotal = 0
+        queryData.forEach(txn => {
+          if (txn.transaction_type_id === incTypeId) {
+            incomeCount++
+            incomeTotal += Number(txn.amount) || 0
+          } else if (txn.transaction_type_id === expTypeId) {
+            expenseCount++
+            expenseTotal += Number(txn.amount) || 0
+          } else {
+            otherCount++
+          }
+        })
+        console.log('[Income-Expense Report] Transaction counts:', {
+          incomeCount,
+          expenseCount,
+          otherCount,
+          incomeTotal,
+          expenseTotal
+        })
       }
 
       // Aggregate the data in JavaScript
-      const aggregated = aggregateData(queryData || [], granularity)
+      const aggregated = aggregateData(queryData || [], granularity, incTypeId, expTypeId)
+
+      console.log('[Income-Expense Report] Aggregated results sample:', aggregated.slice(0, 3))
 
       return NextResponse.json({
         data: aggregated,
@@ -145,7 +249,9 @@ export async function GET(request: NextRequest) {
  */
 function aggregateData(
   transactions: any[],
-  granularity: string
+  granularity: string,
+  incTypeId?: number,
+  expTypeId?: number
 ): Array<{ period: string; income: number; expense: number; net: number }> {
   const grouped = new Map<string, { income: number; expense: number }>()
 
@@ -174,14 +280,12 @@ function aggregateData(
     }
 
     const data = grouped.get(period)!
-    const typeCode = Array.isArray(txn.transaction_types)
-      ? txn.transaction_types[0]?.type_code
-      : txn.transaction_types?.type_code
 
-    if (typeCode === 'INC') {
-      data.income += txn.amount
-    } else if (typeCode === 'EXP') {
-      data.expense += txn.amount
+    // Use transaction_type_id to determine income vs expense
+    if (txn.transaction_type_id === incTypeId) {
+      data.income += Number(txn.amount) || 0
+    } else if (txn.transaction_type_id === expTypeId) {
+      data.expense += Number(txn.amount) || 0
     }
   })
 

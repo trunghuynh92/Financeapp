@@ -72,30 +72,63 @@ export async function analyzeHistoricalIncome(
 
   // Fetch income transactions (credit direction transactions)
   // Exclude transfers (TRF_IN) and debt drawdowns (DEBT_TAKE) as they are not real income
-  const { data: transactions, error } = await supabase
-    .from('main_transaction_details')
-    .select(`
-      main_transaction_id,
-      transaction_date,
-      amount,
-      transaction_direction,
-      category_id,
-      category_name,
-      transaction_type_code,
-      affects_cashflow
-    `)
-    .eq('entity_id', entityId)
-    .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
-    .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
-    .not('category_id', 'is', null)
-    .eq('transaction_direction', 'credit') // Only credit transactions (income)
-    .eq('affects_cashflow', true) // Only transactions that affect cash flow (excludes transfers, debt)
-    .not('transaction_type_code', 'in', '(TRF_IN,DEBT_TAKE,DEBT_PAYBACK)') // Explicitly exclude transfers and debt-related
+  // Use pagination to get ALL results (Supabase defaults to 1000 rows max)
+  const PAGE_SIZE = 1000
+  let allTransactions: any[] = []
+  let offset = 0
+  let hasMore = true
 
-  if (error) {
-    console.error('Error fetching income transactions:', error)
+  while (hasMore) {
+    const { data: pageData, error: pageError } = await supabase
+      .from('main_transaction_details')
+      .select(`
+        main_transaction_id,
+        transaction_date,
+        amount,
+        transaction_direction,
+        category_id,
+        category_name,
+        transaction_type_code,
+        affects_cashflow
+      `)
+      .eq('entity_id', entityId)
+      .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
+      .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
+      .not('category_id', 'is', null)
+      .eq('transaction_direction', 'credit') // Only credit transactions (income)
+      .eq('affects_cashflow', true) // Only transactions that affect cash flow (excludes transfers, debt)
+      .not('transaction_type_code', 'in', '(TRF_IN,DEBT_TAKE,DEBT_PAYBACK)') // Explicitly exclude transfers and debt-related
+      .order('main_transaction_id', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1)
+
+    if (pageError) {
+      console.error('Error fetching income transactions at offset', offset, ':', pageError)
+      break
+    }
+
+    if (pageData && pageData.length > 0) {
+      allTransactions = allTransactions.concat(pageData)
+      offset += PAGE_SIZE
+      hasMore = pageData.length === PAGE_SIZE
+    } else {
+      hasMore = false
+    }
+
+    // Safety limit
+    if (offset > 50000) {
+      console.warn('[Income Analyzer] Safety limit reached at offset', offset)
+      hasMore = false
+    }
+  }
+
+  const transactions = allTransactions
+
+  if (transactions.length === 0) {
+    console.log('[Income Analyzer] No income transactions found')
     return []
   }
+
+  console.log(`[Income Analyzer] Fetched ${transactions.length} income transactions`)
 
   // All transactions are income (filtered by direction)
   const incomeTransactions = transactions || []
@@ -295,30 +328,63 @@ export async function analyzeHistoricalExpenses(
 
   // Fetch expense transactions (debit direction transactions)
   // Exclude transfers (TRF_OUT) and debt payments (DEBT_PAYBACK) as they are not regular expenses
-  const { data: transactions, error } = await supabase
-    .from('main_transaction_details')
-    .select(`
-      main_transaction_id,
-      transaction_date,
-      amount,
-      transaction_direction,
-      category_id,
-      category_name,
-      transaction_type_code,
-      affects_cashflow
-    `)
-    .eq('entity_id', entityId)
-    .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
-    .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
-    .not('category_id', 'is', null)
-    .eq('transaction_direction', 'debit') // Only debit transactions (expenses)
-    .eq('affects_cashflow', true) // Only transactions that affect cash flow
-    .not('transaction_type_code', 'in', '(TRF_OUT,DEBT_TAKE,DEBT_PAYBACK)') // Exclude transfers and debt-related
+  // Use pagination to get ALL results (Supabase defaults to 1000 rows max)
+  const PAGE_SIZE = 1000
+  let allTransactions: any[] = []
+  let offset = 0
+  let hasMore = true
 
-  if (error) {
-    console.error('Error fetching expense transactions:', error)
+  while (hasMore) {
+    const { data: pageData, error: pageError } = await supabase
+      .from('main_transaction_details')
+      .select(`
+        main_transaction_id,
+        transaction_date,
+        amount,
+        transaction_direction,
+        category_id,
+        category_name,
+        transaction_type_code,
+        affects_cashflow
+      `)
+      .eq('entity_id', entityId)
+      .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
+      .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
+      .not('category_id', 'is', null)
+      .eq('transaction_direction', 'debit') // Only debit transactions (expenses)
+      .eq('affects_cashflow', true) // Only transactions that affect cash flow
+      .not('transaction_type_code', 'in', '(TRF_OUT,DEBT_TAKE,DEBT_PAYBACK)') // Exclude transfers and debt-related
+      .order('main_transaction_id', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1)
+
+    if (pageError) {
+      console.error('Error fetching expense transactions at offset', offset, ':', pageError)
+      break
+    }
+
+    if (pageData && pageData.length > 0) {
+      allTransactions = allTransactions.concat(pageData)
+      offset += PAGE_SIZE
+      hasMore = pageData.length === PAGE_SIZE
+    } else {
+      hasMore = false
+    }
+
+    // Safety limit
+    if (offset > 50000) {
+      console.warn('[Expense Analyzer] Safety limit reached at offset', offset)
+      hasMore = false
+    }
+  }
+
+  const transactions = allTransactions
+
+  if (transactions.length === 0) {
+    console.log('[Expense Analyzer] No expense transactions found')
     return []
   }
+
+  console.log(`[Expense Analyzer] Fetched ${transactions.length} expense transactions`)
 
   // All transactions are expenses (filtered by direction)
   const expenseTransactions = transactions || []
