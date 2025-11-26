@@ -57,7 +57,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/signin', '/signup']
+  const publicRoutes = ['/signin', '/signup', '/auth']
   const isPublicRoute = publicRoutes.some(route => request.nextUrl.pathname.startsWith(route))
 
   // Root path redirect logic
