@@ -7,6 +7,7 @@ import { BranchesManager } from "@/components/settings/BranchesManager"
 import { ProjectsManager } from "@/components/settings/ProjectsManager"
 import { TransactionTypesManager } from "@/components/settings/TransactionTypesManager"
 import { TeamMembersManager } from "@/components/settings/TeamMembersManager"
+import { RolePermissionsManager } from "@/components/settings/RolePermissionsManager"
 
 export default function SettingsPage() {
   return (
@@ -21,6 +22,7 @@ export default function SettingsPage() {
       <Tabs defaultValue="team" className="space-y-4">
         <TabsList>
           <TabsTrigger value="team">Team Members</TabsTrigger>
+          <TabsTrigger value="permissions">Roles & Permissions</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="branches">Branches</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
@@ -29,6 +31,10 @@ export default function SettingsPage() {
 
         <TabsContent value="team" className="space-y-4">
           <TeamMembersManager />
+        </TabsContent>
+
+        <TabsContent value="permissions" className="space-y-4">
+          <RolePermissionsManager />
         </TabsContent>
 
         <TabsContent value="categories" className="space-y-4">

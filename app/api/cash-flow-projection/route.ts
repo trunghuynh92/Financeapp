@@ -71,7 +71,10 @@ export async function GET(request: NextRequest) {
           payment_type,
           payee_name,
           category_id,
-          entity_id
+          entity_id,
+          categories:category_id (
+            category_name
+          )
         )
       `)
       .eq('scheduled_payments.entity_id', entityId)
@@ -79,6 +82,32 @@ export async function GET(request: NextRequest) {
       .gte('due_date', format(startDate, 'yyyy-MM-dd'))
       .lte('due_date', format(endDate, 'yyyy-MM-dd'))
       .order('due_date', { ascending: true })
+
+    // DEBUG: Also fetch ALL instances to compare
+    const { data: allInstances } = await supabase
+      .from('scheduled_payment_instances')
+      .select(`
+        *,
+        scheduled_payments:scheduled_payment_id!inner (
+          contract_name,
+          payment_type,
+          payee_name,
+          category_id,
+          entity_id,
+          categories:category_id (
+            category_name
+          )
+        )
+      `)
+      .eq('scheduled_payments.entity_id', entityId)
+      .gte('due_date', format(startDate, 'yyyy-MM-dd'))
+      .lte('due_date', format(endDate, 'yyyy-MM-dd'))
+
+    const totalAllInstances = allInstances?.reduce((sum, i) => sum + (i.amount || 0), 0) || 0
+    const totalUnpaidInstances = scheduledInstances?.reduce((sum, i) => sum + (i.amount || 0), 0) || 0
+    console.log(`[DEBUG] Total all instances (${allInstances?.length}): ${totalAllInstances.toLocaleString()} VND`)
+    console.log(`[DEBUG] Total unpaid instances (${scheduledInstances?.length}): ${totalUnpaidInstances.toLocaleString()} VND`)
+    console.log(`[DEBUG] Difference: ${(totalAllInstances - totalUnpaidInstances).toLocaleString()} VND`)
 
     if (scheduledError) {
       console.error('Error fetching scheduled payments:', scheduledError)
@@ -166,7 +195,8 @@ export async function GET(request: NextRequest) {
         amount: instance.amount || 0,
         due_date: instance.due_date,
         status: instance.status,
-        category_id: instance.scheduled_payments?.category_id
+        category_id: instance.scheduled_payments?.category_id,
+        category_name: instance.scheduled_payments?.categories?.category_name || 'Uncategorized'
       }))
 
       // === PRIORITY 2: PREDICTED EXPENSES (Cash Flow 2.0) ===

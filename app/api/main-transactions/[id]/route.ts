@@ -115,10 +115,10 @@ export async function PATCH(
       )
     }
 
-    // Check if it's a balance adjustment by querying the original transaction
+    // Check if it's a balance adjustment and check if it's manual (no import_batch_id)
     const { data: originalTx, error: originalError } = await supabase
       .from('original_transaction')
-      .select('is_balance_adjustment, checkpoint_id')
+      .select('is_balance_adjustment, checkpoint_id, import_batch_id')
       .eq('raw_transaction_id', existingTransaction.raw_transaction_id)
       .single()
 
@@ -138,6 +138,8 @@ export async function PATCH(
         { status: 403 }
       )
     }
+
+    const isManualTransaction = !originalTx?.import_batch_id
 
     // Only allow updating specific fields
     const allowedFields = [
@@ -190,24 +192,66 @@ export async function PATCH(
       updates.updated_by_user_id = body.updated_by_user_id
     }
 
-    if (Object.keys(updates).length === 0) {
+    // For manual transactions, handle editable fields (date, amount, account) by updating original_transaction
+    let originalTxUpdates: any = {}
+    if (isManualTransaction) {
+      if (body.transaction_date !== undefined) {
+        originalTxUpdates.transaction_date = body.transaction_date
+      }
+      if (body.amount !== undefined) {
+        // Update both debit_amount and credit_amount based on transaction direction
+        const { data: mainTx } = await supabase
+          .from('main_transaction')
+          .select('transaction_direction')
+          .eq('main_transaction_id', mainTransactionId)
+          .single()
+
+        if (mainTx?.transaction_direction === 'debit') {
+          originalTxUpdates.debit_amount = body.amount
+          originalTxUpdates.credit_amount = null
+        } else {
+          originalTxUpdates.credit_amount = body.amount
+          originalTxUpdates.debit_amount = null
+        }
+      }
+      if (body.account_id !== undefined && body.account_id !== existingTransaction.account_id) {
+        originalTxUpdates.account_id = body.account_id
+      }
+
+      // Update original_transaction if there are changes
+      if (Object.keys(originalTxUpdates).length > 0) {
+        const { error: originalUpdateError } = await supabase
+          .from('original_transaction')
+          .update(originalTxUpdates)
+          .eq('raw_transaction_id', existingTransaction.raw_transaction_id)
+
+        if (originalUpdateError) {
+          console.error('Error updating original transaction:', originalUpdateError)
+          return NextResponse.json({ error: originalUpdateError.message }, { status: 500 })
+        }
+      }
+    }
+
+    if (Object.keys(updates).length === 0 && Object.keys(originalTxUpdates).length === 0) {
       return NextResponse.json(
         { error: 'No valid fields to update' },
         { status: 400 }
       )
     }
 
-    // Update the transaction
-    const { data, error } = await supabase
-      .from('main_transaction')
-      .update(updates)
-      .eq('main_transaction_id', mainTransactionId)
-      .select()
-      .single()
+    // Update the main_transaction table (only if there are main_transaction updates)
+    if (Object.keys(updates).length > 0) {
+      const { data, error } = await supabase
+        .from('main_transaction')
+        .update(updates)
+        .eq('main_transaction_id', mainTransactionId)
+        .select()
+        .single()
 
-    if (error) {
-      console.error('Error updating main transaction:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      if (error) {
+        console.error('Error updating main transaction:', error)
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
     }
 
     // Get full details after update

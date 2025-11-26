@@ -10,7 +10,7 @@ import { CreateScheduledPaymentDialog } from "./CreateScheduledPaymentDialog"
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, Building, FileText, DollarSign, Plus, Copy } from "lucide-react"
+import { Calendar, Building, FileText, DollarSign, Plus, Copy, Edit } from "lucide-react"
 import { format } from "date-fns"
 
 interface ContractDetailDialogProps {
@@ -30,6 +30,7 @@ export function ContractDetailDialog({
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [createScheduleDialogOpen, setCreateScheduleDialogOpen] = useState(false)
   const [duplicatingSchedule, setDuplicatingSchedule] = useState<any | null>(null)
+  const [editingSchedule, setEditingSchedule] = useState<any | null>(null)
   const [schedules, setSchedules] = useState<any[]>([])
   const [amendments, setAmendments] = useState<any[]>([])
 
@@ -56,11 +57,19 @@ export function ContractDetailDialog({
   const handleSuccess = () => {
     fetchContractDetails()
     setDuplicatingSchedule(null)
+    setEditingSchedule(null)
     onSuccess()
   }
 
   const handleDuplicateSchedule = (schedule: any) => {
     setDuplicatingSchedule(schedule)
+    setEditingSchedule(null)
+    setCreateScheduleDialogOpen(true)
+  }
+
+  const handleEditSchedule = (schedule: any) => {
+    setEditingSchedule(schedule)
+    setDuplicatingSchedule(null)
     setCreateScheduleDialogOpen(true)
   }
 
@@ -85,6 +94,12 @@ export function ContractDetailDialog({
             </TabsList>
 
             <TabsContent value="details" className="space-y-4 mt-4">
+              <div className="flex justify-end mb-4">
+                <Button size="sm" onClick={() => setEditDialogOpen(true)}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Contract
+                </Button>
+              </div>
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Contract Information</CardTitle>
@@ -207,6 +222,14 @@ export function ContractDetailDialog({
                             <Button
                               size="sm"
                               variant="outline"
+                              onClick={() => handleEditSchedule(schedule)}
+                              title="Edit this payment schedule"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
                               onClick={() => handleDuplicateSchedule(schedule)}
                               title="Duplicate this payment schedule"
                             >
@@ -247,10 +270,12 @@ export function ContractDetailDialog({
           setCreateScheduleDialogOpen(open)
           if (!open) {
             setDuplicatingSchedule(null)
+            setEditingSchedule(null)
           }
         }}
         onSuccess={handleSuccess}
         duplicateFrom={duplicatingSchedule}
+        editingSchedule={editingSchedule}
       />
     </>
   )

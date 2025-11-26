@@ -40,6 +40,7 @@ import {
 import { AccountFormDialog } from "@/components/account-form-dialog"
 import { AccountDeleteDialog } from "@/components/account-delete-dialog"
 import { useEntity } from "@/contexts/EntityContext"
+import { useUserPermissions } from "@/hooks/use-user-role"
 import { cn } from "@/lib/utils"
 
 // Icon mapping
@@ -59,6 +60,7 @@ const AccountTypeIcon = ({ type }: { type: AccountType }) => {
 
 export default function AccountsPage() {
   const { currentEntity, entities: userEntities, loading: entityLoading } = useEntity()
+  const { permissions, isLoading: permissionsLoading } = useUserPermissions(currentEntity?.id)
   const [accounts, setAccounts] = useState<AccountWithEntity[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedEntity, setSelectedEntity] = useState<string>("current")
@@ -80,10 +82,38 @@ export default function AccountsPage() {
 
   // Fetch accounts when currentEntity loads or filters change
   useEffect(() => {
-    if (currentEntity) {
+    if (currentEntity && permissions.canViewAccounts) {
       fetchAccounts()
     }
-  }, [currentEntity?.id, selectedEntity, selectedTypes, statusFilter, searchQuery])
+  }, [currentEntity?.id, selectedEntity, selectedTypes, statusFilter, searchQuery, permissions.canViewAccounts])
+
+  // Show loading while permissions are being checked
+  if (permissionsLoading || entityLoading) {
+    return (
+      <div className="container mx-auto py-8 flex justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
+  // Check permissions
+  if (!permissions.canViewAccounts) {
+    return (
+      <div className="container mx-auto py-8">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-600" />
+              <CardTitle>Access Denied</CardTitle>
+            </div>
+            <CardDescription>
+              You do not have permission to view accounts. Please contact your administrator if you believe this is an error.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
 
   async function fetchAccounts() {
     try {

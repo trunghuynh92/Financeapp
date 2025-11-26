@@ -143,10 +143,11 @@ export function MatchOrCreateTransactionDialog({
   const handleTransactionSelect = (transactionId: number) => {
     setSelectedTransaction(transactionId)
 
-    // Auto-fill paid amount with the selected transaction's amount
+    // Auto-fill paid amount and date with the selected transaction's details
     const selectedTxn = matchingTransactions.find(txn => txn.main_transaction_id === transactionId)
     if (selectedTxn) {
       setPaidAmount(selectedTxn.amount.toString())
+      setPaidDate(new Date(selectedTxn.transaction_date).toISOString().split('T')[0])
     }
   }
 

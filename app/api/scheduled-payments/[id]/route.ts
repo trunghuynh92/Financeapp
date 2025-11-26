@@ -158,12 +158,12 @@ export async function PATCH(
     )
 
     if (regenerateInstances && scheduleChanged) {
-      // Delete existing pending instances
+      // Delete existing pending and overdue instances (preserve only paid instances)
       await supabase
         .from('scheduled_payment_instances')
         .delete()
         .eq('scheduled_payment_id', scheduledPaymentId)
-        .eq('status', 'pending')
+        .in('status', ['pending', 'overdue'])
 
       // Generate new instances
       await supabase

@@ -48,6 +48,7 @@ export function EditTransactionDialog({
   const [drawdownDialogOpen, setDrawdownDialogOpen] = useState(false)
   const [selectedDrawdown, setSelectedDrawdown] = useState<any>(null)
   const [investmentAccounts, setInvestmentAccounts] = useState<any[]>([])
+  const [allAccounts, setAllAccounts] = useState<any[]>([])
 
   // Initialize formData from transaction if available
   const getInitialFormData = () => ({
@@ -59,6 +60,10 @@ export function EditTransactionDialog({
     notes: transaction?.notes || "",
     drawdown_id: transaction?.drawdown_id?.toString() || "none",
     investment_account_id: transaction?.investment_contribution_id?.toString() || "none",
+    // Manual transaction editable fields
+    transaction_date: transaction?.transaction_date || "",
+    amount: transaction?.amount?.toString() || "",
+    account_id: transaction?.account_id?.toString() || "",
   })
 
   const [formData, setFormData] = useState(getInitialFormData())
@@ -71,7 +76,8 @@ export function EditTransactionDialog({
         project_name: transaction.project_name,
         branch_id: transaction.branch_id,
         branch_name: transaction.branch_name,
-        drawdown_id: transaction.drawdown_id
+        drawdown_id: transaction.drawdown_id,
+        import_batch_id: transaction.import_batch_id
       })
       setFormData({
         transaction_type_id: transaction.transaction_type_id?.toString() || "",
@@ -82,6 +88,9 @@ export function EditTransactionDialog({
         notes: transaction.notes || "",
         drawdown_id: transaction.drawdown_id?.toString() || "none",
         investment_account_id: transaction.investment_contribution_id?.toString() || "none",
+        transaction_date: transaction.transaction_date || "",
+        amount: transaction.amount?.toString() || "",
+        account_id: transaction.account_id?.toString() || "",
       })
       setSelectedDrawdown(null) // Reset selected drawdown
 
@@ -100,6 +109,9 @@ export function EditTransactionDialog({
         transactionTypes
       )
     : transactionTypes
+
+  // Check if transaction is manual (not imported)
+  const isManualTransaction = transaction?.import_batch_id === null || transaction?.import_batch_id === undefined
 
   // Check if transaction is locked (matched or linked to drawdown/loan)
   const isTransactionLocked = !!(
@@ -131,10 +143,10 @@ export function EditTransactionDialog({
       const response = await fetch(`/api/accounts?entity_id=${currentEntity.id}`)
       if (response.ok) {
         const data = await response.json()
-        const investAccs = (data.data || []).filter((acc: any) =>
-          acc.account_type === 'investment'
-        )
+        const accounts = data.data || []
+        const investAccs = accounts.filter((acc: any) => acc.account_type === 'investment')
         setInvestmentAccounts(investAccs)
+        setAllAccounts(accounts) // Store all accounts for manual transaction editing
       }
     } catch (error) {
       console.error('Error fetching investment accounts:', error)
@@ -216,8 +228,22 @@ export function EditTransactionDialog({
       updates.description = formData.description || null
       updates.notes = formData.notes || null
 
+      // For manual transactions, include editable fields
+      if (isManualTransaction) {
+        if (formData.transaction_date) {
+          updates.transaction_date = formData.transaction_date
+        }
+        if (formData.amount) {
+          updates.amount = parseFloat(formData.amount)
+        }
+        if (formData.account_id && formData.account_id !== transaction.account_id?.toString()) {
+          updates.account_id = parseInt(formData.account_id)
+        }
+      }
+
       console.log('EditTransactionDialog - Sending updates:', updates)
       console.log('EditTransactionDialog - formData.project_id:', formData.project_id)
+      console.log('EditTransactionDialog - isManualTransaction:', isManualTransaction)
 
       const response = await fetch(`/api/main-transactions/${transaction.main_transaction_id}`, {
         method: "PATCH",
@@ -291,33 +317,92 @@ export function EditTransactionDialog({
             </Alert>
           )}
 
-          {/* Read-only information */}
+          {/* Transaction basic info - editable for manual, read-only for imported */}
           <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
             <div className="grid grid-cols-2 gap-4">
+              {/* Date */}
               <div>
-                <Label className="text-xs text-muted-foreground">Date</Label>
-                <p className="text-sm font-medium">
-                  {new Date(transaction.transaction_date).toLocaleDateString()}
-                </p>
+                <Label className="text-xs text-muted-foreground">
+                  Date {isManualTransaction && <span className="text-red-500">*</span>}
+                </Label>
+                {isManualTransaction ? (
+                  <Input
+                    type="date"
+                    value={formData.transaction_date.split('T')[0]}
+                    onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
+                    className="mt-1"
+                  />
+                ) : (
+                  <p className="text-sm font-medium">
+                    {new Date(transaction.transaction_date).toLocaleDateString()}
+                  </p>
+                )}
               </div>
+
+              {/* Amount */}
               <div>
-                <Label className="text-xs text-muted-foreground">Amount</Label>
-                <p className={`text-sm font-mono font-bold ${getDirectionColor(transaction.transaction_direction)}`}>
-                  {formatAmount(transaction.amount, transaction.transaction_direction)}
-                </p>
+                <Label className="text-xs text-muted-foreground">
+                  Amount {isManualTransaction && <span className="text-red-500">*</span>}
+                </Label>
+                {isManualTransaction ? (
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="mt-1"
+                  />
+                ) : (
+                  <p className={`text-sm font-mono font-bold ${getDirectionColor(transaction.transaction_direction)}`}>
+                    {formatAmount(transaction.amount, transaction.transaction_direction)}
+                  </p>
+                )}
               </div>
+
+              {/* Account */}
               <div>
-                <Label className="text-xs text-muted-foreground">Account</Label>
-                <p className="text-sm font-medium">{transaction.account_name}</p>
+                <Label className="text-xs text-muted-foreground">
+                  Account {isManualTransaction && <span className="text-red-500">*</span>}
+                </Label>
+                {isManualTransaction ? (
+                  <Select
+                    value={formData.account_id}
+                    onValueChange={(value) => setFormData({ ...formData, account_id: value })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allAccounts.map((account) => (
+                        <SelectItem key={account.account_id} value={account.account_id.toString()}>
+                          {account.account_name} ({account.account_type})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-sm font-medium">{transaction.account_name}</p>
+                )}
               </div>
+
+              {/* Entity - always read-only */}
               <div>
                 <Label className="text-xs text-muted-foreground">Entity</Label>
                 <p className="text-sm font-medium">{transaction.entity_name}</p>
               </div>
             </div>
-            {transaction.is_split && (
-              <Badge variant="outline">Split Transaction (Part {transaction.split_sequence})</Badge>
-            )}
+
+            <div className="flex items-center gap-2">
+              {transaction.is_split && (
+                <Badge variant="outline">Split Transaction (Part {transaction.split_sequence})</Badge>
+              )}
+              {!isManualTransaction && (
+                <Badge variant="secondary">Imported Transaction</Badge>
+              )}
+              {isManualTransaction && (
+                <Badge variant="default">Manual Transaction</Badge>
+              )}
+            </div>
           </div>
 
           {/* Editable fields */}

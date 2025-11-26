@@ -17,6 +17,7 @@ interface CreateScheduledPaymentDialogProps {
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
   duplicateFrom?: any | null
+  editingSchedule?: any | null
 }
 
 export function CreateScheduledPaymentDialog({
@@ -24,7 +25,8 @@ export function CreateScheduledPaymentDialog({
   open,
   onOpenChange,
   onSuccess,
-  duplicateFrom
+  duplicateFrom,
+  editingSchedule
 }: CreateScheduledPaymentDialogProps) {
   const { currentEntity } = useEntity()
   const [loading, setLoading] = useState(false)
@@ -47,8 +49,24 @@ export function CreateScheduledPaymentDialog({
     if (open && currentEntity) {
       fetchCategories()
 
+      // If editing existing schedule, pre-fill with its data
+      if (editingSchedule) {
+        // Try to infer transaction type from category
+        const category = categories.find(c => c.category_id === editingSchedule.category_id)
+        if (category?.transaction_types?.type_name) {
+          setTransactionType(category.transaction_types.type_name as "income" | "expense")
+        }
+        setPaymentType(editingSchedule.payment_type || "")
+        setCategoryId(editingSchedule.category_id || null)
+        setPaymentAmount(editingSchedule.payment_amount?.toString() || "")
+        setFrequency(editingSchedule.frequency || "monthly")
+        setPaymentDay(editingSchedule.payment_day?.toString() || "1")
+        setStartDate(editingSchedule.start_date || "")
+        setEndDate(editingSchedule.end_date || "")
+        setNotes(editingSchedule.notes || "")
+      }
       // If duplicating from existing schedule, pre-fill with its data
-      if (duplicateFrom) {
+      else if (duplicateFrom) {
         // Try to infer transaction type from category
         const category = categories.find(c => c.category_id === duplicateFrom.category_id)
         if (category?.transaction_types?.type_name) {
@@ -68,7 +86,7 @@ export function CreateScheduledPaymentDialog({
         setEndDate(contract.expiration_date || "")
       }
     }
-  }, [open, currentEntity, contract, duplicateFrom])
+  }, [open, currentEntity, contract, duplicateFrom, editingSchedule])
 
   const fetchCategories = async () => {
     if (!currentEntity) return
@@ -155,11 +173,18 @@ export function CreateScheduledPaymentDialog({
         start_date: startDate,
         end_date: endDate || undefined,
         notes: notes.trim() || undefined,
-        generate_instances: true,
+        generate_instances: !editingSchedule, // Only generate instances for new schedules (POST)
+        regenerate_instances: !!editingSchedule, // Regenerate instances when editing (PATCH)
       }
 
-      const response = await fetch("/api/scheduled-payments", {
-        method: "POST",
+      const url = editingSchedule
+        ? `/api/scheduled-payments/${editingSchedule.scheduled_payment_id}`
+        : "/api/scheduled-payments"
+
+      const method = editingSchedule ? "PATCH" : "POST"
+
+      const response = await fetch(url, {
+        method: method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
@@ -170,11 +195,11 @@ export function CreateScheduledPaymentDialog({
         resetForm()
       } else {
         const error = await response.json()
-        setError(error.error || "Failed to create payment schedule")
+        setError(error.error || `Failed to ${editingSchedule ? 'update' : 'create'} payment schedule`)
       }
     } catch (err) {
-      console.error("Error creating payment schedule:", err)
-      setError("Failed to create payment schedule")
+      console.error(`Error ${editingSchedule ? 'updating' : 'creating'} payment schedule:`, err)
+      setError(`Failed to ${editingSchedule ? 'update' : 'create'} payment schedule`)
     } finally {
       setLoading(false)
     }
@@ -185,19 +210,23 @@ export function CreateScheduledPaymentDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {duplicateFrom
-              ? "Duplicate Payment Schedule"
-              : contract
-                ? "Add Payment Schedule"
-                : "Add Standalone Payment"
+            {editingSchedule
+              ? "Edit Payment Schedule"
+              : duplicateFrom
+                ? "Duplicate Payment Schedule"
+                : contract
+                  ? "Add Payment Schedule"
+                  : "Add Standalone Payment"
             }
           </DialogTitle>
           <DialogDescription>
-            {duplicateFrom
-              ? `Creating a copy of "${duplicateFrom.payment_type}"${contract ? ` for ${contract.contract_name}` : ""}`
-              : contract
-                ? `Create a payment schedule for ${contract.contract_name}`
-                : "Create a recurring payment not linked to a contract"
+            {editingSchedule
+              ? `Editing "${editingSchedule.payment_type}"${contract ? ` for ${contract.contract_name}` : ""}`
+              : duplicateFrom
+                ? `Creating a copy of "${duplicateFrom.payment_type}"${contract ? ` for ${contract.contract_name}` : ""}`
+                : contract
+                  ? `Create a payment schedule for ${contract.contract_name}`
+                  : "Create a recurring payment not linked to a contract"
             }
           </DialogDescription>
         </DialogHeader>
@@ -393,10 +422,10 @@ export function CreateScheduledPaymentDialog({
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Creating...
+                  {editingSchedule ? "Updating..." : "Creating..."}
                 </>
               ) : (
-                "Create Payment Schedule"
+                editingSchedule ? "Update Payment Schedule" : "Create Payment Schedule"
               )}
             </Button>
           </DialogFooter>

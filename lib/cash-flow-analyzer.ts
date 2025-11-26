@@ -43,6 +43,8 @@ export interface PredictedExpense {
   historical_average: number
   months_of_data: number
   confidence: 'high' | 'medium' | 'low'
+  has_gap?: boolean // True if this is a gap between scheduled and historical
+  scheduled_amount?: number // Amount covered by scheduled payments
 }
 
 export interface BudgetWarning {
@@ -220,6 +222,51 @@ export async function getCategoriesWithScheduledPayments(
 }
 
 /**
+ * Get scheduled payment amounts by category for a given month
+ * Returns a map of category_id -> total scheduled amount
+ */
+export async function getScheduledAmountsByCategory(
+  entityId: string,
+  monthKey: string
+): Promise<Map<number, number>> {
+  const supabase = createSupabaseServerClient()
+
+  const monthStart = startOfMonth(parseISO(monthKey + '-01'))
+  const monthEnd = endOfMonth(monthStart)
+
+  const { data: instances, error } = await supabase
+    .from('scheduled_payment_instances')
+    .select(`
+      amount,
+      scheduled_payments:scheduled_payment_id!inner (
+        category_id,
+        entity_id
+      )
+    `)
+    .eq('scheduled_payments.entity_id', entityId)
+    .in('status', ['pending', 'overdue'])
+    .gte('due_date', format(monthStart, 'yyyy-MM-dd'))
+    .lte('due_date', format(monthEnd, 'yyyy-MM-dd'))
+
+  if (error) {
+    console.error('Error fetching scheduled payment amounts:', error)
+    return new Map()
+  }
+
+  const categoryAmounts = new Map<number, number>()
+  instances?.forEach(inst => {
+    const categoryId = (inst.scheduled_payments as any)?.category_id
+    const amount = inst.amount || 0
+    if (categoryId) {
+      const currentTotal = categoryAmounts.get(categoryId) || 0
+      categoryAmounts.set(categoryId, currentTotal + amount)
+    }
+  })
+
+  return categoryAmounts
+}
+
+/**
  * Analyze historical expense patterns from past transactions
  * Excludes categories that have scheduled payments to prevent double-counting
  *
@@ -276,12 +323,6 @@ export async function analyzeHistoricalExpenses(
 
   expenseTransactions.forEach(tx => {
     const categoryId = tx.category_id!
-
-    // Skip if this category has a scheduled payment
-    if (scheduledCategories.has(categoryId)) {
-      return
-    }
-
     const categoryName = (tx as any)?.category_name || 'Unknown'
     const amount = (tx as any).amount || 0
     const month = format(parseISO(tx.transaction_date), 'yyyy-MM')
@@ -373,14 +414,43 @@ export async function calculatePredictedExpenses(
   monthKey: string
 ): Promise<PredictedExpense[]> {
   const expenseData = await analyzeHistoricalExpenses(entityId, monthKey, 6)
+  const scheduledAmounts = await getScheduledAmountsByCategory(entityId, monthKey)
 
-  return expenseData.map(expense => ({
-    category_name: expense.category_name,
-    amount: expense.monthly_average,
-    historical_average: expense.monthly_average,
-    months_of_data: expense.months_of_data,
-    confidence: expense.confidence
-  }))
+  const predictions: PredictedExpense[] = []
+
+  expenseData.forEach(expense => {
+    const scheduledAmount = scheduledAmounts.get(expense.category_id) || 0
+    const historicalAverage = expense.monthly_average
+
+    // If there's no scheduled payment, show full historical average
+    if (scheduledAmount === 0) {
+      predictions.push({
+        category_name: expense.category_name,
+        amount: historicalAverage,
+        historical_average: historicalAverage,
+        months_of_data: expense.months_of_data,
+        confidence: expense.confidence,
+        has_gap: false
+      })
+    }
+    // If historical average > scheduled, show the gap
+    else if (historicalAverage > scheduledAmount) {
+      const gapAmount = historicalAverage - scheduledAmount
+      predictions.push({
+        category_name: expense.category_name,
+        amount: gapAmount,
+        historical_average: historicalAverage,
+        months_of_data: expense.months_of_data,
+        confidence: expense.confidence,
+        has_gap: true,
+        scheduled_amount: scheduledAmount
+      })
+    }
+    // If scheduled >= historical, don't show in predictions (fully covered)
+    // This prevents showing the category in Priority 2 at all
+  })
+
+  return predictions
 }
 
 /**

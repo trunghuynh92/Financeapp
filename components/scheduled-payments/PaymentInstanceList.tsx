@@ -76,6 +76,8 @@ export function PaymentInstanceList({ scheduledPaymentId, onUpdate }: PaymentIns
     switch (instance.status) {
       case "paid":
         return <CheckCircle className="h-5 w-5 text-green-600" />
+      case "partial":
+        return <DollarSign className="h-5 w-5 text-yellow-600" />
       case "overdue":
         return <AlertCircle className="h-5 w-5 text-red-600" />
       case "cancelled":
@@ -89,6 +91,8 @@ export function PaymentInstanceList({ scheduledPaymentId, onUpdate }: PaymentIns
     switch (status) {
       case "paid":
         return "bg-green-100 text-green-800"
+      case "partial":
+        return "bg-yellow-100 text-yellow-800"
       case "overdue":
         return "bg-red-100 text-red-800"
       case "cancelled":
@@ -127,7 +131,7 @@ export function PaymentInstanceList({ scheduledPaymentId, onUpdate }: PaymentIns
 
         {instances.map((instance, index) => {
           const isOverdue = isInstanceOverdue(instance)
-          const canMarkAsPaid = instance.status === "pending" || instance.status === "overdue" || isOverdue
+          const canMarkAsPaid = instance.status === "pending" || instance.status === "overdue" || instance.status === "partial" || isOverdue
 
           return (
             <div
@@ -173,14 +177,43 @@ export function PaymentInstanceList({ scheduledPaymentId, onUpdate }: PaymentIns
                       <Button
                         size="sm"
                         onClick={() => setMarkingPaidInstance(instance)}
-                        variant={isOverdue ? "destructive" : "default"}
+                        variant={isOverdue ? "destructive" : instance.status === "partial" ? "outline" : "default"}
                         className={isOverdue ? "bg-red-600 hover:bg-red-700" : ""}
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
-                        Mark as Paid
+                        {instance.status === "partial" ? "Add Payment" : "Mark as Paid"}
                       </Button>
                     )}
                   </div>
+
+                  {/* Payment Details (if partial) */}
+                  {instance.status === "partial" && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mt-2">
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Paid So Far:</p>
+                          <p className="font-medium text-yellow-700">
+                            {formatCurrency((instance as any).total_paid_amount || instance.paid_amount || 0, 'VND')}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Remaining:</p>
+                          <p className="font-medium text-yellow-700">
+                            {formatCurrency(instance.amount - ((instance as any).total_paid_amount || instance.paid_amount || 0), 'VND')}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Progress:</p>
+                          <p className="font-medium text-yellow-700">
+                            {(((instance as any).total_paid_amount || instance.paid_amount || 0) / instance.amount * 100).toFixed(0)}%
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Click "Add Payment" to record additional transactions for this payment
+                      </p>
+                    </div>
+                  )}
 
                   {/* Payment Details (if paid) */}
                   {instance.status === "paid" && instance.paid_date && (

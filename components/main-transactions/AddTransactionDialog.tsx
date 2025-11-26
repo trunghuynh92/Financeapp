@@ -89,15 +89,13 @@ export function AddTransactionDialog({
 
   useEffect(() => {
     if (open) {
-      // Reset form when dialog opens
+      // Reset form when dialog opens - use simple date format (YYYY-MM-DD)
       const now = new Date()
-      const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16)
+      const localDate = now.toISOString().split('T')[0]
 
       setFormData({
         account_id: "",
-        transaction_date: localDateTime,
+        transaction_date: localDate,
         transaction_type_id: "",
         category_id: "",
         branch_id: "",
@@ -388,7 +386,7 @@ export function AddTransactionDialog({
           source_account_id: parseInt(formData.account_id),
           investment_account_id: parseInt(formData.investment_account_id),
           contribution_amount: amountValue,
-          contribution_date: new Date(formData.transaction_date).toISOString(),
+          contribution_date: formData.transaction_date, // Keep as YYYY-MM-DD
           notes: formData.description || null,
         }
 
@@ -412,7 +410,7 @@ export function AddTransactionDialog({
       // Use the optimized endpoint that handles all steps in one request
       const transactionData: any = {
         account_id: parseInt(formData.account_id),
-        transaction_date: new Date(formData.transaction_date).toISOString(),
+        transaction_date: formData.transaction_date, // Keep as YYYY-MM-DD
         description: formData.description || null,
         transaction_source: 'user_manual',
         transaction_type_id: parseInt(formData.transaction_type_id),
@@ -517,14 +515,14 @@ export function AddTransactionDialog({
             )}
           </div>
 
-          {/* Date-Time */}
+          {/* Date */}
           <div className="space-y-2">
             <Label htmlFor="transaction_date">
-              Date & Time <span className="text-red-500">*</span>
+              Date <span className="text-red-500">*</span>
             </Label>
             <Input
               id="transaction_date"
-              type="datetime-local"
+              type="date"
               value={formData.transaction_date}
               onChange={(e) =>
                 setFormData({ ...formData, transaction_date: e.target.value })

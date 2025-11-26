@@ -37,10 +37,27 @@ interface ScheduledPaymentListProps {
 }
 
 export function ScheduledPaymentList({ payments, onEdit, onDelete, onRefresh }: ScheduledPaymentListProps) {
-  const [expandedPaymentId, setExpandedPaymentId] = useState<number | null>(null)
+  const [expandedPaymentId, setExpandedPaymentId] = useState<number | null>(() => {
+    // Restore expanded state from sessionStorage
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('expandedPaymentId')
+      return saved ? parseInt(saved) : null
+    }
+    return null
+  })
 
   const toggleExpand = (paymentId: number) => {
-    setExpandedPaymentId(expandedPaymentId === paymentId ? null : paymentId)
+    const newExpandedId = expandedPaymentId === paymentId ? null : paymentId
+    setExpandedPaymentId(newExpandedId)
+
+    // Save to sessionStorage
+    if (typeof window !== 'undefined') {
+      if (newExpandedId === null) {
+        sessionStorage.removeItem('expandedPaymentId')
+      } else {
+        sessionStorage.setItem('expandedPaymentId', newExpandedId.toString())
+      }
+    }
   }
 
   const getContractTypeBadgeColor = (type: string) => {

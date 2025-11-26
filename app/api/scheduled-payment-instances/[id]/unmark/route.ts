@@ -31,38 +31,44 @@ export async function POST(
       )
     }
 
-    if (instance.status !== 'paid') {
+    if (instance.status !== 'paid' && instance.status !== 'partial') {
       return NextResponse.json(
-        { error: 'Payment instance is not marked as paid' },
+        { error: 'Payment instance is not marked as paid or partial' },
         { status: 400 }
       )
     }
 
-    // Determine new status based on due date
-    const dueDate = new Date(instance.due_date)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const newStatus = dueDate < today ? 'overdue' : 'pending'
-
-    // Unmark the instance by clearing payment fields and setting appropriate status
-    const { data: updated, error: updateError } = await supabase
-      .from('scheduled_payment_instances')
-      .update({
-        status: newStatus,
-        paid_date: null,
-        paid_amount: null,
-        transaction_id: null
-      })
+    // Delete all linked transactions from the junction table
+    // The database trigger will automatically:
+    // 1. Recalculate total_paid_amount to 0
+    // 2. Update status to 'pending' or 'overdue' based on due_date
+    // 3. Clear paid_date
+    const { error: deleteError } = await supabase
+      .from('scheduled_payment_instance_transactions')
+      .delete()
       .eq('instance_id', instanceId)
-      .select()
-      .single()
 
-    if (updateError) {
-      console.error('Error unmarking payment instance:', updateError)
+    if (deleteError) {
+      console.error('Error deleting payment links:', deleteError)
       return NextResponse.json(
-        { error: 'Failed to unmark payment instance', details: updateError.message },
+        { error: 'Failed to unmark payment instance', details: deleteError.message },
         { status: 500 }
       )
+    }
+
+    // Fetch updated instance to return
+    const { data: updated, error: fetchError } = await supabase
+      .from('scheduled_payment_instances')
+      .select('*')
+      .eq('instance_id', instanceId)
+      .single()
+
+    if (fetchError) {
+      console.error('Error fetching updated instance:', fetchError)
+      // Still return success since the unmark operation succeeded
+      return NextResponse.json({
+        message: 'Payment instance unmarked successfully'
+      })
     }
 
     return NextResponse.json({

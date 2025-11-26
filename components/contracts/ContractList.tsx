@@ -24,6 +24,7 @@ import { formatCurrency } from "@/lib/account-utils"
 import { format } from "date-fns"
 import { ContractDetailDialog } from "./ContractDetailDialog"
 import { CreateAmendmentDialog } from "./CreateAmendmentDialog"
+import { CreateScheduledPaymentDialog } from "./CreateScheduledPaymentDialog"
 
 interface ContractListProps {
   contracts: ContractOverview[]
@@ -34,6 +35,7 @@ export function ContractList({ contracts, onContractUpdated }: ContractListProps
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [detailDialogContract, setDetailDialogContract] = useState<ContractOverview | null>(null)
   const [amendmentDialogContract, setAmendmentDialogContract] = useState<ContractOverview | null>(null)
+  const [scheduleDialogContract, setScheduleDialogContract] = useState<ContractOverview | null>(null)
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -121,6 +123,14 @@ export function ContractList({ contracts, onContractUpdated }: ContractListProps
                   </div>
 
                   <div className="flex items-center gap-2 ml-4">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setScheduleDialogContract(contract)}
+                      title="Create Payment Schedule"
+                    >
+                      <Calendar className="h-4 w-4" />
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
@@ -237,6 +247,15 @@ export function ContractList({ contracts, onContractUpdated }: ContractListProps
           contract={amendmentDialogContract}
           open={!!amendmentDialogContract}
           onOpenChange={(open) => !open && setAmendmentDialogContract(null)}
+          onSuccess={onContractUpdated}
+        />
+      )}
+
+      {scheduleDialogContract && (
+        <CreateScheduledPaymentDialog
+          contract={scheduleDialogContract}
+          open={!!scheduleDialogContract}
+          onOpenChange={(open) => !open && setScheduleDialogContract(null)}
           onSuccess={onContractUpdated}
         />
       )}

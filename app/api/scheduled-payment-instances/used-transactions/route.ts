@@ -15,17 +15,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Get all payment instances with transaction_id for this entity
-    const { data: instances, error } = await supabase
-      .from('scheduled_payment_instances')
+    // Get all transaction IDs from the junction table for this entity
+    const { data: links, error } = await supabase
+      .from('scheduled_payment_instance_transactions')
       .select(`
         transaction_id,
-        scheduled_payments!inner (
-          entity_id
+        scheduled_payment_instances!inner (
+          scheduled_payments!inner (
+            entity_id
+          )
         )
       `)
-      .eq('scheduled_payments.entity_id', entityId)
-      .not('transaction_id', 'is', null)
+      .eq('scheduled_payment_instances.scheduled_payments.entity_id', entityId)
 
     if (error) {
       console.error('Error fetching used transactions:', error)
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
     // Extract unique transaction IDs
     const transactionIds = Array.from(
       new Set(
-        (instances || []).map((inst: any) => inst.transaction_id).filter(Boolean)
+        (links || []).map((link: any) => link.transaction_id).filter(Boolean)
       )
     )
 

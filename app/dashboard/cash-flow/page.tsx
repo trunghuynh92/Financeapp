@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   TrendingUp,
   TrendingDown,
@@ -17,8 +18,13 @@ import {
   Target,
   ArrowRight,
   LayoutGrid,
-  BarChart3
+  BarChart3,
+  Settings,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useEntity } from "@/contexts/EntityContext"
 import { formatCurrency } from "@/lib/account-utils"
 import { format } from "date-fns"
@@ -90,12 +96,28 @@ export default function CashFlowPage() {
   const [loading, setLoading] = useState(true)
   const [monthsAhead, setMonthsAhead] = useState('6')
   const [viewMode, setViewMode] = useState<'cards' | 'chart'>('chart')
+  const [customizeOpen, setCustomizeOpen] = useState(false)
+  const [excludedCategories, setExcludedCategories] = useState<Set<string>>(() => {
+    // Load from localStorage
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('cashflow_excluded_categories')
+      return saved ? new Set(JSON.parse(saved)) : new Set()
+    }
+    return new Set()
+  })
 
   useEffect(() => {
     if (currentEntity) {
       fetchCashFlow()
     }
   }, [currentEntity?.id, monthsAhead])
+
+  // Save excluded categories to localStorage whenever they change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('cashflow_excluded_categories', JSON.stringify(Array.from(excludedCategories)))
+    }
+  }, [excludedCategories])
 
   const fetchCashFlow = async () => {
     if (!currentEntity) return
@@ -115,6 +137,72 @@ export default function CashFlowPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Helper function to toggle category exclusion
+  const toggleCategoryExclusion = (categoryName: string) => {
+    setExcludedCategories(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(categoryName)) {
+        newSet.delete(categoryName)
+      } else {
+        newSet.add(categoryName)
+      }
+      return newSet
+    })
+  }
+
+  // Get all unique predicted expense categories across all months
+  const getAllPredictedCategories = (): string[] => {
+    if (!data?.projections) return []
+    const categoriesSet = new Set<string>()
+    data.projections.forEach(projection => {
+      projection.predicted_expenses?.forEach(expense => {
+        categoriesSet.add(expense.category_name)
+      })
+    })
+    return Array.from(categoriesSet).sort()
+  }
+
+  // Filter projections to exclude selected categories
+  const getFilteredProjections = () => {
+    if (!data?.projections) return []
+
+    let runningBalance = data.current_balance || 0
+
+    return data.projections.map(projection => {
+      const filtered_predicted = projection.predicted_expenses
+        ?.filter(expense => !excludedCategories.has(expense.category_name))
+        .reduce((sum, exp) => sum + exp.amount, 0) || 0
+
+      const total_obligations = projection.total_debt + projection.total_scheduled + filtered_predicted + projection.total_budgets
+
+      const opening_balance = runningBalance
+      const closing_balance = opening_balance + (projection.projected_income || 0) - total_obligations
+      runningBalance = closing_balance
+
+      return {
+        ...projection,
+        predicted_expenses: projection.predicted_expenses?.filter(
+          expense => !excludedCategories.has(expense.category_name)
+        ) || [],
+        total_predicted: filtered_predicted,
+        total_obligations: total_obligations,
+        opening_balance: opening_balance,
+        closing_balance: closing_balance
+      }
+    })
+  }
+
+  const filteredProjections = getFilteredProjections()
+  const allPredictedCategories = getAllPredictedCategories()
+
+  // Calculate filtered summary totals
+  const filteredSummary = {
+    total_obligations: filteredProjections.reduce((sum, p) => sum + p.total_obligations, 0),
+    total_projected_income: filteredProjections.reduce((sum, p) => sum + (p.projected_income || 0), 0),
+    net_projected_change: filteredProjections.reduce((sum, p) => sum + ((p.projected_income || 0) - p.total_obligations), 0),
+    lowest_projected_balance: Math.min(...filteredProjections.map(p => p.closing_balance)),
   }
 
   if (!currentEntity) {
@@ -182,6 +270,67 @@ export default function CashFlowPage() {
               <Badge variant="secondary">Cash Flow System 2.0</Badge>
               <span>With intelligent income & expense predictions</span>
             </div>
+          )}
+
+          {/* Customize Prediction Panel */}
+          {allPredictedCategories.length > 0 && (
+            <Collapsible open={customizeOpen} onOpenChange={setCustomizeOpen}>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" className="w-full justify-between p-0 hover:bg-transparent">
+                      <div className="flex items-center gap-2">
+                        <Settings className="h-4 w-4" />
+                        <CardTitle className="text-base">Customize Projection</CardTitle>
+                        <Badge variant="outline" className="ml-2">
+                          {excludedCategories.size} excluded
+                        </Badge>
+                      </div>
+                      {customizeOpen ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CardDescription>
+                    Exclude categories with abnormal spending (e.g., one-time repairs) from predictions
+                  </CardDescription>
+                </CardHeader>
+                <CollapsibleContent>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {allPredictedCategories.map(categoryName => (
+                        <div key={categoryName} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`category-${categoryName}`}
+                            checked={!excludedCategories.has(categoryName)}
+                            onCheckedChange={() => toggleCategoryExclusion(categoryName)}
+                          />
+                          <label
+                            htmlFor={`category-${categoryName}`}
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                          >
+                            {categoryName}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                    {excludedCategories.size > 0 && (
+                      <div className="mt-4 pt-4 border-t">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setExcludedCategories(new Set())}
+                        >
+                          Reset All
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
           )}
 
           {/* NEW in v3.0: Liquidity Position Alert */}
@@ -263,7 +412,7 @@ export default function CashFlowPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency(data.total_projected_income, 'VND')}
+                    {formatCurrency(filteredSummary.total_projected_income, 'VND')}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Next {monthsAhead} months</p>
                 </CardContent>
@@ -279,7 +428,7 @@ export default function CashFlowPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-600">
-                  {formatCurrency(data.total_obligations, 'VND')}
+                  {formatCurrency(filteredSummary.total_obligations, 'VND')}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Next {monthsAhead} months</p>
               </CardContent>
@@ -287,7 +436,7 @@ export default function CashFlowPage() {
 
             {/* NEW in v2.0: Net Change */}
             {data.net_projected_change !== undefined && (
-              <Card className={data.net_projected_change >= 0 ? 'border-green-200' : 'border-red-200'}>
+              <Card className={filteredSummary.net_projected_change >= 0 ? 'border-green-200' : 'border-red-200'}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Target className="h-4 w-4" />
@@ -295,8 +444,8 @@ export default function CashFlowPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className={`text-2xl font-bold ${data.net_projected_change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {data.net_projected_change >= 0 ? '+' : ''}{formatCurrency(data.net_projected_change, 'VND')}
+                  <div className={`text-2xl font-bold ${filteredSummary.net_projected_change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {filteredSummary.net_projected_change >= 0 ? '+' : ''}{formatCurrency(filteredSummary.net_projected_change, 'VND')}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Income - Expenses</p>
                 </CardContent>
@@ -366,7 +515,7 @@ export default function CashFlowPage() {
               <CardContent>
                 <ResponsiveContainer width="100%" height={500}>
                   <ComposedChart
-                    data={data.projections.map(p => ({
+                    data={filteredProjections.map(p => ({
                       month: p.month_label.split(' ')[0], // Short month name
                       income: p.projected_income || 0, // NEW in v2.0
                       debt: -p.total_debt,
@@ -470,7 +619,7 @@ export default function CashFlowPage() {
           {/* Cards View */}
           {viewMode === 'cards' && (
             <div className="space-y-4">
-              {data.projections.map((projection, index) => (
+              {filteredProjections.map((projection, index) => (
               <Card key={projection.month} className={
                 projection.health === 'deficit' ? 'border-red-300' :
                 projection.health === 'tight' ? 'border-yellow-300' :
@@ -536,41 +685,75 @@ export default function CashFlowPage() {
                   )}
 
                   {/* Priority 1: Scheduled Payments */}
-                  {projection.scheduled_payments.length > 0 && (
-                    <div className="space-y-2 pl-4 border-l-4 border-l-blue-500">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm">Priority 1: Scheduled Payments</span>
-                        <span className="font-semibold text-blue-600">
-                          -{formatCurrency(projection.total_scheduled, 'VND')}
-                        </span>
-                      </div>
-                      {projection.scheduled_payments.map((payment: any, i: number) => (
-                        <div key={i} className="text-xs text-muted-foreground flex items-center justify-between gap-2">
-                          <span className="flex-1">{payment.payment_type || payment.contract_name}</span>
-                          <span className="text-blue-600">{format(new Date(payment.due_date), 'MMM d')}</span>
-                          <span className="font-medium">{formatCurrency(payment.amount, 'VND')}</span>
+                  {projection.scheduled_payments.length > 0 && (() => {
+                    // Group scheduled payments by category
+                    const groupedPayments = projection.scheduled_payments.reduce((acc: any, payment: any) => {
+                      const categoryName = payment.category_name || 'Uncategorized'
+                      if (!acc[categoryName]) {
+                        acc[categoryName] = 0
+                      }
+                      acc[categoryName] += payment.amount
+                      return acc
+                    }, {})
+
+                    return (
+                      <div className="space-y-2 pl-4 border-l-4 border-l-blue-500">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-sm">Priority 1: Scheduled Payments</span>
+                          <span className="font-semibold text-blue-600">
+                            -{formatCurrency(projection.total_scheduled, 'VND')}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        {Object.entries(groupedPayments).map(([categoryName, categoryTotal]: [string, any]) => (
+                          <div key={categoryName} className="text-xs text-muted-foreground flex items-center justify-between gap-2">
+                            <span className="flex-1">{categoryName}</span>
+                            <span className="font-medium">{formatCurrency(categoryTotal, 'VND')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
 
                   {/* Cash Flow 2.0: Priority 2: Predicted Expenses */}
                   {projection.predicted_expenses && projection.predicted_expenses.length > 0 && (
-                    <div className="space-y-2 pl-4 border-l-4 border-l-orange-500">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm">Priority 2: Predicted Expenses</span>
-                        <span className="font-semibold text-orange-600">
-                          -{formatCurrency(projection.total_predicted || 0, 'VND')}
-                        </span>
-                      </div>
-                      {projection.predicted_expenses.map((expense: any, i: number) => (
-                        <div key={i} className="text-xs text-muted-foreground flex items-center justify-between gap-2">
-                          <span className="flex-1">{expense.category_name}</span>
-                          <Badge variant="outline" className="text-xs">{expense.confidence}</Badge>
-                          <span className="font-medium">{formatCurrency(expense.amount, 'VND')}</span>
+                    <TooltipProvider>
+                      <div className="space-y-2 pl-4 border-l-4 border-l-orange-500">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-sm">Priority 2: Predicted Expenses</span>
+                          <span className="font-semibold text-orange-600">
+                            -{formatCurrency(projection.total_predicted || 0, 'VND')}
+                          </span>
                         </div>
-                      ))}
-                    </div>
+                        {projection.predicted_expenses.map((expense: any, i: number) => (
+                          <div key={i} className="text-xs text-muted-foreground flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1 flex-1">
+                              <span>{expense.category_name}</span>
+                              {expense.has_gap && (
+                                <UITooltip>
+                                  <TooltipTrigger asChild>
+                                    <AlertCircle className="h-3.5 w-3.5 text-orange-600 cursor-help" />
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs">
+                                    <p className="font-semibold mb-1">Gap Detected</p>
+                                    <p className="text-xs">
+                                      Historical average: {formatCurrency(expense.historical_average, 'VND')}
+                                    </p>
+                                    <p className="text-xs">
+                                      Scheduled: {formatCurrency(expense.scheduled_amount, 'VND')}
+                                    </p>
+                                    <p className="text-xs mt-1">
+                                      This {formatCurrency(expense.amount, 'VND')} represents the difference between your historical spending and scheduled payments for this category.
+                                    </p>
+                                  </TooltipContent>
+                                </UITooltip>
+                              )}
+                            </div>
+                            <Badge variant="outline" className="text-xs">{expense.confidence}</Badge>
+                            <span className="font-medium">{formatCurrency(expense.amount, 'VND')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </TooltipProvider>
                   )}
 
                   {/* Priority 3: Budgets (only unused categories in v2.0) */}

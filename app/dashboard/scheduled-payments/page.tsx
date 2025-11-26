@@ -54,10 +54,17 @@ export default function ScheduledPaymentsPage() {
     }
   }, [currentEntity?.id, selectedContractType, selectedStatus])
 
-  const fetchPayments = async () => {
+  const fetchPayments = async (preserveScrollPosition = false) => {
     if (!currentEntity) return
 
-    setLoading(true)
+    // Save scroll position before fetching
+    const scrollY = preserveScrollPosition ? window.scrollY : 0
+
+    // Don't show loading spinner if preserving scroll (to avoid UI jump)
+    if (!preserveScrollPosition) {
+      setLoading(true)
+    }
+
     try {
       const params = new URLSearchParams()
       params.set('entity_id', currentEntity.id)
@@ -83,6 +90,14 @@ export default function ScheduledPaymentsPage() {
       console.error('Error fetching scheduled payments:', error)
     } finally {
       setLoading(false)
+
+      // Restore scroll position after rendering
+      if (preserveScrollPosition && scrollY > 0) {
+        // Use requestAnimationFrame for smoother scroll restoration
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: 'instant' })
+        })
+      }
     }
   }
 
@@ -379,7 +394,7 @@ export default function ScheduledPaymentsPage() {
                   setCreateDialogOpen(true)
                 }}
                 onDelete={handleDeletePayment}
-                onRefresh={fetchPayments}
+                onRefresh={() => fetchPayments(true)}
               />
             )}
           </CardContent>
@@ -397,7 +412,7 @@ export default function ScheduledPaymentsPage() {
           }
         }}
         onSuccess={fetchPayments}
-        duplicateFrom={editingPayment}
+        editingSchedule={editingPayment}
       />
     </div>
   )

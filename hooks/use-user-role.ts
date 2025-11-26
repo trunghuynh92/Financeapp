@@ -72,11 +72,49 @@ export function useUserRole(entityId: string | undefined): UserRoleData {
 
 /**
  * Hook to get user's permissions for a specific entity
+ * Now includes custom permission overrides from the database
  */
 export function useUserPermissions(entityId: string | undefined) {
-  const { role, isLoading, error } = useUserRole(entityId)
+  const { role, isLoading: roleLoading, error: roleError } = useUserRole(entityId)
+  const [customPermissions, setCustomPermissions] = useState<any>(null)
+  const [permissionsLoading, setPermissionsLoading] = useState(true)
 
-  const permissions = {
+  // Load custom permissions from the API
+  useEffect(() => {
+    async function loadCustomPermissions() {
+      if (!entityId || !role) {
+        setPermissionsLoading(false)
+        setCustomPermissions(null)
+        return
+      }
+
+      setPermissionsLoading(true)
+      try {
+        const response = await fetch(`/api/role-permissions?entity_id=${entityId}&role=${role}`)
+        if (response.ok) {
+          const { data } = await response.json()
+          console.log('Custom permissions loaded:', data)
+          if (data && data.length > 0) {
+            console.log('Setting custom permissions:', data[0])
+            setCustomPermissions(data[0])
+          } else {
+            console.log('No custom permissions found, using defaults')
+            setCustomPermissions(null)
+          }
+        }
+      } catch (err) {
+        console.error('Error loading custom permissions:', err)
+        setCustomPermissions(null)
+      } finally {
+        setPermissionsLoading(false)
+      }
+    }
+
+    loadCustomPermissions()
+  }, [entityId, role])
+
+  // Get default permissions based on role
+  const defaultPermissions = {
     // Transaction Management
     canViewTransactions: role !== null,
     canCreateTransactions: role ? hasPermission(role, 'data_entry') : false,
@@ -108,7 +146,22 @@ export function useUserPermissions(entityId: string | undefined) {
     // Settings
     canManageCategories: role ? hasPermission(role, 'admin') : false,
     canManageSettings: role ? hasPermission(role, 'admin') : false,
+  }
 
+  // Merge custom permissions with defaults
+  const permissions = { ...defaultPermissions }
+  if (customPermissions) {
+    // Override with custom permissions where they exist (not null)
+    Object.keys(defaultPermissions).forEach((key) => {
+      if (customPermissions[key] !== null && customPermissions[key] !== undefined) {
+        console.log(`Overriding ${key}: ${defaultPermissions[key as keyof typeof defaultPermissions]} -> ${customPermissions[key]}`)
+        permissions[key as keyof typeof defaultPermissions] = customPermissions[key]
+      }
+    })
+  }
+
+  const finalPermissions = {
+    ...permissions,
     // Utility
     isOwner: role === 'owner',
     isAdmin: role === 'admin' || role === 'owner',
@@ -118,11 +171,14 @@ export function useUserPermissions(entityId: string | undefined) {
     isDataEntryOrLower: role && ROLE_HIERARCHY[role] <= ROLE_HIERARCHY.data_entry,
   }
 
+  console.log('Final permissions:', finalPermissions)
+  console.log('canViewAccounts:', finalPermissions.canViewAccounts)
+
   return {
     role,
-    permissions,
-    isLoading,
-    error,
+    permissions: finalPermissions,
+    isLoading: roleLoading || permissionsLoading,
+    error: roleError,
   }
 }
 

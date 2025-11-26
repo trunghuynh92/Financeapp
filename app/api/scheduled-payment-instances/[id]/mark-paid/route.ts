@@ -57,25 +57,55 @@ export async function POST(
       // Get scheduled payment details
       const scheduledPayment = instance.scheduled_payments as any
 
-      // Create a new transaction for this payment
+      if (!body.account_id) {
+        return NextResponse.json(
+          { error: 'account_id is required when creating a transaction' },
+          { status: 400 }
+        )
+      }
+
+      // Step 1: Insert into original_transaction first (this is the source of truth)
+      const { data: originalTx, error: originalError } = await supabase
+        .from('original_transaction')
+        .insert([{
+          account_id: body.account_id,
+          transaction_date: paidDate,
+          description: `${scheduledPayment.contract_name} - Payment to ${scheduledPayment.payee_name}`,
+          debit_amount: body.paid_amount, // Payment is expense = debit
+          credit_amount: null,
+          is_balance_adjustment: false
+        }])
+        .select()
+        .single()
+
+      if (originalError) {
+        console.error('Error creating original transaction:', originalError)
+        return NextResponse.json(
+          { error: 'Failed to create transaction', details: originalError.message },
+          { status: 500 }
+        )
+      }
+
+      // Step 2: Create main_transaction linked to original_transaction
+      // This will automatically set transaction_type_id = 2 (Expense) via trigger
       const { data: newTransaction, error: transactionError} = await supabase
         .from('main_transaction')
         .insert([{
-          entity_id: scheduledPayment.entity_id,
-          account_id: body.account_id || null, // Account specified by user or null
+          raw_transaction_id: originalTx.raw_transaction_id,
+          account_id: body.account_id,
+          transaction_type_id: 2, // Expense type
           category_id: scheduledPayment.category_id,
           transaction_date: paidDate,
           amount: body.paid_amount,
           transaction_direction: 'debit', // Payment is always debit (expense)
           description: `${scheduledPayment.contract_name} - Payment to ${scheduledPayment.payee_name}`,
-          notes: body.notes || `Auto-generated from scheduled payment instance ${instanceId}`,
-          is_flagged: false
+          notes: body.notes || `Auto-generated from scheduled payment instance ${instanceId}`
         }])
         .select()
         .single()
 
       if (transactionError) {
-        console.error('Error creating transaction:', transactionError)
+        console.error('Error creating main transaction:', transactionError)
         return NextResponse.json(
           { error: 'Failed to create transaction', details: transactionError.message },
           { status: 500 }
