@@ -744,7 +744,7 @@ export function ScenarioManager({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    The credit line's available balance will be reduced in this scenario.
+                    The credit line&apos;s available balance will be reduced in this scenario.
                   </p>
                 </div>
 
@@ -799,7 +799,7 @@ export function ScenarioManager({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Scenario</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{scenarioToDelete?.name}"? This will also delete all
+              Are you sure you want to delete &quot;{scenarioToDelete?.name}&quot;? This will also delete all
               adjustments in this scenario. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
