@@ -20,12 +20,176 @@ import {
   calculateRunwayAnalysis
 } from '@/lib/cash-flow-analyzer'
 
+// Helper type for scenario adjustments
+interface ScenarioAdjustment {
+  adjustment_id: number
+  adjustment_type: string
+  name: string
+  amount: number | null
+  percentage: number | null
+  start_month: string | null
+  end_month: string | null
+  category_id: number | null
+  scheduled_payment_id: number | null
+  account_id: number | null
+  metadata: {
+    repayment_month?: string // YYYY-MM format (calculated)
+    repayment_months?: number // Number of months after drawdown (user selection)
+    credit_line_account_id?: number
+    interest_rate?: number
+  } | null
+}
+
+// Helper type for debt repayment from scenarios
+interface ScenarioDebtRepayment {
+  adjustment_id: number
+  name: string
+  amount: number
+  repayment_month: string // YYYY-MM format
+  credit_line_account_id?: number
+}
+
+// Apply scenario adjustments to a monthly projection
+function applyScenarioAdjustments(
+  monthKey: string, // YYYY-MM format
+  baseIncome: number,
+  basePredictedExpenses: number,
+  adjustments: ScenarioAdjustment[]
+): {
+  adjustedIncome: number
+  adjustedPredicted: number
+  scenarioDebtDrawdown: number // NEW: Separate debt drawdown amount for chart display
+  scenarioDebtRepayment: number // NEW: Debt repayment amount (from scenario) for chart display
+  scenarioIncome: number // NEW: Additional scenario income (not debt)
+  scenarioExpense: number // NEW: Additional scenario expense
+  scenarioItems: { name: string; amount: number; type: string }[]
+} {
+  let adjustedIncome = baseIncome
+  let adjustedPredicted = basePredictedExpenses
+  let scenarioDebtDrawdown = 0 // Track debt drawdowns separately
+  let scenarioDebtRepayment = 0 // Track debt repayments separately
+  let scenarioIncome = 0 // Track scenario income additions
+  let scenarioExpense = 0 // Track scenario expense additions
+  const scenarioItems: { name: string; amount: number; type: string }[] = []
+
+  const monthDate = parseISO(`${monthKey}-01`)
+
+  for (const adj of adjustments) {
+    // Check if adjustment applies to this month
+    const startMonth = adj.start_month ? parseISO(adj.start_month) : null
+    const endMonth = adj.end_month ? parseISO(adj.end_month) : null
+
+    const startsBeforeOrOn = !startMonth || startMonth <= monthDate
+    const endsAfterOrOn = !endMonth || endMonth >= monthDate
+
+    // For one-time items, only apply if start_month matches
+    // debt_drawdown is also a one-time event (single loan disbursement)
+    const isOneTime = adj.adjustment_type.startsWith('one_time') || adj.adjustment_type === 'debt_drawdown'
+    const matchesMonth = isOneTime
+      ? (startMonth && format(startMonth, 'yyyy-MM') === monthKey)
+      : (startsBeforeOrOn && endsAfterOrOn)
+
+    // Check for debt repayment in this month (from debt_drawdown metadata)
+    if (adj.adjustment_type === 'debt_drawdown' && adj.amount && adj.metadata?.repayment_month) {
+      const repaymentMonth = adj.metadata.repayment_month
+      if (repaymentMonth === monthKey) {
+        // Add debt repayment as an expense in the repayment month
+        adjustedPredicted += adj.amount
+        scenarioDebtRepayment += adj.amount
+        scenarioItems.push({
+          name: `${adj.name} (Repayment)`,
+          amount: -adj.amount,
+          type: 'debt_repayment'
+        })
+        console.log(`[Scenario Debug] Added debt_repayment: ${adj.amount} to month ${monthKey}`)
+      }
+    }
+
+    if (!matchesMonth) continue
+
+    console.log(`[Scenario Debug] Applying ${adj.adjustment_type} "${adj.name}" to month ${monthKey}`)
+
+    switch (adj.adjustment_type) {
+      case 'one_time_income':
+      case 'recurring_income':
+        if (adj.amount) {
+          adjustedIncome += adj.amount
+          scenarioIncome += adj.amount
+          scenarioItems.push({
+            name: adj.name,
+            amount: adj.amount,
+            type: 'income'
+          })
+        }
+        break
+
+      case 'one_time_expense':
+      case 'recurring_expense':
+        if (adj.amount) {
+          adjustedPredicted += adj.amount
+          scenarioExpense += adj.amount
+          scenarioItems.push({
+            name: adj.name,
+            amount: -adj.amount,
+            type: 'expense'
+          })
+        }
+        break
+
+      case 'debt_drawdown':
+        // Add debt as income (cash inflow) but track it separately for display
+        if (adj.amount) {
+          adjustedIncome += adj.amount
+          scenarioDebtDrawdown += adj.amount // Track separately!
+          scenarioItems.push({
+            name: adj.name,
+            amount: adj.amount,
+            type: 'debt'
+          })
+          console.log(`[Scenario Debug] Added debt_drawdown: ${adj.amount} to month ${monthKey}`)
+        }
+        break
+
+      case 'modify_predicted':
+        // Apply percentage change to predicted expenses
+        if (adj.percentage !== null) {
+          const change = basePredictedExpenses * (adj.percentage / 100)
+          adjustedPredicted += change
+          scenarioExpense += change
+          scenarioItems.push({
+            name: adj.name,
+            amount: change,
+            type: 'modification'
+          })
+        }
+        break
+
+      case 'modify_income':
+        // Apply percentage change to income
+        if (adj.percentage !== null) {
+          const change = baseIncome * (adj.percentage / 100)
+          adjustedIncome += change
+          scenarioIncome += change
+          scenarioItems.push({
+            name: adj.name,
+            amount: change,
+            type: 'modification'
+          })
+        }
+        break
+    }
+  }
+
+  return { adjustedIncome, adjustedPredicted, scenarioDebtDrawdown, scenarioDebtRepayment, scenarioIncome, scenarioExpense, scenarioItems }
+}
+
 export async function GET(request: NextRequest) {
   const supabase = createSupabaseServerClient()
   const searchParams = request.nextUrl.searchParams
 
   const entityId = searchParams.get('entity_id')
   const monthsAhead = parseInt(searchParams.get('months_ahead') || '6')
+  const scenarioId = searchParams.get('scenario_id') // NEW: Optional scenario
 
   if (!entityId) {
     return NextResponse.json(
@@ -37,6 +201,35 @@ export async function GET(request: NextRequest) {
   try {
     const startDate = startOfMonth(new Date())
     const endDate = endOfMonth(addMonths(startDate, monthsAhead - 1))
+
+    // Fetch scenario adjustments if scenario_id provided
+    let scenarioAdjustments: ScenarioAdjustment[] = []
+    let scenarioInfo: { name: string; color: string } | null = null
+
+    if (scenarioId) {
+      console.log(`[Scenario Debug] Fetching scenario ${scenarioId} for entity ${entityId}`)
+      const { data: scenario, error: scenarioError } = await supabase
+        .from('cashflow_scenarios')
+        .select(`
+          name,
+          color,
+          adjustments:scenario_adjustments(*)
+        `)
+        .eq('scenario_id', scenarioId)
+        .eq('entity_id', entityId)
+        .single()
+
+      if (scenarioError) {
+        console.error('[Scenario Debug] Error fetching scenario:', scenarioError)
+      }
+
+      if (!scenarioError && scenario) {
+        scenarioInfo = { name: scenario.name, color: scenario.color }
+        scenarioAdjustments = scenario.adjustments || []
+        console.log(`[Scenario Debug] Found scenario: ${scenario.name}, adjustments: ${scenarioAdjustments.length}`)
+        console.log('[Scenario Debug] Adjustments:', JSON.stringify(scenarioAdjustments, null, 2))
+      }
+    }
 
     // Generate list of months
     const months = eachMonthOfInterval({ start: startDate, end: endDate })
@@ -167,6 +360,47 @@ export async function GET(request: NextRequest) {
     if (accountsError) {
       console.error('Error fetching accounts:', accountsError)
     }
+
+    // Fetch credit line accounts with their limits and usage
+    const { data: creditLineAccounts, error: creditLineError } = await supabase
+      .from('accounts')
+      .select('account_id, account_name, credit_limit, bank_name')
+      .eq('entity_id', entityId)
+      .eq('is_active', true)
+      .in('account_type', ['credit_line', 'term_loan'])
+      .not('credit_limit', 'is', null)
+
+    if (creditLineError) {
+      console.error('Error fetching credit lines:', creditLineError)
+    }
+
+    // Calculate used amount for each credit line from active debt drawdowns
+    const creditLines = await Promise.all((creditLineAccounts || []).map(async (account) => {
+      const { data: drawdowns } = await supabase
+        .from('debt_drawdown')
+        .select('remaining_balance')
+        .eq('account_id', account.account_id)
+        .in('status', ['active', 'overdue'])
+
+      const usedAmount = drawdowns?.reduce((sum, d) => sum + (d.remaining_balance || 0), 0) || 0
+      const creditLimit = account.credit_limit || 0
+      const availableCredit = creditLimit - usedAmount
+
+      return {
+        account_id: account.account_id,
+        account_name: account.account_name,
+        bank_name: account.bank_name,
+        credit_limit: creditLimit,
+        used_amount: usedAmount,
+        available_credit: availableCredit,
+        utilization_percent: creditLimit > 0 ? (usedAmount / creditLimit) * 100 : 0
+      }
+    }))
+
+    // Calculate total credit line availability
+    const totalCreditLimit = creditLines.reduce((sum, cl) => sum + cl.credit_limit, 0)
+    const totalCreditUsed = creditLines.reduce((sum, cl) => sum + cl.used_amount, 0)
+    const totalCreditAvailable = totalCreditLimit - totalCreditUsed
 
     console.log(`[Cash Flow] Found ${accounts?.length || 0} cash/bank/investment accounts for entity ${entityId}`)
     console.log(`[Cash Flow] Accounts: ${accounts?.map(a => `${a.account_name}(${a.account_type})`).join(', ')}`)
@@ -302,11 +536,40 @@ export async function GET(request: NextRequest) {
     }))
 
     // === CASH FLOW 2.0: Calculate running balances WITH predicted income ===
+    // === CASH FLOW 3.1: Apply scenario adjustments if provided ===
     let runningBalance = currentBalance
     const projectionsWithBalance = projections.map((proj) => {
       const openingBalance = runningBalance
-      const projectedIncome = predictedMonthlyIncome // Use predicted income from historical data
-      const closingBalance = openingBalance + projectedIncome - proj.total_obligations
+      let projectedIncome = predictedMonthlyIncome // Use predicted income from historical data
+      let totalPredictedWithScenario = proj.total_predicted
+
+      // Apply scenario adjustments
+      let scenarioItems: { name: string; amount: number; type: string }[] = []
+      let scenarioDebtDrawdown = 0
+      let scenarioDebtRepayment = 0
+      let scenarioIncome = 0
+      let scenarioExpense = 0
+
+      if (scenarioAdjustments.length > 0) {
+        const adjusted = applyScenarioAdjustments(
+          proj.month,
+          projectedIncome,
+          proj.total_predicted,
+          scenarioAdjustments
+        )
+        projectedIncome = adjusted.adjustedIncome
+        totalPredictedWithScenario = adjusted.adjustedPredicted
+        scenarioItems = adjusted.scenarioItems
+        scenarioDebtDrawdown = adjusted.scenarioDebtDrawdown
+        scenarioDebtRepayment = adjusted.scenarioDebtRepayment
+        scenarioIncome = adjusted.scenarioIncome
+        scenarioExpense = adjusted.scenarioExpense
+
+      }
+
+      // Recalculate total obligations with scenario adjustments
+      const totalObligationsWithScenario = proj.total_debt + proj.total_scheduled + totalPredictedWithScenario + proj.total_budgets
+      const closingBalance = openingBalance + projectedIncome - totalObligationsWithScenario
       runningBalance = closingBalance
 
       // Determine health status
@@ -319,12 +582,23 @@ export async function GET(request: NextRequest) {
         health = 'surplus'
       }
 
+      // Calculate base income (without scenario adjustments) for chart display
+      const baseIncome = predictedMonthlyIncome
+
       return {
         ...proj,
         opening_balance: openingBalance,
         projected_income: projectedIncome,
+        base_income: baseIncome, // NEW: Base income before scenario adjustments
+        scenario_debt_drawdown: scenarioDebtDrawdown, // NEW: Debt drawdown from scenarios
+        scenario_debt_repayment: scenarioDebtRepayment, // NEW: Debt repayment from scenarios (expense)
+        scenario_income: scenarioIncome, // NEW: Additional income from scenarios
+        scenario_expense: scenarioExpense, // NEW: Additional expense from scenarios
+        total_predicted: totalPredictedWithScenario,
+        total_obligations: totalObligationsWithScenario,
         closing_balance: closingBalance,
-        health
+        health,
+        scenario_items: scenarioItems // NEW: Items from scenario adjustments
       }
     })
 
@@ -353,6 +627,58 @@ export async function GET(request: NextRequest) {
     console.log(`[Cash Flow 3.0] Cash runway: ${runwayAnalysis.cash_runway_months.toFixed(1)} months`)
     console.log(`[Cash Flow 3.0] Liquidity runway: ${runwayAnalysis.liquidity_runway_months.toFixed(1)} months`)
 
+    // Calculate total scenario debt drawdown (reduces credit availability for scenario)
+    const totalScenarioDebtDrawdown = projectionsWithBalance.reduce(
+      (sum, proj) => sum + (proj.scenario_debt_drawdown || 0), 0
+    )
+
+    // Calculate projected credit availability per month
+    // As debt payments are made, credit availability increases
+    // Scenario debt drawdowns reduce availability, scenario repayments restore it
+    const creditProjections = projectionsWithBalance.map((proj) => {
+      // Find debt repayments for this month that will free up credit
+      const monthRepayments = proj.debt_payments.reduce((sum: number, p: any) => sum + p.amount, 0)
+      // Scenario debt drawdown reduces credit (negative effect)
+      const monthScenarioDrawdown = proj.scenario_debt_drawdown || 0
+      // Scenario debt repayment restores credit (positive effect)
+      const monthScenarioRepayment = proj.scenario_debt_repayment || 0
+
+      return {
+        month: proj.month,
+        month_label: proj.month_label,
+        repayment_amount: monthRepayments,
+        scenario_drawdown: monthScenarioDrawdown,
+        scenario_repayment: monthScenarioRepayment
+      }
+    })
+
+    // Calculate cumulative credit changes over projection period
+    let cumulativeRepayments = 0
+    let cumulativeScenarioDrawdowns = 0
+    let cumulativeScenarioRepayments = 0
+    const creditAvailabilityProjection = creditProjections.map((proj) => {
+      cumulativeRepayments += proj.repayment_amount
+      cumulativeScenarioDrawdowns += proj.scenario_drawdown
+      cumulativeScenarioRepayments += proj.scenario_repayment
+
+      // Net effect: actual repayments free credit, scenario drawdowns use it, scenario repayments restore it
+      const netCreditChange = cumulativeRepayments - cumulativeScenarioDrawdowns + cumulativeScenarioRepayments
+
+      return {
+        month: proj.month,
+        month_label: proj.month_label,
+        available_credit: totalCreditAvailable + netCreditChange,
+        repayment_this_month: proj.repayment_amount,
+        scenario_drawdown_this_month: proj.scenario_drawdown,
+        scenario_repayment_this_month: proj.scenario_repayment,
+        cumulative_repayments: cumulativeRepayments,
+        cumulative_scenario_drawdowns: cumulativeScenarioDrawdowns,
+        cumulative_scenario_repayments: cumulativeScenarioRepayments
+      }
+    })
+
+    console.log(`[Cash Flow 3.0] Credit lines: ${creditLines.length}, total available: ${totalCreditAvailable.toLocaleString()} VND`)
+
     return NextResponse.json({
       data: {
         current_balance: currentBalance,
@@ -367,6 +693,22 @@ export async function GET(request: NextRequest) {
         // NEW in v3.0: Liquidity & Solvency Analysis
         liquidity: liquidityPosition,
         runway: runwayAnalysis,
+
+        // NEW in v3.1: Credit Line Analysis
+        credit_lines: {
+          accounts: creditLines,
+          total_limit: totalCreditLimit,
+          total_used: totalCreditUsed,
+          total_available: totalCreditAvailable,
+          overall_utilization: totalCreditLimit > 0 ? (totalCreditUsed / totalCreditLimit) * 100 : 0,
+          availability_projection: creditAvailabilityProjection,
+          // NEW: Scenario impact on credit
+          scenario_debt_drawdown: totalScenarioDebtDrawdown,
+          scenario_adjusted_available: totalCreditAvailable - totalScenarioDebtDrawdown
+        },
+
+        // NEW in v3.1: Scenario info (if applied)
+        scenario: scenarioInfo,
 
         version: '3.0' // Mark this as v3.0 response
       }

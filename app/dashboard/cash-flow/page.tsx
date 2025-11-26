@@ -21,7 +21,10 @@ import {
   BarChart3,
   Settings,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Landmark,
+  PiggyBank,
+  Layers
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -32,20 +35,30 @@ import {
   ComposedChart,
   Bar,
   Line,
+  Area,
+  AreaChart,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ReferenceLine
+  ReferenceLine,
+  LabelList
 } from "recharts"
+import { ScenarioManager } from "@/components/scenario-manager"
 
 interface MonthlyProjection {
   month: string
   month_label: string
   opening_balance: number
   projected_income: number
+  base_income?: number // NEW in v3.1: Base income before scenario adjustments
+  scenario_debt_drawdown?: number // NEW in v3.1: Debt drawdown from scenarios
+  scenario_debt_repayment?: number // NEW: Debt repayment from scenarios (expense)
+  scenario_income?: number // NEW in v3.1: Additional income from scenarios
+  scenario_expense?: number // NEW in v3.1: Additional expense from scenarios
+  scenario_items?: { name: string; amount: number; type: string }[] // NEW in v3.1
   debt_payments: any[]
   scheduled_payments: any[]
   predicted_expenses: any[] // NEW in v2.0
@@ -59,6 +72,39 @@ interface MonthlyProjection {
   health: 'surplus' | 'tight' | 'deficit'
   income_breakdown: any[] // NEW in v2.0
   budget_warnings: any[] // NEW in v2.0
+}
+
+interface CreditLineAccount {
+  account_id: number
+  account_name: string
+  bank_name: string | null
+  credit_limit: number
+  used_amount: number
+  available_credit: number
+  utilization_percent: number
+}
+
+interface CreditAvailabilityProjection {
+  month: string
+  month_label: string
+  available_credit: number
+  repayment_this_month: number
+  scenario_drawdown_this_month?: number
+  scenario_repayment_this_month?: number
+  cumulative_repayments: number
+  cumulative_scenario_drawdowns?: number
+  cumulative_scenario_repayments?: number
+}
+
+interface CreditLinesData {
+  accounts: CreditLineAccount[]
+  total_limit: number
+  total_used: number
+  total_available: number
+  overall_utilization: number
+  availability_projection: CreditAvailabilityProjection[]
+  scenario_debt_drawdown?: number
+  scenario_adjusted_available?: number
 }
 
 interface CashFlowData {
@@ -88,6 +134,7 @@ interface CashFlowData {
     cash_runway_months: number
     liquidity_runway_months: number
   }
+  credit_lines?: CreditLinesData // NEW in v3.1
 }
 
 export default function CashFlowPage() {
@@ -97,6 +144,7 @@ export default function CashFlowPage() {
   const [monthsAhead, setMonthsAhead] = useState('6')
   const [viewMode, setViewMode] = useState<'cards' | 'chart'>('chart')
   const [customizeOpen, setCustomizeOpen] = useState(false)
+  const [selectedScenarioId, setSelectedScenarioId] = useState<number | null>(null)
   const [excludedCategories, setExcludedCategories] = useState<Set<string>>(() => {
     // Load from localStorage
     if (typeof window !== 'undefined') {
@@ -110,7 +158,7 @@ export default function CashFlowPage() {
     if (currentEntity) {
       fetchCashFlow()
     }
-  }, [currentEntity?.id, monthsAhead])
+  }, [currentEntity?.id, monthsAhead, selectedScenarioId])
 
   // Save excluded categories to localStorage whenever they change
   useEffect(() => {
@@ -124,9 +172,11 @@ export default function CashFlowPage() {
 
     setLoading(true)
     try {
-      const response = await fetch(
-        `/api/cash-flow-projection?entity_id=${currentEntity.id}&months_ahead=${monthsAhead}`
-      )
+      let url = `/api/cash-flow-projection?entity_id=${currentEntity.id}&months_ahead=${monthsAhead}`
+      if (selectedScenarioId) {
+        url += `&scenario_id=${selectedScenarioId}`
+      }
+      const response = await fetch(url)
 
       if (response.ok) {
         const result = await response.json()
@@ -256,6 +306,13 @@ export default function CashFlowPage() {
           </Select>
         </div>
       </div>
+
+      {/* Scenario Manager */}
+      <ScenarioManager
+        entityId={currentEntity?.id || ""}
+        selectedScenarioId={selectedScenarioId}
+        onScenarioChange={setSelectedScenarioId}
+      />
 
       {loading ? (
         <div className="text-center py-12">
@@ -517,11 +574,18 @@ export default function CashFlowPage() {
                   <ComposedChart
                     data={filteredProjections.map(p => ({
                       month: p.month_label.split(' ')[0], // Short month name
-                      income: p.projected_income || 0, // NEW in v2.0
+                      // Base income (without scenario adjustments)
+                      baseIncome: p.base_income || p.projected_income || 0,
+                      // Scenario additions (stacked on top of base income)
+                      debtDrawdown: p.scenario_debt_drawdown || 0, // Debt drawdown from scenarios
+                      scenarioIncome: p.scenario_income || 0, // Additional income from scenarios
+                      // Expenses (going down)
                       debt: -p.total_debt,
                       scheduled: -p.total_scheduled,
-                      predicted: -(p.total_predicted || 0), // NEW in v2.0
+                      predicted: -(p.total_predicted || 0),
                       budgets: -p.total_budgets,
+                      // Scenario debt repayment (shown as expense in the repayment month)
+                      debtRepayment: -(p.scenario_debt_repayment || 0),
                       balance: p.closing_balance,
                       opening: p.opening_balance
                     }))}
@@ -557,14 +621,34 @@ export default function CashFlowPage() {
                       label={{ value: 'Zero', position: 'right', fill: '#374151' }}
                     />
 
-                    {/* Cash Flow 2.0+: Income bar (going up) */}
+                    {/* Cash Flow 2.0+: Stacked income bars (going up) */}
                     {(data.version === '2.0' || data.version === '3.0') && (
-                      <Bar
-                        dataKey="income"
-                        fill="#10b981"
-                        name="Projected Income"
-                        radius={[4, 4, 0, 0]}
-                      />
+                      <>
+                        {/* Base income (green) */}
+                        <Bar
+                          dataKey="baseIncome"
+                          stackId="income"
+                          fill="#10b981"
+                          name="Projected Income"
+                          radius={[0, 0, 0, 0]}
+                        />
+                        {/* Debt drawdown from scenarios (cyan/teal) - stacked on top */}
+                        <Bar
+                          dataKey="debtDrawdown"
+                          stackId="income"
+                          fill="#06b6d4"
+                          name="Debt Drawdown (Scenario)"
+                          radius={[0, 0, 0, 0]}
+                        />
+                        {/* Additional scenario income (lime) - stacked on top */}
+                        <Bar
+                          dataKey="scenarioIncome"
+                          stackId="income"
+                          fill="#84cc16"
+                          name="Scenario Income"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </>
                     )}
 
                     {/* Stacked bars for expenses (going down) */}
@@ -599,6 +683,14 @@ export default function CashFlowPage() {
                       name="Budgets (unused)"
                       radius={[0, 0, 0, 0]}
                     />
+                    {/* Scenario debt repayment - shows when debt is due to be repaid */}
+                    <Bar
+                      dataKey="debtRepayment"
+                      stackId="expenses"
+                      fill="#0891b2"
+                      name="Debt Repayment (Scenario)"
+                      radius={[0, 0, 0, 0]}
+                    />
 
                     {/* Line for projected balance */}
                     <Line
@@ -607,11 +699,236 @@ export default function CashFlowPage() {
                       stroke="#0ea5e9"
                       strokeWidth={3}
                       name="Projected Balance"
-                      dot={{ fill: '#0ea5e9', r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
+                      dot={{ fill: '#0ea5e9', r: 5, strokeWidth: 2, stroke: '#fff' }}
+                      activeDot={{ r: 7 }}
+                    >
+                      <LabelList
+                        dataKey="balance"
+                        position="top"
+                        offset={10}
+                        formatter={(value: unknown) => {
+                          if (typeof value !== 'number') return ''
+                          const absValue = Math.abs(value)
+                          if (absValue >= 1_000_000_000) {
+                            return `${(value / 1_000_000_000).toFixed(1)}B`
+                          } else if (absValue >= 1_000_000) {
+                            return `${(value / 1_000_000).toFixed(0)}M`
+                          }
+                          return `${(value / 1_000).toFixed(0)}K`
+                        }}
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          fill: '#0ea5e9'
+                        }}
+                      />
+                    </Line>
                   </ComposedChart>
                 </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Credit Lines Chart - Only show if credit lines exist */}
+          {viewMode === 'chart' && data.credit_lines && data.credit_lines.accounts.length > 0 && (
+            <Card className="border-yellow-200">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Landmark className="h-5 w-5 text-yellow-600" />
+                      Available Credit Lines
+                    </CardTitle>
+                    <CardDescription>
+                      Credit availability projection based on scheduled debt repayments
+                      {data.credit_lines.scenario_debt_drawdown && data.credit_lines.scenario_debt_drawdown > 0 && (
+                        <span className="text-cyan-600"> (includes scenario drawdown)</span>
+                      )}
+                    </CardDescription>
+                  </div>
+                  <div className="text-right">
+                    {data.credit_lines.scenario_debt_drawdown && data.credit_lines.scenario_debt_drawdown > 0 ? (
+                      <>
+                        <div className="text-2xl font-bold text-yellow-600">
+                          {formatCurrency(data.credit_lines.scenario_adjusted_available || 0, 'VND')}
+                        </div>
+                        <div className="text-xs text-muted-foreground line-through">
+                          {formatCurrency(data.credit_lines.total_available, 'VND')} before scenario
+                        </div>
+                        <div className="text-xs text-cyan-600">
+                          -{formatCurrency(data.credit_lines.scenario_debt_drawdown, 'VND')} scenario debt
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold text-yellow-600">
+                          {formatCurrency(data.credit_lines.total_available, 'VND')}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          of {formatCurrency(data.credit_lines.total_limit, 'VND')} total limit
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Credit Lines Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {data.credit_lines.accounts.map((account) => (
+                    <div
+                      key={account.account_id}
+                      className="p-3 rounded-lg border bg-card"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <PiggyBank className="h-4 w-4 text-yellow-600" />
+                        <span className="text-sm font-medium truncate">{account.account_name}</span>
+                      </div>
+                      {account.bank_name && (
+                        <div className="text-xs text-muted-foreground mb-2">{account.bank_name}</div>
+                      )}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Limit:</span>
+                          <span>{formatCurrency(account.credit_limit, 'VND')}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Used:</span>
+                          <span className="text-red-600">{formatCurrency(account.used_amount, 'VND')}</span>
+                        </div>
+                        <div className="flex justify-between text-xs font-medium">
+                          <span className="text-muted-foreground">Available:</span>
+                          <span className="text-green-600">{formatCurrency(account.available_credit, 'VND')}</span>
+                        </div>
+                        {/* Utilization bar */}
+                        <div className="mt-2">
+                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                account.utilization_percent > 80 ? 'bg-red-500' :
+                                account.utilization_percent > 50 ? 'bg-yellow-500' :
+                                'bg-green-500'
+                              }`}
+                              style={{ width: `${Math.min(account.utilization_percent, 100)}%` }}
+                            />
+                          </div>
+                          <div className="text-xs text-muted-foreground text-right mt-1">
+                            {account.utilization_percent.toFixed(0)}% used
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Credit Availability Projection Chart */}
+                <div>
+                  <h4 className="text-sm font-medium mb-4">Credit Availability Projection</h4>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <AreaChart
+                      data={(() => {
+                        const creditData = data.credit_lines!
+                        return [
+                          // Add current month as starting point (no scenario effect yet)
+                          {
+                            month: 'Now',
+                            available: creditData.total_available,
+                            limit: creditData.total_limit,
+                            used: creditData.total_used
+                          },
+                          // Each month includes scenario drawdowns/repayments in available_credit
+                          ...creditData.availability_projection.map(p => ({
+                            month: p.month_label.split(' ')[0],
+                            available: p.available_credit,
+                            limit: creditData.total_limit,
+                            used: creditData.total_limit - p.available_credit,
+                            // Include scenario info for tooltip
+                            scenarioDrawdown: p.scenario_drawdown_this_month || 0,
+                            scenarioRepayment: p.scenario_repayment_this_month || 0
+                          }))
+                        ]
+                      })()}
+                      margin={{ top: 10, right: 30, left: 20, bottom: 10 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis
+                        dataKey="month"
+                        stroke="#6b7280"
+                        style={{ fontSize: '12px' }}
+                      />
+                      <YAxis
+                        stroke="#6b7280"
+                        style={{ fontSize: '12px' }}
+                        tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#fff',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '6px',
+                          fontSize: '12px'
+                        }}
+                        formatter={(value: any) => formatCurrency(value, 'VND')}
+                      />
+                      <Legend wrapperStyle={{ fontSize: '12px' }} />
+                      {/* Total credit limit line */}
+                      <ReferenceLine
+                        y={data.credit_lines.total_limit}
+                        stroke="#94a3b8"
+                        strokeDasharray="5 5"
+                        label={{ value: 'Credit Limit', position: 'right', fill: '#94a3b8', fontSize: 10 }}
+                      />
+                      {/* Used credit area (red) */}
+                      <Area
+                        type="monotone"
+                        dataKey="used"
+                        stackId="1"
+                        stroke="#ef4444"
+                        fill="#fecaca"
+                        name="Credit Used"
+                      />
+                      {/* Available credit area (green) */}
+                      <Area
+                        type="monotone"
+                        dataKey="available"
+                        stackId="1"
+                        stroke="#22c55e"
+                        fill="#bbf7d0"
+                        name="Credit Available"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Combined Liquidity View */}
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-yellow-50 rounded-lg border">
+                  <h4 className="text-sm font-medium mb-3">Total Financial Flexibility</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Cash & Investments</div>
+                      <div className="text-lg font-bold text-blue-600">
+                        {formatCurrency(data.current_balance + (data.liquidity?.investment_balance || 0), 'VND')}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Available Credit</div>
+                      <div className="text-lg font-bold text-yellow-600">
+                        {formatCurrency(data.credit_lines.total_available, 'VND')}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Total Flexibility</div>
+                      <div className="text-lg font-bold text-green-600">
+                        {formatCurrency(
+                          data.current_balance +
+                          (data.liquidity?.investment_balance || 0) +
+                          data.credit_lines.total_available,
+                          'VND'
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -769,6 +1086,27 @@ export default function CashFlowPage() {
                         <div key={i} className="text-xs text-muted-foreground flex items-center justify-between">
                           <span>{budget.category_name}</span>
                           <span>{formatCurrency(budget.estimated_spend, 'VND')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Scenario Items (debt drawdowns, repayments, adjustments) */}
+                  {projection.scenario_items && projection.scenario_items.length > 0 && (
+                    <div className="space-y-2 pl-4 border-l-4 border-l-cyan-500 bg-cyan-50/30 p-2 rounded">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-sm flex items-center gap-2">
+                          <Layers className="h-4 w-4" />
+                          Scenario Adjustments
+                        </span>
+                      </div>
+                      {projection.scenario_items.map((item: any, i: number) => (
+                        <div key={i} className="text-xs text-muted-foreground flex items-center justify-between gap-2">
+                          <span className="flex-1">{item.name}</span>
+                          <Badge variant="outline" className="text-xs capitalize">{item.type.replace('_', ' ')}</Badge>
+                          <span className={`font-medium ${item.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {item.amount >= 0 ? '+' : ''}{formatCurrency(item.amount, 'VND')}
+                          </span>
                         </div>
                       ))}
                     </div>
