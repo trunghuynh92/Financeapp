@@ -29,6 +29,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useEntity } from "@/contexts/EntityContext"
+import { useUserPermissions } from "@/hooks/use-user-role"
 import { formatCurrency } from "@/lib/account-utils"
 import { format } from "date-fns"
 import {
@@ -139,6 +140,7 @@ interface CashFlowData {
 
 export default function CashFlowPage() {
   const { currentEntity } = useEntity()
+  const { permissions, isLoading: permissionsLoading } = useUserPermissions(currentEntity?.id)
   const [data, setData] = useState<CashFlowData | null>(null)
   const [loading, setLoading] = useState(true)
   const [monthsAhead, setMonthsAhead] = useState('6')
@@ -255,10 +257,28 @@ export default function CashFlowPage() {
     lowest_projected_balance: Math.min(...filteredProjections.map(p => p.closing_balance)),
   }
 
-  if (!currentEntity) {
+  if (!currentEntity || permissionsLoading) {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+
+  // Check if user has permission to view cash flow
+  if (!permissions.canViewCashFlow) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
+        <AlertCircle className="h-16 w-16 text-muted-foreground" />
+        <div className="text-center">
+          <h2 className="text-xl font-semibold">Access Denied</h2>
+          <p className="text-muted-foreground mt-2">
+            You don&apos;t have permission to view Cash Flow projections.
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Contact the account owner to request access.
+          </p>
+        </div>
       </div>
     )
   }

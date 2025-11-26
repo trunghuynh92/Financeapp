@@ -199,6 +199,62 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Verify user has permission to view cash flow
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    // Get user's role for this entity
+    const { data: entityUser, error: roleError } = await supabase
+      .from('entity_users')
+      .select('role')
+      .eq('entity_id', entityId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (roleError || !entityUser) {
+      return NextResponse.json(
+        { error: 'You do not have access to this entity' },
+        { status: 403 }
+      )
+    }
+
+    // Check for custom permission override
+    const { data: customPermission } = await supabase
+      .from('role_permissions')
+      .select('can_view_cash_flow')
+      .eq('entity_id', entityId)
+      .eq('role', entityUser.role)
+      .single()
+
+    // Determine if user can view cash flow
+    // Default: only editor and above can view
+    const roleHierarchy: Record<string, number> = {
+      'owner': 5,
+      'admin': 4,
+      'editor': 3,
+      'data_entry': 2,
+      'viewer': 1
+    }
+    const userRoleLevel = roleHierarchy[entityUser.role] || 0
+    const defaultCanViewCashFlow = userRoleLevel >= 3 // editor level
+
+    // Use custom permission if set, otherwise use default
+    const canViewCashFlow = customPermission?.can_view_cash_flow !== null && customPermission?.can_view_cash_flow !== undefined
+      ? customPermission.can_view_cash_flow
+      : defaultCanViewCashFlow
+
+    if (!canViewCashFlow) {
+      return NextResponse.json(
+        { error: 'You do not have permission to view cash flow projections' },
+        { status: 403 }
+      )
+    }
+
     const startDate = startOfMonth(new Date())
     const endDate = endOfMonth(addMonths(startDate, monthsAhead - 1))
 
