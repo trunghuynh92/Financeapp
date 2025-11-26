@@ -210,7 +210,7 @@ export function PaymentInstanceList({ scheduledPaymentId, onUpdate }: PaymentIns
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Click "Add Payment" to record additional transactions for this payment
+                        Click &quot;Add Payment&quot; to record additional transactions for this payment
                       </p>
                     </div>
                   )}
