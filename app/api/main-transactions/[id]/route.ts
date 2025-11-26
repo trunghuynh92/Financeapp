@@ -263,8 +263,7 @@ export async function PATCH(
 
     if (fullError) {
       console.error('Error fetching updated transaction:', fullError)
-      // Still return the basic data
-      return NextResponse.json({ data })
+      return NextResponse.json({ error: fullError.message }, { status: 500 })
     }
 
     return NextResponse.json({
