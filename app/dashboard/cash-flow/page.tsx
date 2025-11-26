@@ -560,377 +560,222 @@ export default function CashFlowPage() {
 
           {/* Chart View */}
           {viewMode === 'chart' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Cash Flow Projection Chart</CardTitle>
-                <CardDescription>
-                  {(data.version === '2.0' || data.version === '3.0')
-                    ? 'Predicted income vs expenses with projected balance'
-                    : 'Stacked expenses and projected balance over time'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={500}>
-                  <ComposedChart
-                    data={filteredProjections.map(p => ({
-                      month: p.month_label.split(' ')[0], // Short month name
-                      // Base income (without scenario adjustments)
-                      baseIncome: p.base_income || p.projected_income || 0,
-                      // Scenario additions (stacked on top of base income)
-                      debtDrawdown: p.scenario_debt_drawdown || 0, // Debt drawdown from scenarios
-                      scenarioIncome: p.scenario_income || 0, // Additional income from scenarios
-                      // Expenses (going down)
-                      debt: -p.total_debt,
-                      scheduled: -p.total_scheduled,
-                      predicted: -(p.total_predicted || 0),
-                      budgets: -p.total_budgets,
-                      // Scenario debt repayment (shown as expense in the repayment month)
-                      debtRepayment: -(p.scenario_debt_repayment || 0),
-                      balance: p.closing_balance,
-                      opening: p.opening_balance
-                    }))}
-                    margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis
-                      dataKey="month"
-                      stroke="#6b7280"
-                      style={{ fontSize: '12px' }}
-                    />
-                    <YAxis
-                      stroke="#6b7280"
-                      style={{ fontSize: '12px' }}
-                      tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#fff',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '6px',
-                        fontSize: '12px'
-                      }}
-                      formatter={(value: any) => formatCurrency(Math.abs(value), 'VND')}
-                    />
-                    <Legend
-                      wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }}
-                    />
-                    <ReferenceLine
-                      y={0}
-                      stroke="#374151"
-                      strokeWidth={2}
-                      label={{ value: 'Zero', position: 'right', fill: '#374151' }}
-                    />
+            <>
+              {/* Prepare aligned month labels for both charts */}
+              {(() => {
+                const monthLabels = filteredProjections.map(p => p.month_label.split(' ')[0])
+                const hasCreditLines = data.credit_lines && data.credit_lines.accounts.length > 0
 
-                    {/* Cash Flow 2.0+: Stacked income bars (going up) */}
-                    {(data.version === '2.0' || data.version === '3.0') && (
-                      <>
-                        {/* Base income (green) */}
-                        <Bar
-                          dataKey="baseIncome"
-                          stackId="income"
-                          fill="#10b981"
-                          name="Projected Income"
-                          radius={[0, 0, 0, 0]}
-                        />
-                        {/* Debt drawdown from scenarios (cyan/teal) - stacked on top */}
-                        <Bar
-                          dataKey="debtDrawdown"
-                          stackId="income"
-                          fill="#06b6d4"
-                          name="Debt Drawdown (Scenario)"
-                          radius={[0, 0, 0, 0]}
-                        />
-                        {/* Additional scenario income (lime) - stacked on top */}
-                        <Bar
-                          dataKey="scenarioIncome"
-                          stackId="income"
-                          fill="#84cc16"
-                          name="Scenario Income"
-                          radius={[4, 4, 0, 0]}
-                        />
-                      </>
-                    )}
-
-                    {/* Stacked bars for expenses (going down) */}
-                    <Bar
-                      dataKey="debt"
-                      stackId="expenses"
-                      fill="#ef4444"
-                      name="Debt Payments"
-                      radius={[0, 0, 4, 4]}
-                    />
-                    <Bar
-                      dataKey="scheduled"
-                      stackId="expenses"
-                      fill="#3b82f6"
-                      name="Scheduled Payments"
-                      radius={[0, 0, 0, 0]}
-                    />
-                    {/* Cash Flow 2.0+: Predicted Expenses */}
-                    {(data.version === '2.0' || data.version === '3.0') && (
-                      <Bar
-                        dataKey="predicted"
-                        stackId="expenses"
-                        fill="#f97316"
-                        name="Predicted Expenses"
-                        radius={[0, 0, 0, 0]}
-                      />
-                    )}
-                    <Bar
-                      dataKey="budgets"
-                      stackId="expenses"
-                      fill="#a855f7"
-                      name="Budgets (unused)"
-                      radius={[0, 0, 0, 0]}
-                    />
-                    {/* Scenario debt repayment - shows when debt is due to be repaid */}
-                    <Bar
-                      dataKey="debtRepayment"
-                      stackId="expenses"
-                      fill="#0891b2"
-                      name="Debt Repayment (Scenario)"
-                      radius={[0, 0, 0, 0]}
-                    />
-
-                    {/* Line for projected balance */}
-                    <Line
-                      type="monotone"
-                      dataKey="balance"
-                      stroke="#0ea5e9"
-                      strokeWidth={3}
-                      name="Projected Balance"
-                      dot={{ fill: '#0ea5e9', r: 5, strokeWidth: 2, stroke: '#fff' }}
-                      activeDot={{ r: 7 }}
-                    >
-                      <LabelList
-                        dataKey="balance"
-                        position="top"
-                        offset={10}
-                        formatter={(value: unknown) => {
-                          if (typeof value !== 'number') return ''
-                          const absValue = Math.abs(value)
-                          if (absValue >= 1_000_000_000) {
-                            return `${(value / 1_000_000_000).toFixed(1)}B`
-                          } else if (absValue >= 1_000_000) {
-                            return `${(value / 1_000_000).toFixed(0)}M`
-                          }
-                          return `${(value / 1_000).toFixed(0)}K`
-                        }}
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          fill: '#0ea5e9'
-                        }}
-                      />
-                    </Line>
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Credit Lines Chart - Only show if credit lines exist */}
-          {viewMode === 'chart' && data.credit_lines && data.credit_lines.accounts.length > 0 && (
-            <Card className="border-yellow-200">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Landmark className="h-5 w-5 text-yellow-600" />
-                      Available Credit Lines
-                    </CardTitle>
-                    <CardDescription>
-                      Credit availability projection based on scheduled debt repayments
-                      {data.credit_lines.scenario_debt_drawdown && data.credit_lines.scenario_debt_drawdown > 0 && (
-                        <span className="text-cyan-600"> (includes scenario drawdown)</span>
-                      )}
-                    </CardDescription>
-                  </div>
-                  <div className="text-right">
-                    {data.credit_lines.scenario_debt_drawdown && data.credit_lines.scenario_debt_drawdown > 0 ? (
-                      <>
-                        <div className="text-2xl font-bold text-yellow-600">
-                          {formatCurrency(data.credit_lines.scenario_adjusted_available || 0, 'VND')}
-                        </div>
-                        <div className="text-xs text-muted-foreground line-through">
-                          {formatCurrency(data.credit_lines.total_available, 'VND')} before scenario
-                        </div>
-                        <div className="text-xs text-cyan-600">
-                          -{formatCurrency(data.credit_lines.scenario_debt_drawdown, 'VND')} scenario debt
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-2xl font-bold text-yellow-600">
-                          {formatCurrency(data.credit_lines.total_available, 'VND')}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          of {formatCurrency(data.credit_lines.total_limit, 'VND')} total limit
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Credit Lines Summary Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {data.credit_lines.accounts.map((account) => (
-                    <div
-                      key={account.account_id}
-                      className="p-3 rounded-lg border bg-card"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <PiggyBank className="h-4 w-4 text-yellow-600" />
-                        <span className="text-sm font-medium truncate">{account.account_name}</span>
-                      </div>
-                      {account.bank_name && (
-                        <div className="text-xs text-muted-foreground mb-2">{account.bank_name}</div>
-                      )}
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Limit:</span>
-                          <span>{formatCurrency(account.credit_limit, 'VND')}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Used:</span>
-                          <span className="text-red-600">{formatCurrency(account.used_amount, 'VND')}</span>
-                        </div>
-                        <div className="flex justify-between text-xs font-medium">
-                          <span className="text-muted-foreground">Available:</span>
-                          <span className="text-green-600">{formatCurrency(account.available_credit, 'VND')}</span>
-                        </div>
-                        {/* Utilization bar */}
-                        <div className="mt-2">
-                          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                account.utilization_percent > 80 ? 'bg-red-500' :
-                                account.utilization_percent > 50 ? 'bg-yellow-500' :
-                                'bg-green-500'
-                              }`}
-                              style={{ width: `${Math.min(account.utilization_percent, 100)}%` }}
+                return (
+                  <div className="space-y-4">
+                    {/* Cash Flow Chart */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Cash Flow Projection</CardTitle>
+                        <CardDescription>
+                          {(data.version === '2.0' || data.version === '3.0')
+                            ? 'Predicted income vs expenses with projected balance'
+                            : 'Stacked expenses and projected balance over time'}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={400}>
+                          <ComposedChart
+                            data={filteredProjections.map(p => ({
+                              month: p.month_label.split(' ')[0],
+                              baseIncome: p.base_income || p.projected_income || 0,
+                              debtDrawdown: p.scenario_debt_drawdown || 0,
+                              scenarioIncome: p.scenario_income || 0,
+                              debt: -p.total_debt,
+                              scheduled: -p.total_scheduled,
+                              predicted: -(p.total_predicted || 0),
+                              budgets: -p.total_budgets,
+                              debtRepayment: -(p.scenario_debt_repayment || 0),
+                              balance: p.closing_balance,
+                            }))}
+                            margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis
+                              dataKey="month"
+                              stroke="#6b7280"
+                              style={{ fontSize: '12px' }}
+                              tickLine={false}
                             />
-                          </div>
-                          <div className="text-xs text-muted-foreground text-right mt-1">
-                            {account.utilization_percent.toFixed(0)}% used
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                            <YAxis
+                              stroke="#6b7280"
+                              style={{ fontSize: '12px' }}
+                              tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: '#fff',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '6px',
+                                fontSize: '12px'
+                              }}
+                              formatter={(value: any) => formatCurrency(Math.abs(value), 'VND')}
+                            />
+                            <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                            <ReferenceLine y={0} stroke="#374151" strokeWidth={2} />
 
-                {/* Credit Availability Projection Chart */}
-                <div>
-                  <h4 className="text-sm font-medium mb-4">Credit Availability Projection</h4>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <AreaChart
-                      data={(() => {
-                        const creditData = data.credit_lines!
-                        return [
-                          // Add current month as starting point (no scenario effect yet)
-                          {
-                            month: 'Now',
-                            available: creditData.total_available,
-                            limit: creditData.total_limit,
-                            used: creditData.total_used
-                          },
-                          // Each month includes scenario drawdowns/repayments in available_credit
-                          ...creditData.availability_projection.map(p => ({
-                            month: p.month_label.split(' ')[0],
-                            available: p.available_credit,
-                            limit: creditData.total_limit,
-                            used: creditData.total_limit - p.available_credit,
-                            // Include scenario info for tooltip
-                            scenarioDrawdown: p.scenario_drawdown_this_month || 0,
-                            scenarioRepayment: p.scenario_repayment_this_month || 0
-                          }))
-                        ]
-                      })()}
-                      margin={{ top: 10, right: 30, left: 20, bottom: 10 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis
-                        dataKey="month"
-                        stroke="#6b7280"
-                        style={{ fontSize: '12px' }}
-                      />
-                      <YAxis
-                        stroke="#6b7280"
-                        style={{ fontSize: '12px' }}
-                        tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#fff',
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '6px',
-                          fontSize: '12px'
-                        }}
-                        formatter={(value: any) => formatCurrency(value, 'VND')}
-                      />
-                      <Legend wrapperStyle={{ fontSize: '12px' }} />
-                      {/* Total credit limit line */}
-                      <ReferenceLine
-                        y={data.credit_lines.total_limit}
-                        stroke="#94a3b8"
-                        strokeDasharray="5 5"
-                        label={{ value: 'Credit Limit', position: 'right', fill: '#94a3b8', fontSize: 10 }}
-                      />
-                      {/* Used credit area (red) */}
-                      <Area
-                        type="monotone"
-                        dataKey="used"
-                        stackId="1"
-                        stroke="#ef4444"
-                        fill="#fecaca"
-                        name="Credit Used"
-                      />
-                      {/* Available credit area (green) */}
-                      <Area
-                        type="monotone"
-                        dataKey="available"
-                        stackId="1"
-                        stroke="#22c55e"
-                        fill="#bbf7d0"
-                        name="Credit Available"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                            {(data.version === '2.0' || data.version === '3.0') && (
+                              <>
+                                <Bar dataKey="baseIncome" stackId="income" fill="#10b981" name="Projected Income" />
+                                <Bar dataKey="debtDrawdown" stackId="income" fill="#06b6d4" name="Debt Drawdown (Scenario)" />
+                                <Bar dataKey="scenarioIncome" stackId="income" fill="#84cc16" name="Scenario Income" radius={[4, 4, 0, 0]} />
+                              </>
+                            )}
 
-                {/* Combined Liquidity View */}
-                <div className="p-4 bg-gradient-to-r from-blue-50 to-yellow-50 rounded-lg border">
-                  <h4 className="text-sm font-medium mb-3">Total Financial Flexibility</h4>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <div className="text-xs text-muted-foreground">Cash & Investments</div>
-                      <div className="text-lg font-bold text-blue-600">
-                        {formatCurrency(data.current_balance + (data.liquidity?.investment_balance || 0), 'VND')}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Available Credit</div>
-                      <div className="text-lg font-bold text-yellow-600">
-                        {formatCurrency(data.credit_lines.total_available, 'VND')}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Total Flexibility</div>
-                      <div className="text-lg font-bold text-green-600">
-                        {formatCurrency(
-                          data.current_balance +
-                          (data.liquidity?.investment_balance || 0) +
-                          data.credit_lines.total_available,
-                          'VND'
-                        )}
-                      </div>
-                    </div>
+                            <Bar dataKey="debt" stackId="expenses" fill="#ef4444" name="Debt Payments" radius={[0, 0, 4, 4]} />
+                            <Bar dataKey="scheduled" stackId="expenses" fill="#3b82f6" name="Scheduled Payments" />
+                            {(data.version === '2.0' || data.version === '3.0') && (
+                              <Bar dataKey="predicted" stackId="expenses" fill="#f97316" name="Predicted Expenses" />
+                            )}
+                            <Bar dataKey="budgets" stackId="expenses" fill="#a855f7" name="Budgets (unused)" />
+                            <Bar dataKey="debtRepayment" stackId="expenses" fill="#0891b2" name="Debt Repayment (Scenario)" />
+
+                            <Line
+                              type="monotone"
+                              dataKey="balance"
+                              stroke="#0ea5e9"
+                              strokeWidth={3}
+                              name="Projected Balance"
+                              dot={{ fill: '#0ea5e9', r: 5, strokeWidth: 2, stroke: '#fff' }}
+                            >
+                              <LabelList
+                                dataKey="balance"
+                                position="top"
+                                offset={10}
+                                formatter={(value: unknown) => {
+                                  if (typeof value !== 'number') return ''
+                                  const absValue = Math.abs(value)
+                                  if (absValue >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
+                                  if (absValue >= 1_000_000) return `${(value / 1_000_000).toFixed(0)}M`
+                                  return `${(value / 1_000).toFixed(0)}K`
+                                }}
+                                style={{ fontSize: '11px', fontWeight: 600, fill: '#0ea5e9' }}
+                              />
+                            </Line>
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    {/* Credit Lines Chart - Aligned X-axis */}
+                    {hasCreditLines && (
+                      <Card className="border-yellow-200">
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle className="text-base flex items-center gap-2">
+                                <Landmark className="h-4 w-4 text-yellow-600" />
+                                Credit Availability Projection
+                              </CardTitle>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-lg font-bold text-yellow-600">
+                                {formatCurrency(
+                                  data.credit_lines!.scenario_adjusted_available ?? data.credit_lines!.total_available,
+                                  'VND'
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                of {formatCurrency(data.credit_lines!.total_limit, 'VND')} limit
+                              </div>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <ComposedChart
+                              data={filteredProjections.map((p, index) => {
+                                const creditProjection = data.credit_lines!.availability_projection[index]
+                                return {
+                                  month: p.month_label.split(' ')[0],
+                                  available: creditProjection?.available_credit ?? data.credit_lines!.total_available,
+                                  used: data.credit_lines!.total_limit - (creditProjection?.available_credit ?? data.credit_lines!.total_available),
+                                }
+                              })}
+                              margin={{ top: 10, right: 30, left: 20, bottom: 5 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                              <XAxis
+                                dataKey="month"
+                                stroke="#6b7280"
+                                style={{ fontSize: '12px' }}
+                                tickLine={false}
+                              />
+                              <YAxis
+                                stroke="#6b7280"
+                                style={{ fontSize: '12px' }}
+                                tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`}
+                                domain={[0, data.credit_lines!.total_limit * 1.05]}
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: '#fff',
+                                  border: '1px solid #e5e7eb',
+                                  borderRadius: '6px',
+                                  fontSize: '12px'
+                                }}
+                                formatter={(value: any) => formatCurrency(value, 'VND')}
+                              />
+                              <Legend wrapperStyle={{ fontSize: '12px' }} />
+                              <ReferenceLine
+                                y={data.credit_lines!.total_limit}
+                                stroke="#94a3b8"
+                                strokeDasharray="5 5"
+                                label={{ value: 'Limit', position: 'right', fill: '#94a3b8', fontSize: 10 }}
+                              />
+                              <Bar
+                                dataKey="used"
+                                stackId="credit"
+                                fill="#fecaca"
+                                stroke="#ef4444"
+                                name="Credit Used"
+                              />
+                              <Bar
+                                dataKey="available"
+                                stackId="credit"
+                                fill="#bbf7d0"
+                                stroke="#22c55e"
+                                name="Credit Available"
+                              />
+                            </ComposedChart>
+                          </ResponsiveContainer>
+
+                          {/* Credit Lines Summary Cards - Compact */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t">
+                            {data.credit_lines!.accounts.map((account) => (
+                              <div key={account.account_id} className="p-2 rounded-lg border bg-card">
+                                <div className="flex items-center gap-1 mb-1">
+                                  <PiggyBank className="h-3 w-3 text-yellow-600" />
+                                  <span className="text-xs font-medium truncate">{account.account_name}</span>
+                                </div>
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-green-600">{formatCurrency(account.available_credit, 'VND')}</span>
+                                  <span className="text-muted-foreground">{account.utilization_percent.toFixed(0)}%</span>
+                                </div>
+                                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      account.utilization_percent > 80 ? 'bg-red-500' :
+                                      account.utilization_percent > 50 ? 'bg-yellow-500' : 'bg-green-500'
+                                    }`}
+                                    style={{ width: `${Math.min(account.utilization_percent, 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                )
+              })()}
+            </>
           )}
 
           {/* Cards View */}
