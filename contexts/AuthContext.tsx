@@ -10,8 +10,11 @@ type AuthContextType = {
   session: Session | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
+  signInWithGoogle: () => Promise<{ error: Error | null }>
   signUp: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
+  resetPassword: (email: string) => Promise<{ error: Error | null }>
+  updatePassword: (newPassword: string) => Promise<{ error: Error | null }>
   refreshSession: () => Promise<void>
 }
 
@@ -77,6 +80,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const signInWithGoogle = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+
+      if (error) {
+        return { error }
+      }
+
+      return { error: null }
+    } catch (error) {
+      return { error: error as Error }
+    }
+  }
+
   const signUp = async (email: string, password: string, fullName?: string) => {
     try {
       const { error } = await supabase.auth.signUp({
@@ -106,6 +128,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push('/signin')
   }
 
+  const resetPassword = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      })
+
+      if (error) {
+        return { error }
+      }
+
+      return { error: null }
+    } catch (error) {
+      return { error: error as Error }
+    }
+  }
+
+  const updatePassword = async (newPassword: string) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      })
+
+      if (error) {
+        return { error }
+      }
+
+      return { error: null }
+    } catch (error) {
+      return { error: error as Error }
+    }
+  }
+
   const refreshSession = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     setSession(session)
@@ -117,8 +171,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     session,
     loading,
     signIn,
+    signInWithGoogle,
     signUp,
     signOut,
+    resetPassword,
+    updatePassword,
     refreshSession,
   }
 
