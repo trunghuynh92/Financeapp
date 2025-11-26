@@ -21,6 +21,7 @@ import { Loader2, AlertTriangle, Info, Link } from "lucide-react"
 import { getFilteredTransactionTypes, AccountType, TransactionDirection } from "@/lib/transaction-type-rules"
 import { SelectDrawdownDialog } from "./SelectDrawdownDialog"
 import { useEntity } from "@/contexts/EntityContext"
+import { formatDate } from "@/lib/account-utils"
 
 interface EditTransactionDialogProps {
   transaction: MainTransactionDetails | null
@@ -334,7 +335,7 @@ export function EditTransactionDialog({
                   />
                 ) : (
                   <p className="text-sm font-medium">
-                    {new Date(transaction.transaction_date).toLocaleDateString()}
+                    {formatDate(transaction.transaction_date)}
                   </p>
                 )}
               </div>

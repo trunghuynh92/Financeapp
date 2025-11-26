@@ -23,7 +23,7 @@ import { MainTransactionDetails } from "@/types/main-transaction"
 import { useEntity } from "@/contexts/EntityContext"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
-import { format } from "date-fns"
+import { formatDate } from "@/lib/account-utils"
 
 interface UnmatchedData {
   transfersOut: MainTransactionDetails[]
@@ -165,16 +165,6 @@ export default function AuditPage() {
       style: 'currency',
       currency: currency,
     }).format(num)
-  }
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '-'
-    return format(new Date(dateString), 'MMM dd, yyyy')
-  }
-
-  const formatDateTime = (dateString: string) => {
-    if (!dateString) return '-'
-    return format(new Date(dateString), 'MMM dd, yyyy HH:mm')
   }
 
   const renderTransactionRow = (transaction: MainTransactionDetails, showActions: boolean = true) => (

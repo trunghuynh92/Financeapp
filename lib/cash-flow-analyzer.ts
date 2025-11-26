@@ -71,6 +71,7 @@ export async function analyzeHistoricalIncome(
   const endDate = endOfMonth(new Date())
 
   // Fetch income transactions (credit direction transactions)
+  // Exclude transfers (TRF_IN) and debt drawdowns (DEBT_TAKE) as they are not real income
   const { data: transactions, error } = await supabase
     .from('main_transaction_details')
     .select(`
@@ -79,13 +80,17 @@ export async function analyzeHistoricalIncome(
       amount,
       transaction_direction,
       category_id,
-      category_name
+      category_name,
+      transaction_type_code,
+      affects_cashflow
     `)
     .eq('entity_id', entityId)
     .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
     .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
     .not('category_id', 'is', null)
     .eq('transaction_direction', 'credit') // Only credit transactions (income)
+    .eq('affects_cashflow', true) // Only transactions that affect cash flow (excludes transfers, debt)
+    .not('transaction_type_code', 'in', '(TRF_IN,DEBT_TAKE,DEBT_PAYBACK)') // Explicitly exclude transfers and debt-related
 
   if (error) {
     console.error('Error fetching income transactions:', error)
@@ -289,6 +294,7 @@ export async function analyzeHistoricalExpenses(
   const scheduledCategories = await getCategoriesWithScheduledPayments(entityId, monthKey)
 
   // Fetch expense transactions (debit direction transactions)
+  // Exclude transfers (TRF_OUT) and debt payments (DEBT_PAYBACK) as they are not regular expenses
   const { data: transactions, error } = await supabase
     .from('main_transaction_details')
     .select(`
@@ -297,13 +303,17 @@ export async function analyzeHistoricalExpenses(
       amount,
       transaction_direction,
       category_id,
-      category_name
+      category_name,
+      transaction_type_code,
+      affects_cashflow
     `)
     .eq('entity_id', entityId)
     .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
     .lte('transaction_date', format(endDate, 'yyyy-MM-dd'))
     .not('category_id', 'is', null)
     .eq('transaction_direction', 'debit') // Only debit transactions (expenses)
+    .eq('affects_cashflow', true) // Only transactions that affect cash flow
+    .not('transaction_type_code', 'in', '(TRF_OUT,DEBT_TAKE,DEBT_PAYBACK)') // Exclude transfers and debt-related
 
   if (error) {
     console.error('Error fetching expense transactions:', error)
@@ -560,6 +570,9 @@ export async function getAccountBalancesByType(
     return { cash: [], investments: [], total_cash: 0, total_investments: 0 }
   }
 
+  console.log(`[Liquidity] Found ${accounts?.length || 0} accounts for entity ${entityId}`)
+  console.log(`[Liquidity] Account types: ${accounts?.map(a => `${a.account_name}(${a.account_type})`).join(', ')}`)
+
   const accountIds = accounts?.map(a => a.account_id) || []
 
   if (accountIds.length === 0) {
@@ -571,10 +584,15 @@ export async function getAccountBalancesByType(
   const accountsWithBalances: AccountBalance[] = []
 
   for (const acc of (accounts || [])) {
-    const { data: balance } = await supabase.rpc('calculate_balance_up_to_date', {
+    const { data: balance, error: balanceError } = await supabase.rpc('calculate_balance_up_to_date', {
       p_account_id: acc.account_id,
       p_up_to_date: today,
     })
+
+    if (balanceError) {
+      console.error(`[Liquidity] Error calculating balance for ${acc.account_name}:`, JSON.stringify(balanceError))
+    }
+    console.log(`[Liquidity] ${acc.account_name} (${acc.account_type}) balance: ${balance || 0}`)
 
     accountsWithBalances.push({
       account_id: acc.account_id,
@@ -585,17 +603,14 @@ export async function getAccountBalancesByType(
   }
 
   // Separate cash accounts from investment accounts
-  const cashAccounts = accountsWithBalances.filter(a => 
-    a.account_type === 'checking' || 
-    a.account_type === 'savings' ||
+  // Based on AccountType: 'bank' | 'cash' | 'credit_card' | 'investment' | 'credit_line' | 'term_loan' | 'loan_receivable'
+  const cashAccounts = accountsWithBalances.filter(a =>
+    a.account_type === 'bank' ||
     a.account_type === 'cash'
   )
 
-  const investmentAccounts = accountsWithBalances.filter(a => 
-    a.account_type === 'investment' ||
-    a.account_type === 'stocks' ||
-    a.account_type === 'bonds' ||
-    a.account_type === 'mutual_fund'
+  const investmentAccounts = accountsWithBalances.filter(a =>
+    a.account_type === 'investment'
   )
 
   const totalCash = cashAccounts.reduce((sum, a) => sum + a.current_balance, 0)

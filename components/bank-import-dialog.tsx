@@ -51,6 +51,7 @@ import {
   getColumnTypeLabel,
   getColumnTypeDescription,
 } from "@/types/import"
+import { formatDate } from "@/lib/account-utils"
 
 interface BankImportDialogProps {
   open: boolean
@@ -825,7 +826,7 @@ export function BankImportDialog({
               <div className="text-sm text-green-700">
                 <p className="font-medium mb-1">Previous Configuration Loaded</p>
                 <p>
-                  Column mappings from your last import ({new Date(savedConfig.lastImportDate).toLocaleDateString()})
+                  Column mappings from your last import ({formatDate(savedConfig.lastImportDate)})
                   have been applied. You can still adjust them if needed.
                 </p>
               </div>
@@ -1010,8 +1011,8 @@ export function BankImportDialog({
           <div className="rounded-lg border p-3">
             <p className="text-sm text-muted-foreground">Statement Period</p>
             <p className="text-sm font-medium">
-              {new Date(statementStartDate).toLocaleDateString()} -{' '}
-              {new Date(statementEndDate).toLocaleDateString()}
+              {formatDate(statementStartDate)} -{' '}
+              {formatDate(statementEndDate)}
             </p>
           </div>
           <div className="rounded-lg border p-3">

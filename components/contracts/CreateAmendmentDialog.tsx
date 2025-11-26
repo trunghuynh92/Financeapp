@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Loader2, Plus, AlertCircle, TrendingUp, TrendingDown, Minus } from "lucide-react"
 import { ContractOverview, AmendmentType, AmendmentStatus } from "@/types/contract"
-import { formatCurrency } from "@/lib/account-utils"
+import { formatCurrency, formatDate } from "@/lib/account-utils"
 
 interface CreateAmendmentDialogProps {
   contract: ContractOverview
@@ -114,7 +114,7 @@ export function CreateAmendmentDialog({
 
     try {
       // Generate title
-      const title = `Amount Change - ${new Date(effectiveStartDate).toLocaleDateString()}`
+      const title = `Amount Change - ${formatDate(effectiveStartDate)}`
 
       const body = {
         amendment_type: "amount_change",

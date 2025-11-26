@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { createOrUpdateCheckpoint } from '@/lib/checkpoint-service'
+import { formatDate } from '@/lib/account-utils'
 import {
   parseCSVText,
   parseDate,
@@ -643,9 +644,9 @@ export async function POST(
       account_id: accountId,
       checkpoint_date: checkpointDate,
       declared_balance: endingBalance,
-      notes: `Checkpoint for imported statement from ${new Date(
+      notes: `Checkpoint for imported statement from ${formatDate(
         statementStartDate || statementEndDate
-      ).toLocaleDateString()} to ${checkpointDate.toLocaleDateString()}`,
+      )} to ${formatDate(checkpointDate)}`,
       import_batch_id: importBatch.import_batch_id,
     })
 

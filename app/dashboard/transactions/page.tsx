@@ -31,6 +31,7 @@ import { TransactionFormDialog } from "@/components/transaction-form-dialog"
 import { TransactionDeleteDialog } from "@/components/transaction-delete-dialog"
 import { ViewCheckpointDialog } from "@/components/view-checkpoint-dialog"
 import { useEntity } from "@/contexts/EntityContext"
+import { formatDate } from "@/lib/account-utils"
 
 interface Account {
   account_id: number
@@ -241,16 +242,6 @@ export default function TransactionsPage() {
       style: 'currency',
       currency: 'VND',
     }).format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
   }
 
   const getSourceBadge = (source: string) => {

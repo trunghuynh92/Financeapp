@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { MainTransactionDetails, TransactionType, Category, Branch, Project } from "@/types/main-transaction"
 import { Loader2, Plus, Trash2, AlertCircle } from "lucide-react"
+import { formatDate } from "@/lib/account-utils"
 
 interface SplitItem {
   id: string
@@ -387,7 +388,7 @@ export function SplitTransactionDialog({
               <div>
                 <Label className="text-xs text-muted-foreground">Date</Label>
                 <p className="text-sm font-medium">
-                  {new Date(transaction.transaction_date).toLocaleDateString()}
+                  {formatDate(transaction.transaction_date)}
                 </p>
               </div>
               <div>

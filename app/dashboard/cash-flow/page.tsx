@@ -676,7 +676,7 @@ export default function CashFlowPage() {
                       </div>
                       {projection.debt_payments.map((payment: any, i: number) => (
                         <div key={i} className="text-xs text-muted-foreground flex items-center justify-between gap-2">
-                          <span className="flex-1">{payment.loan_name} ({payment.type})</span>
+                          <span className="flex-1">{payment.loan_name} - {payment.drawdown_reference || payment.borrower_name || payment.type}</span>
                           <span className="text-blue-600">{format(new Date(payment.due_date), 'MMM d')}</span>
                           <span className="font-medium">{formatCurrency(payment.amount, 'VND')}</span>
                         </div>

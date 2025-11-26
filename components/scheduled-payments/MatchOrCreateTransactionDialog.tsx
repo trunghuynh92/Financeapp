@@ -11,8 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, AlertCircle, Plus, Link2 } from "lucide-react"
 import { ScheduledPaymentInstance } from "@/types/scheduled-payment"
 import { MainTransactionDetails } from "@/types/main-transaction"
-import { formatCurrency } from "@/lib/account-utils"
-import { format } from "date-fns"
+import { formatCurrency, formatDate } from "@/lib/account-utils"
 import { useEntity } from "@/contexts/EntityContext"
 
 interface MatchOrCreateTransactionDialogProps {
@@ -233,10 +232,6 @@ export function MatchOrCreateTransactionDialog({
     } finally {
       setSaving(false)
     }
-  }
-
-  const formatDate = (dateString: string) => {
-    return format(new Date(dateString), "MMM d, yyyy")
   }
 
   return (

@@ -84,10 +84,13 @@ export function CheckpointHistoryCard({
     }
   })
 
-  // Sort by date (newest first)
-  const sortedCheckpoints = [...filteredCheckpoints].sort(
-    (a, b) => new Date(b.checkpoint_date).getTime() - new Date(a.checkpoint_date).getTime()
-  )
+  // Sort by date (newest first), then by checkpoint_id as tiebreaker (for multiple imports on same date)
+  const sortedCheckpoints = [...filteredCheckpoints].sort((a, b) => {
+    const dateDiff = new Date(b.checkpoint_date).getTime() - new Date(a.checkpoint_date).getTime()
+    if (dateDiff !== 0) return dateDiff
+    // For same date, sort by checkpoint_id descending (newer imports first)
+    return b.checkpoint_id - a.checkpoint_id
+  })
 
   async function handleDelete() {
     if (!deletingCheckpoint) return

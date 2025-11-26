@@ -229,15 +229,26 @@ export async function createOrUpdateCheckpoint(
   } = params
 
   try {
-    // Step 1: Check if checkpoint already exists for this account and date
+    // Step 1: Check if checkpoint already exists for this account, date, AND import_batch_id
+    // For import checkpoints: each import batch gets its own checkpoint (even on same date)
+    // For manual checkpoints (import_batch_id = null): only one per date
     const checkpointDateStr = toISODateString(checkpoint_date)
 
-    const { data: existing, error: fetchError } = await supabase
+    let existingQuery = supabase
       .from('balance_checkpoints')
       .select('*')
       .eq('account_id', account_id)
       .eq('checkpoint_date', checkpointDateStr)
-      .maybeSingle()
+
+    // If this is an import checkpoint, check for exact match (same batch)
+    // If this is a manual checkpoint, check for any manual checkpoint on that date
+    if (import_batch_id !== null) {
+      existingQuery = existingQuery.eq('import_batch_id', import_batch_id)
+    } else {
+      existingQuery = existingQuery.is('import_batch_id', null)
+    }
+
+    const { data: existing, error: fetchError } = await existingQuery.maybeSingle()
 
     if (fetchError) {
       throw new Error(`Failed to check for existing checkpoint: ${fetchError.message}`)
@@ -246,7 +257,7 @@ export async function createOrUpdateCheckpoint(
     let checkpoint: BalanceCheckpoint
 
     if (existing) {
-      // Update existing checkpoint (just update declared balance and notes)
+      // Update existing checkpoint (same date + same import_batch_id)
       const { data: updated, error: updateError } = await supabase
         .from('balance_checkpoints')
         .update({

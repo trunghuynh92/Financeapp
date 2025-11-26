@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { MainTransactionDetails } from "@/types/main-transaction"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
+import { formatDate } from "@/lib/account-utils"
 
 interface Account {
   account_id: number
@@ -203,7 +204,7 @@ export function QuickMatchInvestmentDialog({
               <div>
                 <span className="text-muted-foreground">Date:</span>{" "}
                 <span className="font-medium">
-                  {new Date(sourceTransaction.transaction_date).toLocaleDateString()}
+                  {formatDate(sourceTransaction.transaction_date)}
                 </span>
               </div>
               <div>

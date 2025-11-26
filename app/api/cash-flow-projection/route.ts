@@ -41,8 +41,31 @@ export async function GET(request: NextRequest) {
     // Generate list of months
     const months = eachMonthOfInterval({ start: startDate, end: endDate })
 
-    // Fetch debt payments (loan disbursements/drawdowns)
-    const { data: debtPayments, error: debtError } = await supabase
+    // Fetch debt drawdowns (money we borrowed and need to pay back)
+    // These are from credit_line/term_loan accounts with due dates
+    const { data: debtDrawdowns, error: debtDrawdownError } = await supabase
+      .from('debt_drawdown')
+      .select(`
+        *,
+        accounts!inner (
+          entity_id,
+          account_name,
+          account_type
+        )
+      `)
+      .eq('accounts.entity_id', entityId)
+      .eq('status', 'active')
+      .not('due_date', 'is', null)
+      .gte('due_date', format(startDate, 'yyyy-MM-dd'))
+      .lte('due_date', format(endDate, 'yyyy-MM-dd'))
+      .order('due_date', { ascending: true })
+
+    if (debtDrawdownError) {
+      console.error('Error fetching debt drawdowns:', debtDrawdownError)
+    }
+
+    // Also fetch loan disbursements (loans we gave out - receivables with due dates)
+    const { data: loanReceivables, error: loanError } = await supabase
       .from('loan_disbursement')
       .select(`
         *,
@@ -53,12 +76,13 @@ export async function GET(request: NextRequest) {
       `)
       .eq('accounts.entity_id', entityId)
       .eq('status', 'active')
+      .not('due_date', 'is', null)
       .gte('due_date', format(startDate, 'yyyy-MM-dd'))
       .lte('due_date', format(endDate, 'yyyy-MM-dd'))
       .order('due_date', { ascending: true })
 
-    if (debtError) {
-      console.error('Error fetching debt payments:', debtError)
+    if (loanError) {
+      console.error('Error fetching loan receivables:', loanError)
     }
 
     // Fetch scheduled payment instances (only unpaid)
@@ -131,17 +155,21 @@ export async function GET(request: NextRequest) {
       console.error('Error fetching budgets:', budgetsError)
     }
 
-    // Get current cash balance (sum of all account balances)
-    // First get all account IDs for this entity
+    // Get current cash balance (sum of cash/bank account balances only)
+    // Excludes debt accounts (credit_card, credit_line, term_loan) and loan_receivable
     const { data: accounts, error: accountsError} = await supabase
       .from('accounts')
-      .select('account_id')
+      .select('account_id, account_name, account_type')
       .eq('entity_id', entityId)
       .eq('is_active', true)
+      .in('account_type', ['bank', 'cash', 'investment']) // Only liquid asset accounts
 
     if (accountsError) {
       console.error('Error fetching accounts:', accountsError)
     }
+
+    console.log(`[Cash Flow] Found ${accounts?.length || 0} cash/bank/investment accounts for entity ${entityId}`)
+    console.log(`[Cash Flow] Accounts: ${accounts?.map(a => `${a.account_name}(${a.account_type})`).join(', ')}`)
 
     const accountIds = accounts?.map(a => a.account_id) || []
 
@@ -150,14 +178,19 @@ export async function GET(request: NextRequest) {
     if (accountIds.length > 0) {
       // Calculate balance for each account up to today
       const today = new Date()
-      for (const accountId of accountIds) {
-        const { data: balance } = await supabase.rpc('calculate_balance_up_to_date', {
-          p_account_id: accountId,
+      for (const account of (accounts || [])) {
+        const { data: balance, error: balanceError } = await supabase.rpc('calculate_balance_up_to_date', {
+          p_account_id: account.account_id,
           p_up_to_date: today.toISOString().split('T')[0], // YYYY-MM-DD
         })
+        if (balanceError) {
+          console.error(`[Cash Flow] Error calculating balance for ${account.account_name}:`, JSON.stringify(balanceError))
+        }
+        console.log(`[Cash Flow] ${account.account_name} (${account.account_type}) balance: ${balance || 0}`)
         currentBalance += (balance || 0)
       }
     }
+    console.log(`[Cash Flow] Total current balance (cash/bank/investment only): ${currentBalance}`)
 
     // === CASH FLOW SYSTEM 2.0: Calculate predicted income (once for all months) ===
     const { total: predictedMonthlyIncome, breakdown: incomeBreakdown } = await calculatePredictedIncome(entityId)
@@ -171,17 +204,18 @@ export async function GET(request: NextRequest) {
       const monthStart = startOfMonth(month)
       const monthEnd = endOfMonth(month)
 
-      // === PRIORITY 1: DEBT PAYMENTS ===
-      const monthDebtPayments = (debtPayments || []).filter((payment: any) => {
-        const dueDate = parseISO(payment.due_date)
+      // === PRIORITY 1: DEBT PAYMENTS (Drawdowns we need to repay) ===
+      const monthDebtPayments = (debtDrawdowns || []).filter((drawdown: any) => {
+        const dueDate = parseISO(drawdown.due_date)
         return dueDate >= monthStart && dueDate <= monthEnd
-      }).map((payment: any) => ({
-        type: 'Loan Due',
-        loan_name: payment.accounts?.account_name || 'Loan Receivable',
-        borrower_name: payment.borrower_name || 'Unknown',
-        amount: payment.remaining_balance || 0,
-        due_date: payment.due_date,
-        status: payment.status
+      }).map((drawdown: any) => ({
+        type: 'Debt Repayment',
+        loan_name: drawdown.accounts?.account_name || 'Debt Account',
+        drawdown_reference: drawdown.drawdown_reference || 'Unknown',
+        amount: drawdown.remaining_balance || 0,
+        due_date: drawdown.due_date,
+        status: drawdown.status,
+        account_type: drawdown.accounts?.account_type || 'unknown'
       }))
 
       // === PRIORITY 1: SCHEDULED PAYMENTS ===

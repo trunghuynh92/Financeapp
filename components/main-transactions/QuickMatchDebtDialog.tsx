@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { MainTransactionDetails } from "@/types/main-transaction"
+import { formatDate } from "@/lib/account-utils"
 
 interface Account {
   account_id: number
@@ -190,10 +191,6 @@ export function QuickMatchDebtDialog({
 
   const formatAmount = (amount: number) => {
     return new Intl.NumberFormat("vi-VN").format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString()
   }
 
   if (!sourceTransaction) return null

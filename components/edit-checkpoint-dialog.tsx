@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { BalanceCheckpoint } from "@/types/checkpoint"
+import { formatDate } from "@/lib/account-utils"
 
 interface EditCheckpointDialogProps {
   checkpoint: BalanceCheckpoint
@@ -97,7 +98,7 @@ export function EditCheckpointDialog({
               <Input
                 id="date"
                 type="text"
-                value={new Date(checkpoint.checkpoint_date).toLocaleDateString()}
+                value={formatDate(checkpoint.checkpoint_date)}
                 disabled
                 className="bg-muted"
               />

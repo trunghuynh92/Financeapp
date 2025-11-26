@@ -35,6 +35,7 @@ import { useEntity } from "@/contexts/EntityContext"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { formatDate } from "@/lib/account-utils"
 
 interface PaginationInfo {
   page: number
@@ -1141,10 +1142,10 @@ export default function MainTransactionsPage() {
                     {dateRange.from ? (
                       dateRange.to ? (
                         <>
-                          {dateRange.from.toLocaleDateString()} - {dateRange.to.toLocaleDateString()}
+                          {formatDate(dateRange.from)} - {formatDate(dateRange.to)}
                         </>
                       ) : (
-                        dateRange.from.toLocaleDateString()
+                        formatDate(dateRange.from)
                       )
                     ) : (
                       <span>Pick a date range</span>
@@ -1585,7 +1586,7 @@ export default function MainTransactionsPage() {
                             />
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
-                            {new Date(tx.transaction_date).toLocaleDateString()}
+                            {formatDate(tx.transaction_date)}
                           </td>
 
                           {/* Description - Inline editable */}

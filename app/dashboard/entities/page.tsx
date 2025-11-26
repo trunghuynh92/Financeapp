@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { formatDate } from "@/lib/account-utils"
 import {
   Select,
   SelectContent,
@@ -229,7 +230,7 @@ export default function EntitiesPage() {
                       {entity.description || "—"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {new Date(entity.created_at).toLocaleDateString()}
+                      {formatDate(entity.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">

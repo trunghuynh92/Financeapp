@@ -47,6 +47,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { formatDate } from "@/lib/account-utils"
 
 type UserRole = 'owner' | 'admin' | 'editor' | 'data_entry' | 'viewer'
 
@@ -317,7 +318,7 @@ export function TeamMembersManager() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {new Date(member.created_at).toLocaleDateString()}
+                        {formatDate(member.created_at)}
                       </TableCell>
                       {canManageMembers && (
                         <TableCell className="text-right">

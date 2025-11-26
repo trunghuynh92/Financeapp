@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DatePicker } from "@/components/ui/date-picker"
 import type { Account } from "@/types/account"
-import { formatCurrency } from "@/lib/account-utils"
+import { formatCurrency, formatDate } from "@/lib/account-utils"
 
 interface BalanceEditDialogProps {
   open: boolean
@@ -73,7 +73,7 @@ export function BalanceEditDialog({
         body: JSON.stringify({
           checkpoint_date: balanceDate,
           declared_balance: declaredBalance,
-          notes: notes || `Balance checkpoint created on ${new Date().toLocaleDateString()}`,
+          notes: notes || `Balance checkpoint created on ${formatDate(new Date())}`,
         }),
       })
 

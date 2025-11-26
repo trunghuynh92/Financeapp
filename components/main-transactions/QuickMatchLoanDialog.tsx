@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { MainTransactionDetails } from "@/types/main-transaction"
 import { CreateLoanDisbursementDialog } from "@/components/create-loan-disbursement-dialog"
+import { formatDate } from "@/lib/account-utils"
 
 interface QuickMatchLoanDialogProps {
   open: boolean
@@ -373,10 +374,6 @@ export function QuickMatchLoanDialog({
 
   const formatAmount = (amount: number) => {
     return new Intl.NumberFormat("vi-VN").format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString()
   }
 
   if (!sourceTransaction) return null

@@ -27,6 +27,7 @@ import { BusinessPartner } from "@/types/business-partner"
 import { CreateBusinessPartnerDialog } from "@/components/create-business-partner-dialog"
 import { AccountFormDialog } from "@/components/account-form-dialog"
 import { useEntity } from "@/contexts/EntityContext"
+import { formatDate } from "@/lib/account-utils"
 
 interface Account {
   account_id: number
@@ -764,7 +765,7 @@ export function AddTransactionDialog({
                       {activeDrawdowns.map((drawdown: any) => (
                         <SelectItem key={drawdown.drawdown_id} value={drawdown.drawdown_id.toString()}>
                           {drawdown.drawdown_reference} - {parseFloat(drawdown.remaining_balance).toLocaleString()}₫ remaining
-                          {drawdown.due_date && ` (Due: ${new Date(drawdown.due_date).toLocaleDateString()})`}
+                          {drawdown.due_date && ` (Due: ${formatDate(drawdown.due_date)})`}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -847,7 +848,7 @@ export function AddTransactionDialog({
                       <SelectItem value="none">Select a loan</SelectItem>
                       {loanDisbursements.map((loan) => (
                         <SelectItem key={loan.loan_disbursement_id} value={loan.loan_disbursement_id.toString()}>
-                          {new Date(loan.disbursement_date).toLocaleDateString()} - {loan.principal_amount.toLocaleString()} VND
+                          {formatDate(loan.disbursement_date)} - {loan.principal_amount.toLocaleString()} VND
                           (Remaining: {loan.remaining_balance.toLocaleString()})
                         </SelectItem>
                       ))}

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Link2, Link2Off, ArrowDown, ArrowUp } from "lucide-react"
 import { MainTransactionDetails } from "@/types/main-transaction"
 import { useEntity } from "@/contexts/EntityContext"
+import { formatDate } from "@/lib/account-utils"
 
 export default function TransfersPage() {
   const { currentEntity, loading: entityLoading } = useEntity()
@@ -164,10 +165,6 @@ export default function TransfersPage() {
 
   const formatAmount = (amount: number) => {
     return new Intl.NumberFormat("vi-VN").format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString()
   }
 
   const renderTransferRow = (

@@ -25,7 +25,7 @@ import {
 import { BudgetOverview, BudgetSummary } from "@/types/budget"
 import { Category } from "@/types/main-transaction"
 import { useEntity } from "@/contexts/EntityContext"
-import { formatCurrency } from "@/lib/account-utils"
+import { formatCurrency, formatDate } from "@/lib/account-utils"
 import { CreateBudgetDialog } from "@/components/budgets/CreateBudgetDialog"
 import { BudgetTimeline } from "@/components/budgets/BudgetTimeline"
 
@@ -481,7 +481,7 @@ export default function BudgetsPage() {
                       <div className="flex items-center gap-4">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          {new Date(budget.start_date).toLocaleDateString()} - {new Date(budget.end_date).toLocaleDateString()}
+                          {formatDate(budget.start_date)} - {formatDate(budget.end_date)}
                         </span>
                         <span>{budget.transaction_count} transactions</span>
                       </div>

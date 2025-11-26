@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { BalanceCheckpoint } from "@/types/checkpoint"
+import { formatDate } from "@/lib/account-utils"
 
 interface Transaction {
   raw_transaction_id: string
@@ -128,14 +129,6 @@ export function InvestigateDiscrepancyDialog({
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     }).format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    })
   }
 
   return (

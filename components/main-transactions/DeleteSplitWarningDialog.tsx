@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { MainTransactionDetails } from "@/types/main-transaction"
+import { formatDate } from "@/lib/account-utils"
 
 interface DeleteSplitWarningDialogProps {
   open: boolean
@@ -65,7 +66,7 @@ export function DeleteSplitWarningDialog({
                         Split {index + 1} of {splitTransactions.length}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(tx.transaction_date).toLocaleDateString()}
+                        {formatDate(tx.transaction_date)}
                       </span>
                     </div>
                     <p className="text-sm font-medium">

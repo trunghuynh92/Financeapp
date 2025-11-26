@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { formatDate } from "@/lib/account-utils"
 import {
   BarChart,
   Bar,
@@ -428,7 +429,7 @@ function TransactionTable({ transactions }: { transactions: CashFlowTransaction[
       <TableBody>
         {transactions.map((tx) => (
           <TableRow key={tx.transaction_id}>
-            <TableCell>{new Date(tx.date).toLocaleDateString()}</TableCell>
+            <TableCell>{formatDate(tx.date)}</TableCell>
             <TableCell className="font-medium">{tx.description || '—'}</TableCell>
             <TableCell>
               <Badge variant="outline">{tx.category_name}</Badge>

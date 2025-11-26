@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { MainTransactionDetails } from "@/types/main-transaction"
+import { formatDate } from "@/lib/account-utils"
 
 interface UnmatchInvestmentDialogProps {
   open: boolean
@@ -105,7 +106,7 @@ export function UnmatchInvestmentDialog({
               <div>
                 <span className="text-muted-foreground">Date:</span>{" "}
                 <span className="font-medium">
-                  {new Date(sourceTransaction.transaction_date).toLocaleDateString()}
+                  {formatDate(sourceTransaction.transaction_date)}
                 </span>
               </div>
             </div>
