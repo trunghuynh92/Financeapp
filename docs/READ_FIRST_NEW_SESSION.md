@@ -43,10 +43,10 @@ You'll need these to check current schema, run migrations, and verify database s
 **IN THIS ORDER** (5 minutes to read):
 
 ### 2.1 Database Schema (MOST IMPORTANT)
-📄 **`database/schema/SCHEMA.md`**
+📄 **`docs/architecture/database-schema.md`**
 - **This is the SINGLE SOURCE OF TRUTH** for current database structure
 - Do NOT search through individual migration files (they contain outdated info)
-- Current migration: 086
+- Current migration: 093
 - Key: transaction_date is DATE (not TIMESTAMPTZ), account_balances table REMOVED
 
 ### 2.2 Architecture & Data Flow
@@ -94,9 +94,11 @@ Financeapp/
 │   └── ...
 │
 ├── database/
-│   ├── schema/
-│   │   └── SCHEMA.md           # ⭐ READ THIS FIRST
 │   └── migrations/             # ⚠️ Historical only, not current state
+│
+├── docs/
+│   └── architecture/
+│       └── database-schema.md  # ⭐ READ THIS FIRST - Single source of truth
 │
 ├── types/                       # TypeScript type definitions
 │   ├── account.ts
@@ -200,11 +202,11 @@ const { data } = await supabase.rpc('calculate_balance_up_to_date', {
 ### 6.1 Database Changes
 
 **DO**:
-1. Read `database/schema/SCHEMA.md` to understand current state
-2. Create new migration file: `087_your_change.sql`
+1. Read `docs/architecture/database-schema.md` to understand current state
+2. Create new migration file: `094_your_change.sql`
 3. Test migration in Supabase SQL Editor
-4. Update `SCHEMA.md` with changes
-5. Commit both migration + updated SCHEMA.md
+4. Update `docs/architecture/database-schema.md` with changes
+5. Commit both migration + updated database-schema.md
 
 **DON'T**:
 - Don't search through old migrations for reference
@@ -356,7 +358,7 @@ git log --oneline -10
 
 ## 12. When You're Stuck
 
-1. **Schema confusion** → Read `database/schema/SCHEMA.md`
+1. **Schema confusion** → Read `docs/architecture/database-schema.md`
 2. **TypeScript errors** → Check `types/` folder for type definitions
 3. **API not working** → Check RLS policies in Supabase dashboard
 4. **Import failing** → Check `app/api/accounts/[id]/import/route.ts`
@@ -367,7 +369,7 @@ git log --oneline -10
 
 ## 13. Summary: Start Every Session With
 
-1. ✅ Read `database/schema/SCHEMA.md`
+1. ✅ Read `docs/architecture/database-schema.md`
 2. ✅ Check `docs/SCHEMA_AUDIT_2025-11-25.md` for recent changes
 3. ✅ Review git log to see what changed recently: `git log --oneline -20`
 4. ✅ Start dev server: `npm run dev`

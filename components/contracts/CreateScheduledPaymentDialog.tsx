@@ -36,6 +36,7 @@ export function CreateScheduledPaymentDialog({
   // Form state
   const [transactionType, setTransactionType] = useState<"income" | "expense">("expense")
   const [paymentType, setPaymentType] = useState("")
+  const [payeeName, setPayeeName] = useState("")  // For standalone payments
   const [categoryId, setCategoryId] = useState<number | null>(null)
   const [paymentAmount, setPaymentAmount] = useState("")
   const [frequency, setFrequency] = useState("monthly")
@@ -105,6 +106,7 @@ export function CreateScheduledPaymentDialog({
   const resetForm = () => {
     setTransactionType("expense")
     setPaymentType("")
+    setPayeeName("")
     setCategoryId(null)
     setPaymentAmount("")
     setFrequency("monthly")
@@ -131,7 +133,13 @@ export function CreateScheduledPaymentDialog({
 
     // Validation
     if (!paymentType.trim()) {
-      setError("Payment type is required (e.g., Year 1, Year 2, Rent, Utilities)")
+      setError("Schedule name is required (e.g., Year 1, Year 2, Rent, Utilities)")
+      return
+    }
+
+    // For standalone payments, payee name is required
+    if (!contract && !payeeName.trim()) {
+      setError("Payee name is required for standalone payments")
       return
     }
 
@@ -158,23 +166,33 @@ export function CreateScheduledPaymentDialog({
     setLoading(true)
 
     try {
-      const body = {
+      const isOneTime = frequency === "one_time"
+
+      const body: Record<string, any> = {
         entity_id: currentEntity.id,
         contract_id: contract?.contract_id || undefined,
         payment_type: paymentType.trim(),
         category_id: categoryId,
-        contract_name: contract?.contract_name || undefined,
-        contract_type: contract?.contract_type || undefined,
-        payee_name: contract?.counterparty || undefined,
+        // For standalone payments, use schedule name as contract name
+        contract_name: contract?.contract_name || paymentType.trim(),
+        contract_type: contract?.contract_type || "other",
+        // For standalone payments, use the payee name field
+        payee_name: contract?.counterparty || payeeName.trim(),
         payment_amount: parseFloat(paymentAmount),
-        schedule_type: "recurring",
-        frequency: frequency,
-        payment_day: parseInt(paymentDay),
+        schedule_type: isOneTime ? "one_time" : "recurring",
         start_date: startDate,
-        end_date: endDate || undefined,
         notes: notes.trim() || undefined,
         generate_instances: !editingSchedule, // Only generate instances for new schedules (POST)
         regenerate_instances: !!editingSchedule, // Regenerate instances when editing (PATCH)
+      }
+
+      // Only add recurring-specific fields if not one-time
+      if (!isOneTime) {
+        body.frequency = frequency
+        body.payment_day = parseInt(paymentDay)
+        if (endDate) {
+          body.end_date = endDate
+        }
       }
 
       const url = editingSchedule
@@ -283,6 +301,23 @@ export function CreateScheduledPaymentDialog({
             </p>
           </div>
 
+          {/* Payee Name - only for standalone payments */}
+          {!contract && (
+            <div className="space-y-2">
+              <Label htmlFor="payeeName">Payee Name *</Label>
+              <Input
+                id="payeeName"
+                value={payeeName}
+                onChange={(e) => setPayeeName(e.target.value)}
+                placeholder="e.g., Tax Department, Vendor Name"
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Who will receive this payment?
+              </p>
+            </div>
+          )}
+
           {/* Category */}
           <div className="space-y-2">
             <Label htmlFor="category">Category *</Label>
@@ -334,6 +369,7 @@ export function CreateScheduledPaymentDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="one_time">One-time</SelectItem>
                   <SelectItem value="monthly">Monthly</SelectItem>
                   <SelectItem value="quarterly">Quarterly</SelectItem>
                   <SelectItem value="yearly">Yearly</SelectItem>
@@ -341,58 +377,74 @@ export function CreateScheduledPaymentDialog({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="paymentDay">Payment Day of Month *</Label>
-              <Input
-                id="paymentDay"
-                type="number"
-                min="1"
-                max="31"
-                value={paymentDay}
-                onChange={(e) => setPaymentDay(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          {/* Period Dates */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-sm">Payment Period</h3>
-
-            <div className="grid grid-cols-2 gap-4">
+            {frequency === "one_time" ? (
               <div className="space-y-2">
-                <Label htmlFor="startDate">Start Date *</Label>
+                <Label htmlFor="paymentDate">Payment Date *</Label>
                 <Input
-                  id="startDate"
+                  id="paymentDate"
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   required
                   className="cursor-text"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Click to type or pick from calendar
-                </p>
               </div>
-
+            ) : (
               <div className="space-y-2">
-                <Label htmlFor="endDate">End Date</Label>
+                <Label htmlFor="paymentDay">Payment Day of Month *</Label>
                 <Input
-                  id="endDate"
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="cursor-text"
+                  id="paymentDay"
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={paymentDay}
+                  onChange={(e) => setPaymentDay(e.target.value)}
+                  required
                 />
-                <p className="text-xs text-muted-foreground">
-                  Leave empty for ongoing
-                </p>
               </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              For escalating contracts, create separate schedules for each period (e.g., Year 1: Nov 2025-Nov 2026 at 35mil, Year 2: Nov 2026-Nov 2027 at 38mil)
-            </p>
+            )}
           </div>
+
+          {/* Period Dates - only show for recurring payments */}
+          {frequency !== "one_time" && (
+            <div className="space-y-4">
+              <h3 className="font-semibold text-sm">Payment Period</h3>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="startDate">Start Date *</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    required
+                    className="cursor-text"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Click to type or pick from calendar
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="endDate">End Date</Label>
+                  <Input
+                    id="endDate"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="cursor-text"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty for ongoing
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                For escalating contracts, create separate schedules for each period (e.g., Year 1: Nov 2025-Nov 2026 at 35mil, Year 2: Nov 2026-Nov 2027 at 38mil)
+              </p>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="space-y-2">

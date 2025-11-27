@@ -1,8 +1,33 @@
 # Database Schema Documentation
 
-**Last Updated**: 2025-11-26
+**Last Updated**: 2025-11-27
 **Database**: PostgreSQL 15+ via Supabase
 **Current Migration**: 093_add_cashflow_scenarios.sql
+
+> **IMPORTANT**: This file is the SINGLE SOURCE OF TRUTH for the current database schema.
+> Always refer to THIS file instead of individual migration files, as migrations may contain outdated information.
+
+## How to Keep This File Updated
+
+**After running any migration**, update this file using:
+
+```bash
+# Connect to Supabase and check current state
+PGPASSWORD="your-password" psql "postgresql://postgres.mflyrbzriksgjutlalkf:your-password@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres" << 'EOF'
+-- Get current table count and list
+SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';
+\dt
+\dv
+EOF
+```
+
+**Then update**:
+1. Migration number at top
+2. Last Updated date
+3. Table count and list
+4. Key Changes section with what changed
+
+This ensures Claude and developers always see the CURRENT state, not historical migrations.
 
 ---
 
@@ -13,6 +38,14 @@
 **Functions**: 25+ RPC functions
 **Triggers**: 20+ active triggers
 **ENUMs**: 7 custom types
+
+**Key Changes (Migrations 079-093)**:
+- `transaction_date` changed from TIMESTAMPTZ → DATE (eliminates timezone bugs)
+- `account_balances` table REMOVED (use `calculate_balance_up_to_date` RPC instead)
+- All CASCADE DELETE constraints fixed for entity deletion
+- Obsolete functions removed (`create_account_balance`, `sync_account_balance_from_checkpoints`, `trigger_recalculate_checkpoints`)
+- Added `role_permissions` table for custom role overrides (Migration 091-092)
+- Added `cashflow_scenarios` and `scenario_adjustments` tables (Migration 093)
 
 ---
 
