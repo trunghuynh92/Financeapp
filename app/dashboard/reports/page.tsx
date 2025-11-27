@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, TrendingUp, TrendingDown, DollarSign, CreditCard, Wallet } from "lucide-react"
+import { Loader2, TrendingUp, TrendingDown, DollarSign, CreditCard, Wallet, PieChartIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -29,6 +29,9 @@ import {
   Legend,
   ResponsiveContainer,
   ComposedChart,
+  PieChart,
+  Pie,
+  Cell,
 } from 'recharts'
 import { formatCurrency } from "@/lib/account-utils"
 import { useEntity } from "@/contexts/EntityContext"
@@ -49,8 +52,24 @@ interface AccountBalance {
   currency: string
 }
 
+interface CategoryExpense {
+  category_id: number | null
+  category_name: string
+  total: number
+  count: number
+  percentage: number
+}
+
 type Granularity = 'year' | 'month' | 'week'
 type DateRange = '1m' | '3m' | '6m' | '1y' | 'all'
+
+// Colors for the pie chart
+const CATEGORY_COLORS = [
+  '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16',
+  '#22c55e', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6',
+  '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
+  '#f43f5e', '#78716c', '#71717a', '#64748b', '#475569',
+]
 
 export default function ReportsPage() {
   const { currentEntity, loading: entityLoading } = useEntity()
@@ -64,10 +83,16 @@ export default function ReportsPage() {
   const [assetAccounts, setAssetAccounts] = useState<AccountBalance[]>([])
   const [loadingPositions, setLoadingPositions] = useState(true)
 
+  // Expense by category
+  const [categoryExpenses, setCategoryExpenses] = useState<CategoryExpense[]>([])
+  const [categoryTotal, setCategoryTotal] = useState(0)
+  const [loadingCategories, setLoadingCategories] = useState(true)
+
   useEffect(() => {
     if (currentEntity) {
       fetchIncomeExpenseData()
       fetchDebtAssetPositions()
+      fetchExpenseByCategory()
     }
   }, [currentEntity?.id, granularity, dateRange])
 
@@ -155,6 +180,53 @@ export default function ReportsPage() {
       console.error("Error fetching debt/asset positions:", error)
     } finally {
       setLoadingPositions(false)
+    }
+  }
+
+  async function fetchExpenseByCategory() {
+    if (!currentEntity) return
+
+    try {
+      setLoadingCategories(true)
+
+      // Calculate date range
+      const endDate = new Date()
+      let startDate = new Date()
+
+      switch (dateRange) {
+        case '1m':
+          startDate.setMonth(endDate.getMonth() - 1)
+          break
+        case '3m':
+          startDate.setMonth(endDate.getMonth() - 3)
+          break
+        case '6m':
+          startDate.setMonth(endDate.getMonth() - 6)
+          break
+        case '1y':
+          startDate.setFullYear(endDate.getFullYear() - 1)
+          break
+        case 'all':
+          startDate = new Date('2020-01-01')
+          break
+      }
+
+      const params = new URLSearchParams({
+        entity_id: currentEntity.id,
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+      })
+
+      const response = await fetch(`/api/reports/expense-by-category?${params.toString()}`)
+      if (response.ok) {
+        const result = await response.json()
+        setCategoryExpenses(result.data || [])
+        setCategoryTotal(result.total || 0)
+      }
+    } catch (error) {
+      console.error("Error fetching expense by category:", error)
+    } finally {
+      setLoadingCategories(false)
     }
   }
 
@@ -447,6 +519,106 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Expense by Category */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PieChartIcon className="h-5 w-5 text-red-500" />
+            Expenses by Category
+          </CardTitle>
+          <CardDescription>
+            Breakdown of expenses by category for the selected period
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingCategories ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : categoryExpenses.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No expense data available for the selected period
+            </div>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Pie Chart */}
+              <div className="flex items-center justify-center">
+                <ResponsiveContainer width="100%" height={350}>
+                  <PieChart>
+                    <Pie
+                      data={categoryExpenses}
+                      dataKey="total"
+                      nameKey="category_name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={120}
+                      innerRadius={60}
+                      paddingAngle={2}
+                      label={({ category_name, percentage }) =>
+                        percentage > 5 ? `${percentage.toFixed(0)}%` : ''
+                      }
+                      labelLine={false}
+                    >
+                      {categoryExpenses.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: any, name: string) => [
+                        formatCurrency(value, "VND"),
+                        name
+                      ]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Category List */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-200">
+                  <span className="text-sm font-medium">Total Expenses</span>
+                  <span className="text-2xl font-bold text-red-600">
+                    {formatCurrency(categoryTotal, "VND")}
+                  </span>
+                </div>
+                <div className="max-h-[280px] overflow-y-auto space-y-2">
+                  {categoryExpenses.map((category, index) => (
+                    <div
+                      key={category.category_id || 'uncategorized'}
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }}
+                        />
+                        <div>
+                          <p className="font-medium text-sm">{category.category_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {category.count} transactions
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-red-600">
+                          {formatCurrency(category.total, "VND")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {category.percentage.toFixed(1)}%
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
