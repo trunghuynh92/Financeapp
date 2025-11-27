@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -41,7 +42,18 @@ import { useEntity } from "@/contexts/EntityContext"
 
 export default function EntitiesPage() {
   const { entities: userEntities, loading: entitiesLoading, refreshEntities } = useEntity()
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+
+  // Auto-open add dialog if redirected from /entities/new
+  useEffect(() => {
+    if (searchParams.get('action') === 'add') {
+      setIsAddDialogOpen(true)
+      // Clear the URL parameter
+      router.replace('/dashboard/entities')
+    }
+  }, [searchParams, router])
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedEntity, setSelectedEntity] = useState<any | null>(null)
