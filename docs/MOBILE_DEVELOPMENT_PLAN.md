@@ -4,7 +4,7 @@
 
 Plan to develop a native mobile version of the Finance App using Expo (React Native) to share maximum code with the existing Next.js web application.
 
-## Phase 1: Architecture & Code Preparation (Week 1-2)
+## Phase 1: Architecture & Code Preparation
 
 ### 1.1 Restructure for Code Sharing
 
@@ -61,6 +61,9 @@ Financeapp/
 - [ ] Implement proper API authentication (JWT tokens)
 - [ ] Create API client library for mobile
 - [ ] Test API routes work without server-side rendering
+- [ ] Implement API versioning (/api/v1/*)
+- [ ] Add rate limiting to API routes
+- [ ] Document all API endpoints (consider OpenAPI/Swagger)
 
 ### 1.3 Authentication Architecture
 
@@ -74,9 +77,10 @@ Financeapp/
 #### Tasks:
 - [ ] Install `@supabase/supabase-js` for React Native
 - [ ] Set up `expo-secure-store` for token storage
-- [ ] Implement OAuth flow for mobile (if using social login)
+- [ ] Implement OAuth flow for mobile (Google, Apple Sign-In)
 - [ ] Add biometric authentication with `expo-local-authentication`
 - [ ] Create shared auth hooks
+- [ ] Implement session refresh logic
 
 ### 1.4 Database & State Management
 
@@ -92,8 +96,8 @@ Financeapp/
 
 #### Recommended Libraries:
 - **TanStack Query (React Query):** API caching and synchronization
-- **Zustand or Jotai:** Lightweight global state
-- **WatermelonDB:** Offline-first SQLite database (optional, for advanced offline)
+- **Zustand:** Lightweight global state
+- **WatermelonDB:** Offline-first SQLite database (for advanced offline)
 
 #### Tasks:
 - [ ] Install TanStack Query for both web and mobile
@@ -102,7 +106,7 @@ Financeapp/
 - [ ] Set up offline queue for pending operations
 - [ ] Create sync strategy for offline/online transitions
 
-## Phase 2: Mobile App Setup (Week 3)
+## Phase 2: Mobile App Setup
 
 ### 2.1 Initialize Expo Project
 
@@ -116,13 +120,14 @@ cd mobile
 ```bash
 # Expo essentials
 npx expo install expo-router expo-secure-store expo-local-authentication
+npx expo install expo-notifications expo-image expo-haptics
 
-# UI libraries
+# Navigation & Gestures
 npm install react-native-reanimated react-native-gesture-handler
 npm install @react-navigation/native @react-navigation/native-stack
 
 # Forms and validation
-npm install react-hook-form zod
+npm install react-hook-form zod @hookform/resolvers
 
 # Date handling
 npm install date-fns
@@ -130,12 +135,16 @@ npm install date-fns
 # API and state
 npm install @tanstack/react-query @supabase/supabase-js zustand
 
-# UI components (choose one)
-npm install react-native-paper  # Material Design
-# OR
-npm install @rneui/themed       # React Native Elements
-# OR
-npm install tamagui             # Universal UI (web + mobile)
+# UI - NativeWind (Tailwind for React Native) - matches web styling
+npm install nativewind tailwindcss
+# OR Tamagui (Universal UI)
+npm install tamagui @tamagui/config
+
+# List virtualization
+npm install @shopify/flash-list
+
+# Icons
+npm install lucide-react-native react-native-svg
 ```
 
 ### 2.2 Project Structure
@@ -143,26 +152,43 @@ npm install tamagui             # Universal UI (web + mobile)
 ```
 apps/mobile/
 ├── app/                        # Expo Router file-based routing
-│   ├── (auth)/                # Auth group
-│   │   ├── login.tsx
-│   │   └── register.tsx
-│   ├── (tabs)/                # Main app tabs
+│   ├── (auth)/                # Auth group (unauthenticated)
 │   │   ├── _layout.tsx
-│   │   ├── index.tsx          # Dashboard
-│   │   ├── accounts.tsx
-│   │   ├── transactions.tsx
-│   │   └── profile.tsx
+│   │   ├── login.tsx
+│   │   ├── register.tsx
+│   │   └── forgot-password.tsx
+│   ├── (app)/                 # Main app (authenticated)
+│   │   ├── (tabs)/            # Bottom tab navigation
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx      # Dashboard
+│   │   │   ├── accounts.tsx
+│   │   │   ├── transactions.tsx
+│   │   │   └── more.tsx       # Settings, Profile, etc.
+│   │   ├── account/[id].tsx   # Account details
+│   │   ├── transaction/[id].tsx
+│   │   ├── add-transaction.tsx
+│   │   ├── transfer.tsx
+│   │   ├── search.tsx         # Global search (like command bar)
+│   │   └── settings/
+│   │       ├── profile.tsx
+│   │       ├── entities.tsx
+│   │       └── notifications.tsx
 │   ├── _layout.tsx            # Root layout
 │   └── +not-found.tsx
 ├── components/                 # Mobile-specific components
-│   ├── AccountCard.tsx
-│   ├── TransactionList.tsx
-│   └── ...
+│   ├── ui/                    # Base UI components
+│   ├── accounts/
+│   ├── transactions/
+│   └── common/
 ├── hooks/                      # Mobile-specific hooks
 ├── lib/                        # Mobile-specific utilities
 │   ├── supabase.ts
-│   └── api-client.ts
+│   ├── api-client.ts
+│   └── notifications.ts
 ├── constants/                  # Mobile constants
+│   ├── colors.ts
+│   └── layout.ts
+├── assets/                     # Images, fonts
 └── app.json                    # Expo configuration
 ```
 
@@ -178,6 +204,7 @@ apps/mobile/
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
+    "scheme": "financeapp",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -187,7 +214,12 @@ apps/mobile/
       "supportsTablet": true,
       "bundleIdentifier": "com.yourcompany.financeapp",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Allow Finance App to use Face ID for secure authentication"
+        "NSFaceIDUsageDescription": "Allow Finance App to use Face ID for secure authentication",
+        "NSCameraUsageDescription": "Allow Finance App to capture receipt photos",
+        "NSPhotoLibraryUsageDescription": "Allow Finance App to access photos for receipts"
+      },
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "android": {
@@ -198,96 +230,186 @@ apps/mobile/
       "package": "com.yourcompany.financeapp",
       "permissions": [
         "USE_BIOMETRIC",
-        "USE_FINGERPRINT"
+        "USE_FINGERPRINT",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "VIBRATE",
+        "RECEIVE_BOOT_COMPLETED"
       ]
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-local-authentication"
+      "expo-local-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Finance App to access photos for receipts"
+        }
+      ]
     ]
   }
 }
 ```
 
-## Phase 3: Core Features Implementation (Week 4-8)
+## Phase 3: Core Features Implementation
 
-### 3.1 Must-Have Features (MVP)
+### 3.1 MVP Features (Priority Order)
 
-#### Week 4: Authentication & Setup
-- [ ] Login / Register screens
-- [ ] Biometric authentication
-- [ ] Onboarding flow
-- [ ] Profile management
+#### Authentication & Onboarding
+- [ ] Login screen (email/password)
+- [ ] Social login (Google, Apple)
+- [ ] Register screen
+- [ ] Forgot password flow
+- [ ] Biometric authentication (Face ID / Touch ID)
+- [ ] Onboarding screens (first-time users)
+- [ ] Entity selection/creation
 
-#### Week 5: Dashboard & Accounts
-- [ ] Dashboard overview with balances
-- [ ] Account list
+#### Dashboard
+- [ ] Total balance overview (all accounts)
+- [ ] Balance breakdown by account type
+- [ ] Recent transactions list
+- [ ] Quick actions (add transaction, transfer)
+- [ ] Pull-to-refresh
+
+#### Accounts
+- [ ] Account list grouped by type (Bank, Cash, Credit Card, etc.)
 - [ ] Account details view
-- [ ] Add/edit accounts
+- [ ] Account balance and transaction history
+- [ ] Add new account
+- [ ] Edit account
+- [ ] Balance checkpoint (reconciliation)
 
-#### Week 6: Transactions
-- [ ] Transaction list with filters
-- [ ] Transaction details
+#### Transactions
+- [ ] Transaction list with infinite scroll
+- [ ] Filter transactions (date, type, category, account)
+- [ ] Search transactions
+- [ ] Transaction details view
 - [ ] Add transaction (manual entry)
-- [ ] Quick transaction entry
-- [ ] Transaction categorization
+- [ ] Edit transaction
+- [ ] Delete transaction (with confirmation)
+- [ ] Transaction categorization (inline edit)
+- [ ] Split transaction
 
-#### Week 7: Transfers & Matching
-- [ ] Transfer between accounts
-- [ ] Transfer matching
-- [ ] Investment contributions/withdrawals
-- [ ] Loan disbursements
+#### Transfers & Matching
+- [ ] Transfer between own accounts
+- [ ] View unmatched transfers
+- [ ] Match transfers
+- [ ] Unmatch transfers
 
-#### Week 8: Reports & Polish
-- [ ] Basic reports (income/expense)
-- [ ] Account balance history
-- [ ] Offline mode handling
-- [ ] Error states and loading states
-- [ ] Push notifications setup
+#### Debt Management
+- [ ] Credit card list with balances
+- [ ] Credit card charge recording
+- [ ] Credit card payment (Quick Pay)
+- [ ] Credit line drawdown/repayment
+- [ ] Term loan payments
+- [ ] Loan receivable tracking
 
-### 3.2 Nice-to-Have Features (Post-MVP)
+#### Search (Command Bar Equivalent)
+- [ ] Global search screen
+- [ ] Search transactions by description, amount, date
+- [ ] Quick filters
+- [ ] Recent searches
+- [ ] Voice search (optional)
 
-- [ ] Receipt photo capture
-- [ ] OCR for receipt scanning
-- [ ] Budget tracking
-- [ ] Recurring transactions
-- [ ] Multi-currency support
-- [ ] Export data (CSV, PDF)
-- [ ] Widgets (iOS/Android)
-- [ ] Apple Pay / Google Pay integration
-- [ ] Bank account sync (via Plaid or similar)
+#### Settings & Profile
+- [ ] Profile management
+- [ ] Entity switching
+- [ ] Notification preferences
+- [ ] Security settings (biometrics, PIN)
+- [ ] App theme (light/dark/system)
+- [ ] Sign out
 
-## Phase 4: Testing & Deployment (Week 9-10)
+### 3.2 Post-MVP Features
+
+#### Contracts & Scheduled Payments
+- [ ] View contracts list
+- [ ] Contract details
+- [ ] Create/edit contract
+- [ ] View scheduled payments
+- [ ] Mark payment as paid
+- [ ] Payment reminders
+
+#### Budgets
+- [ ] Budget overview
+- [ ] Budget by category
+- [ ] Budget progress tracking
+- [ ] Budget alerts
+
+#### Cash Flow
+- [ ] Cash flow projection view
+- [ ] Monthly breakdown
+- [ ] Scenario comparison (simplified)
+
+#### Reports
+- [ ] Income vs Expense summary
+- [ ] Expense by category (pie chart)
+- [ ] Account balance trends
+- [ ] Export reports (PDF/CSV)
+
+#### Receipt Management
+- [ ] Capture receipt photo
+- [ ] Attach receipt to transaction
+- [ ] View receipt gallery
+- [ ] OCR receipt scanning (extract amount, date)
+
+#### Advanced Features
+- [ ] Push notifications for payment reminders
+- [ ] Recurring transaction templates
+- [ ] Multi-currency display
+- [ ] Home screen widgets (iOS/Android)
+- [ ] Quick actions (3D Touch / Long press)
+- [ ] Share extension (capture receipts from other apps)
+- [ ] Siri Shortcuts / Google Assistant integration
+- [ ] Apple Watch companion (balance view)
+
+## Phase 4: Testing & Deployment
 
 ### 4.1 Testing Strategy
 
 #### Manual Testing:
-- [ ] Test on iOS simulator
-- [ ] Test on Android emulator
+- [ ] Test on iOS simulator (multiple device sizes)
+- [ ] Test on Android emulator (multiple device sizes)
 - [ ] Test on real iOS device
 - [ ] Test on real Android device
 - [ ] Test offline scenarios
-- [ ] Test auth flows
-- [ ] Test data sync
+- [ ] Test slow network conditions
+- [ ] Test auth flows (login, logout, token refresh)
+- [ ] Test data sync after offline period
+- [ ] Test biometric authentication
+- [ ] Test push notifications
 
 #### Automated Testing:
 - [ ] Set up Jest for unit tests
-- [ ] Set up Detox for E2E tests
-- [ ] Write tests for critical flows
-- [ ] Set up CI/CD pipeline
+- [ ] Set up React Native Testing Library for component tests
+- [ ] Set up Detox or Maestro for E2E tests
+- [ ] Write tests for critical flows (auth, transactions)
+- [ ] Set up CI/CD pipeline (GitHub Actions + EAS)
 
 ### 4.2 Deployment
 
-#### Internal Testing:
+#### Development Builds:
 - [ ] Create Expo development build
-- [ ] Distribute via Expo Go (for testing)
-- [ ] Create TestFlight build (iOS)
-- [ ] Create internal testing track (Android)
+- [ ] Set up EAS Build configuration
+- [ ] Internal distribution via Expo
+
+#### Beta Testing:
+- [ ] TestFlight build (iOS)
+- [ ] Internal testing track (Android Play Console)
+- [ ] Gather feedback from beta testers
 
 #### Production Release:
-- [ ] Create EAS Build configuration
-- [ ] Generate production builds
+- [ ] App Store assets (screenshots, description, keywords)
+- [ ] Play Store assets (screenshots, description)
+- [ ] Privacy policy URL
+- [ ] Terms of service URL
 - [ ] Submit to Apple App Store
 - [ ] Submit to Google Play Store
 - [ ] Set up OTA updates with EAS Update
@@ -303,57 +425,72 @@ apps/mobile/
 - Utility functions (date, currency formatting)
 - React hooks (data fetching, form handling)
 - Validation schemas (Zod)
+- Constants and configuration
 
 **Platform-Specific Code (~30-40%):**
-- UI components (web: shadcn/ui, mobile: React Native components)
+- UI components (web: shadcn/ui, mobile: NativeWind/Tamagui)
 - Navigation (web: Next.js App Router, mobile: Expo Router)
-- Layout and styling (web: Tailwind, mobile: StyleSheet/Tamagui)
+- Layout and styling
 - Platform APIs (camera, biometrics, notifications)
 - File system and storage
+- Haptic feedback
 
-### Component Adaptation Strategy
+### UI Library Recommendation
 
-**Option 1: Component Wrappers**
-```typescript
-// packages/ui/Button.tsx
-import { Platform } from 'react-native'
+**Option 1: NativeWind (Recommended)**
+- Tailwind CSS for React Native
+- Matches your web Tailwind classes
+- Easy to share styling knowledge
+- Good ecosystem
 
-export const Button = Platform.select({
-  web: () => require('./Button.web').Button,
-  default: () => require('./Button.native').Button,
-})()
-```
+**Option 2: Tamagui**
+- Universal components (web + mobile)
+- Great performance
+- Steeper learning curve
+- Better for true code sharing
 
-**Option 2: Universal Components (Tamagui)**
-```typescript
-// Works on both web and mobile
-import { Button } from 'tamagui'
-```
+**Recommendation:** Start with NativeWind for familiarity, consider Tamagui for v2.
 
-**Recommendation:** Start with Option 1, consider Option 2 for v2.
+### Offline Strategy
 
-### Database Strategy
+#### Levels of Offline Support:
 
-**Local Storage:**
-- Web: LocalStorage, IndexedDB
-- Mobile: AsyncStorage, SecureStore, SQLite (WatermelonDB)
+**Level 1: Read-Only Cache (MVP)**
+- Cache API responses with React Query
+- Show cached data when offline
+- Display "offline" indicator
+- Queue actions for when online
 
-**Sync Strategy:**
-1. User actions create pending operations
-2. Operations queued in local database
-3. Sync runs when online
-4. Conflicts resolved (last-write-wins or custom)
-5. Optimistic UI updates
+**Level 2: Optimistic Updates**
+- Apply changes locally immediately
+- Sync to server in background
+- Handle conflicts
+
+**Level 3: Full Offline (Post-MVP)**
+- Local SQLite database (WatermelonDB)
+- Full CRUD operations offline
+- Sync engine for reconciliation
 
 ### Performance Optimization
 
-- [ ] Implement list virtualization (FlashList)
-- [ ] Lazy load screens with React.lazy
+- [ ] Use FlashList instead of FlatList for large lists
+- [ ] Implement list virtualization
+- [ ] Lazy load screens
 - [ ] Optimize images with expo-image
 - [ ] Use React.memo for expensive components
-- [ ] Implement pagination for large lists
-- [ ] Cache API responses with React Query
-- [ ] Minimize bundle size with tree-shaking
+- [ ] Implement pagination for transactions
+- [ ] Cache API responses with React Query staleTime
+- [ ] Minimize re-renders with proper state structure
+- [ ] Use Hermes JavaScript engine
+
+### Security Considerations
+
+- [ ] Store sensitive data in SecureStore (not AsyncStorage)
+- [ ] Implement certificate pinning (optional, advanced)
+- [ ] Add app lock (biometrics or PIN)
+- [ ] Clear sensitive data on logout
+- [ ] Handle session expiry gracefully
+- [ ] Implement jailbreak/root detection (optional)
 
 ## Environment Setup
 
@@ -364,15 +501,17 @@ import { Button } from 'tamagui'
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 EXPO_PUBLIC_API_URL=https://your-api.com/api
+EXPO_PUBLIC_APP_ENV=development
 ```
 
 ### Required Accounts & Services
 
 - [ ] Expo account (free tier sufficient for start)
-- [ ] Apple Developer Program ($99/year for iOS)
+- [ ] Apple Developer Program ($99/year for iOS App Store)
 - [ ] Google Play Console ($25 one-time for Android)
-- [ ] EAS Build service (for production builds)
+- [ ] EAS Build service (included with Expo, paid for priority)
 - [ ] Supabase project (already have)
+- [ ] Sentry account (for error tracking, free tier)
 
 ## Migration Checklist
 
@@ -380,28 +519,20 @@ EXPO_PUBLIC_API_URL=https://your-api.com/api
 
 - [ ] Review all API endpoints for mobile compatibility
 - [ ] Ensure authentication works with JWT tokens
-- [ ] Test API endpoints with tools like Postman
-- [ ] Document all API endpoints (consider OpenAPI/Swagger)
-- [ ] Implement API versioning (/api/v1/*)
-- [ ] Add rate limiting to API routes
+- [ ] Test API endpoints with tools like Postman/Insomnia
+- [ ] Add proper error responses to all API endpoints
+- [ ] Implement consistent response format across APIs
 - [ ] Set up monitoring and error tracking (Sentry)
 
 ### During Mobile Development:
 
-- [ ] Keep web and mobile in sync (share types, constants)
+- [ ] Keep web and mobile types in sync
 - [ ] Test on real devices early and often
 - [ ] Handle offline scenarios gracefully
 - [ ] Implement proper error boundaries
-- [ ] Add analytics (Expo Analytics or Firebase)
+- [ ] Add analytics (Expo Analytics or PostHog)
 - [ ] Plan for app updates (OTA vs store updates)
-
-## Estimated Timeline
-
-- **Phase 1 (Prep):** 2 weeks
-- **Phase 2 (Setup):** 1 week
-- **Phase 3 (Features):** 5 weeks
-- **Phase 4 (Testing):** 2 weeks
-- **Total:** ~10 weeks for MVP
+- [ ] Document mobile-specific behaviors
 
 ## Resources
 
@@ -409,24 +540,32 @@ EXPO_PUBLIC_API_URL=https://your-api.com/api
 - Expo: https://docs.expo.dev
 - React Native: https://reactnative.dev
 - Expo Router: https://docs.expo.dev/router/introduction
-- Supabase React Native: https://supabase.com/docs/guides/getting-started/quickstarts/react-native
+- Supabase React Native: https://supabase.com/docs/guides/getting-started/quickstarts/reactnative
 - TanStack Query: https://tanstack.com/query/latest
+- NativeWind: https://www.nativewind.dev
+- Tamagui: https://tamagui.dev
 
 ### Learning Resources:
 - Expo YouTube channel
-- React Native School
+- Simon Grimm (Galaxy.dev)
 - William Candillon (React Native animations)
+- Catalin Miron (UI tutorials)
 
 ### Tools:
-- Expo Go (testing app)
+- Expo Go (development testing)
 - EAS CLI (build and deployment)
-- React Native Debugger
-- Flipper (advanced debugging)
+- React Native Debugger / Flipper
+- Reactotron (debugging and logging)
 
 ## Next Steps
 
-1. **Week 1:** Set up monorepo structure and extract shared code
-2. **Week 2:** Refactor API to work standalone, implement React Query
-3. **Week 3:** Initialize Expo project and basic navigation
-4. **Week 4:** Implement authentication flow
-5. **Continue with feature development...**
+1. Set up monorepo structure and extract shared code
+2. Refactor API to work standalone, implement React Query on web
+3. Initialize Expo project with NativeWind
+4. Implement authentication flow
+5. Build dashboard and accounts screens
+6. Build transactions features
+7. Add transfers and debt management
+8. Implement search and settings
+9. Testing and polish
+10. Beta release and iterate
