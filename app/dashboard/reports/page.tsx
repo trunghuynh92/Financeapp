@@ -58,6 +58,7 @@ interface CategoryExpense {
   total: number
   count: number
   percentage: number
+  [key: string]: string | number | null  // Index signature for Recharts compatibility
 }
 
 type Granularity = 'year' | 'month' | 'week'
@@ -555,8 +556,8 @@ export default function ReportsPage() {
                       outerRadius={120}
                       innerRadius={60}
                       paddingAngle={2}
-                      label={({ category_name, percentage }) =>
-                        percentage > 5 ? `${percentage.toFixed(0)}%` : ''
+                      label={({ percent }) =>
+                        percent && percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''
                       }
                       labelLine={false}
                     >
