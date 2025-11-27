@@ -303,9 +303,9 @@ function MainTransactionsPageContent() {
     try {
       const response = await fetch(`/api/main-transactions/${transactionId}`)
       if (response.ok) {
-        const data = await response.json()
-        if (data) {
-          setSelectedTransaction(data)
+        const result = await response.json()
+        if (result.data) {
+          setSelectedTransaction(result.data)
           setEditDialogOpen(true)
           router.replace('/dashboard/main-transactions', { scroll: false })
         }
