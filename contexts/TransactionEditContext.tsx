@@ -67,20 +67,20 @@ export function TransactionEditProvider({ children }: { children: React.ReactNod
       ]);
 
       if (typesRes.ok) {
-        const data = await typesRes.json();
-        setTransactionTypes(data.transactionTypes || data);
+        const result = await typesRes.json();
+        setTransactionTypes(result.data || []);
       }
       if (categoriesRes.ok) {
-        const data = await categoriesRes.json();
-        setCategories(data.categories || data);
+        const result = await categoriesRes.json();
+        setCategories(result.data || []);
       }
       if (branchesRes.ok) {
-        const data = await branchesRes.json();
-        setBranches(data.branches || data);
+        const result = await branchesRes.json();
+        setBranches(result.data || []);
       }
       if (projectsRes.ok) {
-        const data = await projectsRes.json();
-        setProjects(data.projects || data);
+        const result = await projectsRes.json();
+        setProjects(result.data || []);
       }
 
       setDataLoaded(true);
