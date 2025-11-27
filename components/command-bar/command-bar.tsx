@@ -618,7 +618,7 @@ export function CommandBar() {
                   {!isSearching && flatResults.length === 0 && query.length > 2 && (
                     <div className="px-4 py-8 text-center text-muted-foreground">
                       <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">No results found for "{query}"</p>
+                      <p className="text-sm">No results found for &ldquo;{query}&rdquo;</p>
                       <p className="text-xs mt-1">Try a different search term</p>
                     </div>
                   )}
