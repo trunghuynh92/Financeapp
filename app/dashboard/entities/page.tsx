@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -40,11 +40,14 @@ import {
 import { createSupabaseClient, type Entity } from "@/lib/supabase"
 import { useEntity } from "@/contexts/EntityContext"
 
-export default function EntitiesPage() {
-  const { entities: userEntities, loading: entitiesLoading, refreshEntities } = useEntity()
+// Component to handle search params (needs Suspense boundary)
+function EntitiesPageSearchParams({
+  setIsAddDialogOpen
+}: {
+  setIsAddDialogOpen: (open: boolean) => void
+}) {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
 
   // Auto-open add dialog if redirected from /entities/new
   useEffect(() => {
@@ -53,7 +56,14 @@ export default function EntitiesPage() {
       // Clear the URL parameter
       router.replace('/dashboard/entities')
     }
-  }, [searchParams, router])
+  }, [searchParams, router, setIsAddDialogOpen])
+
+  return null
+}
+
+export default function EntitiesPage() {
+  const { entities: userEntities, loading: entitiesLoading, refreshEntities } = useEntity()
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedEntity, setSelectedEntity] = useState<any | null>(null)
@@ -163,6 +173,10 @@ export default function EntitiesPage() {
 
   return (
     <div className="space-y-8">
+      {/* Suspense boundary for useSearchParams */}
+      <Suspense fallback={null}>
+        <EntitiesPageSearchParams setIsAddDialogOpen={setIsAddDialogOpen} />
+      </Suspense>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Entities</h1>
