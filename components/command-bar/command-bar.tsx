@@ -236,7 +236,8 @@ export function CommandBar() {
         icon: transactionTypeIcons[tx.transaction_type] || <Receipt className="h-4 w-4" />,
         meta: `${formatDate(tx.transaction_date)} • ${formatCurrency(tx.amount)}`,
         action: () => {
-          router.push(`/dashboard/main-transactions?highlight=${tx.id}`);
+          // Open edit dialog directly via URL parameter
+          router.push(`/dashboard/main-transactions?edit=${tx.id}`);
           closeCommandBar();
         },
         data: tx,
