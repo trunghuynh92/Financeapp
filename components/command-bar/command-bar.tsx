@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation';
 import { useCommandBar } from '@/contexts/CommandBarContext';
 import { useEntity } from '@/contexts/EntityContext';
+import { useTransactionEdit } from '@/contexts/TransactionEditContext';
 import {
   parseCommand,
   formatParsedCommand,
@@ -113,6 +114,7 @@ function formatDate(dateStr: string): string {
 export function CommandBar() {
   const { isOpen, closeCommandBar } = useCommandBar();
   const { currentEntity } = useEntity();
+  const { openEditDialogById } = useTransactionEdit();
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -236,8 +238,8 @@ export function CommandBar() {
         icon: transactionTypeIcons[tx.transaction_type] || <Receipt className="h-4 w-4" />,
         meta: `${formatDate(tx.transaction_date)} • ${formatCurrency(tx.amount)}`,
         action: () => {
-          // Open edit dialog directly via URL parameter
-          router.push(`/dashboard/main-transactions?edit=${tx.id}`);
+          // Open edit dialog directly without navigating
+          openEditDialogById(parseInt(tx.id, 10));
           closeCommandBar();
         },
         data: tx,
@@ -283,7 +285,7 @@ export function CommandBar() {
     });
 
     return items;
-  }, [parsedCommand, transactions, query, router, closeCommandBar]);
+  }, [parsedCommand, transactions, query, router, closeCommandBar, openEditDialogById]);
 
   // Categorize results
   const categorizedResults = useMemo(() => {

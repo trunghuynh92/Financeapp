@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useEffect, Suspense, useCallback } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -45,11 +44,9 @@ interface PaginationInfo {
   totalPages: number
 }
 
-function MainTransactionsPageContent() {
+export default function MainTransactionsPage() {
   const { currentEntity, loading: entityLoading } = useEntity()
   const { toast } = useToast()
-  const searchParams = useSearchParams()
-  const router = useRouter()
 
   // Data state
   const [transactions, setTransactions] = useState<MainTransactionDetails[]>([])
@@ -297,40 +294,6 @@ function MainTransactionsPageContent() {
       setLoading(false)
     }
   }
-
-  // Fetch a single transaction by ID (for edit dialog from command bar)
-  const fetchTransactionById = useCallback(async (transactionId: number) => {
-    try {
-      const response = await fetch(`/api/main-transactions/${transactionId}`)
-      if (response.ok) {
-        const result = await response.json()
-        if (result.data) {
-          setSelectedTransaction(result.data)
-          setEditDialogOpen(true)
-          router.replace('/dashboard/main-transactions', { scroll: false })
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching transaction:', error)
-    }
-  }, [router])
-
-  // Handle URL-based edit dialog opening (from command bar)
-  useEffect(() => {
-    const editId = searchParams.get('edit')
-    if (editId) {
-      const transactionToEdit = transactions.find(tx => tx.main_transaction_id === parseInt(editId, 10))
-      if (transactionToEdit) {
-        setSelectedTransaction(transactionToEdit)
-        setEditDialogOpen(true)
-        // Clear the URL param after opening dialog
-        router.replace('/dashboard/main-transactions', { scroll: false })
-      } else if (!loading) {
-        // Transaction not in current page, fetch it directly (only if not still loading)
-        fetchTransactionById(parseInt(editId, 10))
-      }
-    }
-  }, [searchParams, transactions, loading, router, fetchTransactionById])
 
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage)
@@ -2538,13 +2501,5 @@ function MainTransactionsPageContent() {
         </DialogContent>
       </Dialog>
     </div>
-  )
-}
-
-export default function MainTransactionsPage() {
-  return (
-    <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>}>
-      <MainTransactionsPageContent />
-    </Suspense>
   )
 }
