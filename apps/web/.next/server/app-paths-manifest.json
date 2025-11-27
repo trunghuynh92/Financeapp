@@ -1,3 +1,16 @@
 {
-  "/signin/page": "app/signin/page.js"
+  "/api/categories/route": "app/api/categories/route.js",
+  "/api/branches/route": "app/api/branches/route.js",
+  "/api/accounts/route": "app/api/accounts/route.js",
+  "/api/role-permissions/route": "app/api/role-permissions/route.js",
+  "/api/transaction-types/route": "app/api/transaction-types/route.js",
+  "/api/main-transactions/route": "app/api/main-transactions/route.js",
+  "/api/projects/route": "app/api/projects/route.js",
+  "/api/cash-flow-projection/route": "app/api/cash-flow-projection/route.js",
+  "/api/scenarios/route": "app/api/scenarios/route.js",
+  "/api/scenarios/[id]/route": "app/api/scenarios/[id]/route.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/accounts/page": "app/dashboard/accounts/page.js",
+  "/dashboard/main-transactions/page": "app/dashboard/main-transactions/page.js",
+  "/dashboard/cash-flow/page": "app/dashboard/cash-flow/page.js"
 }

@@ -9,9 +9,13 @@
   "scripts": {
     "dev": "npm run dev --workspace=@financeapp/web",
     "dev:web": "npm run dev --workspace=@financeapp/web",
+    "dev:mobile": "npm run start --workspace=@financeapp/mobile",
     "build": "npm run build --workspace=@financeapp/web",
     "build:web": "npm run build --workspace=@financeapp/web",
     "start": "npm run start --workspace=@financeapp/web",
+    "start:mobile": "npm run start --workspace=@financeapp/mobile",
+    "ios": "npm run ios --workspace=@financeapp/mobile",
+    "android": "npm run android --workspace=@financeapp/mobile",
     "lint": "npm run lint --workspace=@financeapp/web"
   },
   "devDependencies": {
