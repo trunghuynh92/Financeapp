@@ -17,7 +17,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import vision from '@google-cloud/vision'
+import { ImageAnnotatorClient } from '@google-cloud/vision'
 import { parseReceiptWithAI } from '@/lib/ai-receipt-parser'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -71,10 +71,10 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer)
 
     // Process with Google Cloud Vision
-    let client: vision.ImageAnnotatorClient
+    let client: ImageAnnotatorClient
 
     if (process.env.GOOGLE_CLOUD_PROJECT_ID) {
-      client = new vision.ImageAnnotatorClient({
+      client = new ImageAnnotatorClient({
         credentials: {
           project_id: process.env.GOOGLE_CLOUD_PROJECT_ID,
           private_key: process.env.GOOGLE_CLOUD_PRIVATE_KEY?.replace(/\\\\n/g, '\n').replace(/\\n/g, '\n'),
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         },
       })
     } else {
-      client = new vision.ImageAnnotatorClient() // Uses GOOGLE_APPLICATION_CREDENTIALS
+      client = new ImageAnnotatorClient() // Uses GOOGLE_APPLICATION_CREDENTIALS
     }
 
     const [result] = await client.textDetection({
