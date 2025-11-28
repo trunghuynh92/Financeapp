@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Home, Building2, FileText, Settings, DollarSign, Wallet, Tags, Link2, LogOut, User, Flag, PiggyBank, Calendar, FileSignature, TrendingUp, HelpCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -73,9 +74,13 @@ export function Sidebar() {
       {/* Header */}
       <div className="flex h-16 items-center border-b px-6">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <span className="text-lg font-bold text-primary-foreground">C</span>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Centrify"
+            width={32}
+            height={32}
+            className="h-8 w-8"
+          />
           <span className="text-xl font-bold">Centrify</span>
         </Link>
       </div>
