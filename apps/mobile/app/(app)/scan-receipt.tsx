@@ -15,7 +15,7 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../../lib/supabase';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://your-app.vercel.app';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://centrify.io';
 
 export default function ScanReceiptScreen() {
   const [permission, requestPermission] = useCameraPermissions();
