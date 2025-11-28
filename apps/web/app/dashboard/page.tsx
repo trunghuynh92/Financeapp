@@ -29,18 +29,31 @@ export default function DashboardPage() {
 
     setLoading(true)
     try {
-      const params = new URLSearchParams()
-      params.set('entity_id', currentEntity.id)
-      params.set('limit', '1000')
+      // Fetch all accounts for count
+      const allParams = new URLSearchParams()
+      allParams.set('entity_id', currentEntity.id)
+      allParams.set('limit', '1000')
 
-      const response = await fetch(`/api/accounts?${params.toString()}`)
-      if (response.ok) {
-        const data = await response.json()
-        const accounts = data.data || []
-        setAccountsCount(accounts.length)
+      const allResponse = await fetch(`/api/accounts?${allParams.toString()}`)
+      if (allResponse.ok) {
+        const allData = await allResponse.json()
+        const allAccounts = allData.data || []
+        setAccountsCount(allAccounts.length)
+      }
 
-        // Calculate total balance
-        const total = accounts.reduce((sum: number, account: any) => {
+      // Fetch only cash & bank accounts for total balance
+      const cashBankParams = new URLSearchParams()
+      cashBankParams.set('entity_id', currentEntity.id)
+      cashBankParams.set('account_type', 'bank,cash')
+      cashBankParams.set('limit', '1000')
+
+      const cashBankResponse = await fetch(`/api/accounts?${cashBankParams.toString()}`)
+      if (cashBankResponse.ok) {
+        const cashBankData = await cashBankResponse.json()
+        const cashBankAccounts = cashBankData.data || []
+
+        // Calculate total balance from cash & bank accounts only
+        const total = cashBankAccounts.reduce((sum: number, account: any) => {
           const balanceData = Array.isArray(account.balance) ? account.balance[0] : account.balance
           const balance = balanceData?.current_balance || 0
           return sum + balance

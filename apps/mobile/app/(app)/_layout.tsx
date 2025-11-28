@@ -1,6 +1,7 @@
 import { Redirect, Stack } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { View, ActivityIndicator } from 'react-native';
+import { colors } from '@financeapp/shared';
 
 export default function AppLayout() {
   const { session, isLoading } = useAuth();
@@ -8,7 +9,7 @@ export default function AppLayout() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#10b981" />
+        <ActivityIndicator size="large" color={colors.primary[600]} />
       </View>
     );
   }
@@ -18,20 +19,15 @@ export default function AppLayout() {
   }
 
   return (
-    <Stack>
-      <Stack.Screen
-        name="index"
-        options={{
-          title: 'Transactions',
-          headerShown: true,
-        }}
-      />
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
       <Stack.Screen
         name="add-transaction"
         options={{
           title: 'Add Transaction',
           presentation: 'modal',
           headerShown: true,
+          headerTintColor: colors.primary[600],
         }}
       />
       <Stack.Screen
@@ -40,6 +36,7 @@ export default function AppLayout() {
           title: 'Scan Receipt',
           presentation: 'modal',
           headerShown: true,
+          headerTintColor: colors.primary[600],
         }}
       />
     </Stack>

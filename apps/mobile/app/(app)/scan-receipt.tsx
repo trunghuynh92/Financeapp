@@ -108,12 +108,15 @@ export default function ScanReceiptScreen() {
       const data = await response.json();
 
       // Navigate to add transaction with pre-filled data
+      // Default to Expense type for receipts, include AI-suggested category
       router.replace({
         pathname: '/(app)/add-transaction',
         params: {
           prefillAmount: data.amount?.toString() || '',
           prefillDescription: data.description || data.vendor || '',
           prefillDate: data.date || new Date().toISOString().split('T')[0],
+          prefillTypeCode: 'EXP', // Receipts are typically expenses
+          prefillCategoryCode: data.category_code || '', // AI-suggested category
         },
       });
     } catch (error: any) {
