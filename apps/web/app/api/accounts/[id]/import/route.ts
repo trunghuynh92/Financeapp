@@ -71,6 +71,17 @@ export async function POST(
     const columnMappingsStr = formData.get('columnMappings') as string
     const dateFormat = formData.get('dateFormat') as DateFormat
     const hasNegativeDebits = formData.get('hasNegativeDebits') === 'true'
+    const branchMappingsStr = formData.get('branchMappings') as string | null
+
+    // Parse branch mappings if provided (CSV branch name -> branch_id)
+    let branchMappingsFromUI: Record<string, number | null> = {}
+    if (branchMappingsStr) {
+      try {
+        branchMappingsFromUI = JSON.parse(branchMappingsStr)
+      } catch (err) {
+        console.warn('Failed to parse branch mappings, using auto-match:', err)
+      }
+    }
 
     // Validate required fields
     if (!file) {
@@ -144,56 +155,65 @@ export async function POST(
         }))
       }
 
-      // Convert to CSV text format for existing parser
-      // IMPORTANT: Properly handle different cell types (Date, Number, String)
-      const csvText = processedData
-        .map(row =>
-          row.map(cell => {
-            if (cell === null || cell === undefined) return ''
-
-            // Handle Date objects: convert to ISO date string (YYYY-MM-DD)
-            if (Object.prototype.toString.call(cell) === '[object Date]') {
-              const dateObj = cell as unknown as Date
-              const year = dateObj.getFullYear()
-              const month = String(dateObj.getMonth() + 1).padStart(2, '0')
-              const day = String(dateObj.getDate()).padStart(2, '0')
-              return `${year}-${month}-${day}`
-            }
-
-            // Handle numbers: keep as number string (don't add formatting)
-            if (typeof cell === 'number') {
-              return String(cell)
-            }
-
-            // Handle strings: escape and quote if needed
-            const str = String(cell)
-            // Replace actual newlines with space to prevent CSV row breaks
-            const cleaned = str.replace(/[\r\n]+/g, ' ').trim()
-            // Escape quotes and wrap in quotes if contains comma or quotes
-            if (cleaned.includes(',') || cleaned.includes('"')) {
-              return `"${cleaned.replace(/"/g, '""')}"`
-            }
-            return cleaned
-          }).join(',')
-        )
-        .join('\n')
-
-      // Debug: Show first 3 lines of generated CSV
-      const csvLines = csvText.split('\n')
-      console.log('🔍 Generated CSV (first 3 lines):')
-      for (let i = 0; i < Math.min(3, csvLines.length); i++) {
-        console.log(`  Line ${i}: ${csvLines[i]}`)
+      // Build parsedCSV directly from processedData WITHOUT re-running header detection
+      // Header is guaranteed to be at row 0 since we already processed the worksheet
+      if (processedData.length === 0) {
+        throw new Error('Excel file has no data after processing')
       }
 
-      parsedCSV = parseCSVText(csvText)
+      // First row is headers (row 0 of processed data)
+      const headers = processedData[0].map((cell, idx) => {
+        if (cell === null || cell === undefined || String(cell).trim() === '') {
+          return `Column ${idx + 1}`
+        }
+        return String(cell).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim()
+      })
 
-      // Debug: Show what parseCSVText returned
-      console.log('🔍 After parseCSVText:')
+      console.log('🔍 Excel headers (from row 0):', headers)
+
+      // Build data rows (skip header row)
+      const rows: import('@/types/import').ParsedCSVRow[] = []
+      for (let i = 1; i < processedData.length; i++) {
+        const rowData = processedData[i]
+
+        // Skip completely empty rows
+        if (rowData.every(cell => cell === null || cell === undefined || String(cell).trim() === '')) {
+          continue
+        }
+
+        const row: import('@/types/import').ParsedCSVRow = {}
+        headers.forEach((header, idx) => {
+          const cell = rowData[idx]
+          if (cell === null || cell === undefined) {
+            row[header] = null
+          } else if (Object.prototype.toString.call(cell) === '[object Date]') {
+            // Convert Date objects to ISO date string (YYYY-MM-DD)
+            const dateObj = cell as unknown as Date
+            const year = dateObj.getFullYear()
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+            const day = String(dateObj.getDate()).padStart(2, '0')
+            row[header] = `${year}-${month}-${day}`
+          } else if (typeof cell === 'number') {
+            row[header] = cell
+          } else {
+            row[header] = String(cell).replace(/[\r\n]+/g, ' ').trim()
+          }
+        })
+        rows.push(row)
+      }
+
+      parsedCSV = {
+        headers,
+        rows,
+        totalRows: rows.length,
+        detectedHeaderRow: 0,
+      }
+
+      console.log('🔍 Parsed Excel data:')
       console.log('  Headers:', parsedCSV.headers)
-      console.log('  Detected header row index:', parsedCSV.detectedHeaderRow)
       console.log('  Total rows:', parsedCSV.totalRows)
-      if (parsedCSV.rows.length > 0) {
-        console.log('  First data row keys:', Object.keys(parsedCSV.rows[0]))
+      if (rows.length > 0) {
+        console.log('  First data row:', rows[0])
       }
     } else {
       // Parse CSV file (default)
@@ -492,11 +512,17 @@ export async function POST(
         const end = Math.min(start + BATCH_SIZE, totalTransactions)
         const batch = transactionsToInsertAfterDupeCheck.slice(start, end)
 
-        console.log(`📦 Inserting batch ${batchIndex + 1}/${totalBatches} (${batch.length} transactions)...`)
+        // Remove _branch_name from batch before inserting (it's not a database column)
+        const cleanedBatch = batch.map(tx => {
+          const { _branch_name, ...rest } = tx
+          return rest
+        })
+
+        console.log(`📦 Inserting batch ${batchIndex + 1}/${totalBatches} (${cleanedBatch.length} transactions)...`)
 
         const { data: insertedTransactions, error: insertError } = await supabase
           .from('original_transaction')
-          .insert(batch)
+          .insert(cleanedBatch)
           .select()
 
         if (insertError) {
@@ -527,6 +553,104 @@ export async function POST(
       }
     } else {
       console.log(`⏭️ Skipping renumber for large import (${successfulImports} transactions) to avoid timeout`)
+    }
+
+    // =========================================================================
+    // Branch Mapping: Update main_transaction with branch_id based on branch names
+    // Uses UI-provided mappings if available, otherwise falls back to auto-match
+    // =========================================================================
+    const branchNames = new Set<string>()
+    const transactionBranchMap = new Map<string, string>() // raw_transaction_id -> branch_name
+
+    // Collect unique branch names from imported transactions
+    for (const tx of transactionsToInsertAfterDupeCheck) {
+      if (tx._branch_name) {
+        branchNames.add(tx._branch_name.toLowerCase())
+        transactionBranchMap.set(tx.raw_transaction_id, tx._branch_name)
+      }
+    }
+
+    if (branchNames.size > 0) {
+      console.log(`🏢 Found ${branchNames.size} unique branch names to map`)
+
+      // Check if we have UI-provided branch mappings
+      const hasUIBranchMappings = Object.keys(branchMappingsFromUI).length > 0
+      if (hasUIBranchMappings) {
+        console.log(`🏢 Using ${Object.keys(branchMappingsFromUI).length} UI-provided branch mappings`)
+      }
+
+      // Get entity_id for this account (needed for auto-matching)
+      const { data: accountData } = await supabase
+        .from('accounts')
+        .select('entity_id')
+        .eq('account_id', accountId)
+        .single()
+
+      // Build branch name to ID map
+      // Priority: 1) UI-provided mappings, 2) Auto-match by name
+      let branchNameToId = new Map<string, number>()
+
+      // If UI mappings provided, use them directly
+      if (hasUIBranchMappings) {
+        for (const [csvName, branchId] of Object.entries(branchMappingsFromUI)) {
+          if (branchId !== null) {
+            branchNameToId.set(csvName.toLowerCase(), branchId)
+          }
+        }
+      }
+
+      // If no UI mappings OR for any names not in UI mappings, try auto-match
+      if (accountData?.entity_id) {
+        const { data: branches } = await supabase
+          .from('branches')
+          .select('branch_id, branch_name')
+          .eq('entity_id', accountData.entity_id)
+          .eq('is_active', true)
+
+        if (branches && branches.length > 0) {
+          console.log(`🏢 Found ${branches.length} branches for entity`)
+
+          // Auto-match for any names not already mapped by UI
+          for (const branch of branches) {
+            const nameLower = branch.branch_name.toLowerCase()
+            // Only add if not already mapped by UI
+            if (!branchNameToId.has(nameLower)) {
+              branchNameToId.set(nameLower, branch.branch_id)
+            }
+          }
+        }
+      }
+
+      // Update main_transaction records with branch_id
+      let branchUpdateCount = 0
+      const unmatchedBranches = new Set<string>()
+
+      for (const [rawTxId, branchName] of Array.from(transactionBranchMap.entries())) {
+        // Try UI mapping first (exact match), then lowercase match
+        let branchId = branchMappingsFromUI[branchName] ?? null
+        if (branchId === null) {
+          branchId = branchNameToId.get(branchName.toLowerCase()) ?? null
+        }
+
+        if (branchId) {
+          const { error: updateError } = await supabase
+            .from('main_transaction')
+            .update({ branch_id: branchId })
+            .eq('raw_transaction_id', rawTxId)
+
+          if (!updateError) {
+            branchUpdateCount++
+          }
+        } else {
+          unmatchedBranches.add(branchName)
+        }
+      }
+
+      console.log(`✅ Updated ${branchUpdateCount} transactions with branch_id`)
+
+      if (unmatchedBranches.size > 0) {
+        console.log(`⚠️  ${unmatchedBranches.size} branch names not matched:`, Array.from(unmatchedBranches).slice(0, 5))
+      }
     }
 
     // Update import batch status
@@ -849,6 +973,11 @@ function processRow(
 
       case 'reference':
         transactionData.bank_reference = value.toString().trim().substring(0, 100)
+        break
+
+      case 'branch':
+        // Store branch name for later matching to branch_id
+        transactionData._branch_name = value.toString().trim()
         break
     }
   }

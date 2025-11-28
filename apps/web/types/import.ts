@@ -77,6 +77,7 @@ export type ColumnType =
   | 'amount'           // Single amount column (negative = debit)
   | 'balance'
   | 'reference'
+  | 'branch'           // Branch name for auto-matching to branch_id
   | 'ignore'
 
 export interface ColumnDetectionResult {
@@ -245,6 +246,7 @@ export function getColumnTypeLabel(columnType: ColumnType): string {
     amount: 'Amount (Combined)',
     balance: 'Balance After Transaction',
     reference: 'Bank Reference',
+    branch: 'Branch',
     ignore: 'Ignore Column',
   }
   return labels[columnType]
@@ -259,6 +261,7 @@ export function getColumnTypeDescription(columnType: ColumnType): string {
     amount: 'Single amount column where negative = debit, positive = credit',
     balance: 'Account balance after this transaction',
     reference: 'Bank reference number or transaction ID',
+    branch: 'Branch name (will be matched to existing branches)',
     ignore: 'This column will not be imported',
   }
   return descriptions[columnType]

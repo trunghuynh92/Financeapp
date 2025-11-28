@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, Loader2, ArrowLeft, ArrowRight, X, Eye } from "lucide-react"
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, Loader2, ArrowLeft, ArrowRight, X, Eye, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -101,6 +101,12 @@ export function BankImportDialog({
   // Preview cleaned data dialog
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false)
 
+  // Branch mapping state
+  const [branchMappingDialogOpen, setBranchMappingDialogOpen] = useState(false)
+  const [availableBranches, setAvailableBranches] = useState<Array<{ branch_id: number; branch_name: string }>>([])
+  const [branchMappings, setBranchMappings] = useState<Record<string, number | null>>({}) // CSV branch name -> branch_id
+  const [uniqueBranchNames, setUniqueBranchNames] = useState<string[]>([])
+
   // Fetch saved import config when dialog opens
   useEffect(() => {
     if (open && accountId) {
@@ -143,6 +149,9 @@ export function BankImportDialog({
         setError(null)
         setSavedConfig(null)
         setConfigApplied(false)
+        setBranchMappings({})
+        setUniqueBranchNames([])
+        setAvailableBranches([])
       }, 200)
     }
   }, [open])
@@ -490,6 +499,73 @@ export function BankImportDialog({
     return hasDateColumn && hasAmountColumn
   }
 
+  // Check if branch column is mapped
+  const hasBranchColumn = columnMappings.some(m => m.mappedTo === 'branch')
+  const branchColumnName = columnMappings.find(m => m.mappedTo === 'branch')?.csvColumn
+
+  // Open branch mapping dialog
+  async function openBranchMappingDialog() {
+    if (!parsedData || !branchColumnName) return
+
+    // Extract unique branch names from the CSV data
+    const branchSet = new Set<string>()
+    for (const row of parsedData.rows) {
+      const branchValue = row[branchColumnName]
+      if (branchValue && typeof branchValue === 'string' && branchValue.trim()) {
+        branchSet.add(branchValue.trim())
+      }
+    }
+    const uniqueNames = Array.from(branchSet).sort()
+    setUniqueBranchNames(uniqueNames)
+
+    // Initialize branch mappings with null (unmapped)
+    const initialMappings: Record<string, number | null> = {}
+    for (const name of uniqueNames) {
+      initialMappings[name] = branchMappings[name] ?? null
+    }
+    setBranchMappings(initialMappings)
+
+    // Fetch available branches from the API
+    try {
+      // First get the entity_id from the account
+      const accountResponse = await fetch(`/api/accounts/${accountId}`)
+      if (!accountResponse.ok) throw new Error('Failed to fetch account')
+      const accountData = await accountResponse.json()
+      const entityId = accountData.entity_id
+
+      // Fetch branches for this entity
+      const branchResponse = await fetch(`/api/branches?entity_id=${entityId}`)
+      if (!branchResponse.ok) throw new Error('Failed to fetch branches')
+      const branchData = await branchResponse.json()
+      setAvailableBranches(branchData.data || [])
+
+      // Auto-match branches by name (case-insensitive)
+      const autoMappings: Record<string, number | null> = { ...initialMappings }
+      for (const csvBranchName of uniqueNames) {
+        const matchedBranch = branchData.data?.find(
+          (b: { branch_id: number; branch_name: string }) =>
+            b.branch_name.toLowerCase() === csvBranchName.toLowerCase()
+        )
+        if (matchedBranch) {
+          autoMappings[csvBranchName] = matchedBranch.branch_id
+        }
+      }
+      setBranchMappings(autoMappings)
+    } catch (err) {
+      console.error('Failed to fetch branches:', err)
+    }
+
+    setBranchMappingDialogOpen(true)
+  }
+
+  // Update a single branch mapping
+  function updateBranchMapping(csvBranchName: string, branchId: number | null) {
+    setBranchMappings(prev => ({
+      ...prev,
+      [csvBranchName]: branchId
+    }))
+  }
+
   const validationErrors: string[] = []
   if (!columnMappings.some(m => m.mappedTo === 'transaction_date')) {
     validationErrors.push('Transaction Date column is required')
@@ -559,6 +635,11 @@ export function BankImportDialog({
       formData.append('columnMappings', JSON.stringify(columnMappings))
       formData.append('dateFormat', dateFormat)
       formData.append('hasNegativeDebits', hasNegativeDebits.toString())
+
+      // Include branch mappings if any have been configured
+      if (Object.keys(branchMappings).length > 0) {
+        formData.append('branchMappings', JSON.stringify(branchMappings))
+      }
 
       const response = await fetch(`/api/accounts/${accountId}/import`, {
         method: 'POST',
@@ -921,40 +1002,56 @@ export function BankImportDialog({
                       ))}
                     </TableCell>
                     <TableCell>
-                      <Select
-                        value={mapping.mappedTo}
-                        onValueChange={(value) => updateColumnMapping(mapping.csvColumn, value as ColumnType)}
-                      >
-                        <SelectTrigger className="w-[200px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="transaction_date">
-                            {getColumnTypeLabel('transaction_date')}
-                          </SelectItem>
-                          <SelectItem value="description">
-                            {getColumnTypeLabel('description')}
-                          </SelectItem>
-                          <SelectItem value="debit_amount">
-                            {getColumnTypeLabel('debit_amount')}
-                          </SelectItem>
-                          <SelectItem value="credit_amount">
-                            {getColumnTypeLabel('credit_amount')}
-                          </SelectItem>
-                          <SelectItem value="amount">
-                            {getColumnTypeLabel('amount')}
-                          </SelectItem>
-                          <SelectItem value="balance">
-                            {getColumnTypeLabel('balance')}
-                          </SelectItem>
-                          <SelectItem value="reference">
-                            {getColumnTypeLabel('reference')}
-                          </SelectItem>
-                          <SelectItem value="ignore">
-                            {getColumnTypeLabel('ignore')}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={mapping.mappedTo}
+                          onValueChange={(value) => updateColumnMapping(mapping.csvColumn, value as ColumnType)}
+                        >
+                          <SelectTrigger className="w-[200px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="transaction_date">
+                              {getColumnTypeLabel('transaction_date')}
+                            </SelectItem>
+                            <SelectItem value="description">
+                              {getColumnTypeLabel('description')}
+                            </SelectItem>
+                            <SelectItem value="debit_amount">
+                              {getColumnTypeLabel('debit_amount')}
+                            </SelectItem>
+                            <SelectItem value="credit_amount">
+                              {getColumnTypeLabel('credit_amount')}
+                            </SelectItem>
+                            <SelectItem value="amount">
+                              {getColumnTypeLabel('amount')}
+                            </SelectItem>
+                            <SelectItem value="balance">
+                              {getColumnTypeLabel('balance')}
+                            </SelectItem>
+                            <SelectItem value="reference">
+                              {getColumnTypeLabel('reference')}
+                            </SelectItem>
+                            <SelectItem value="branch">
+                              {getColumnTypeLabel('branch')}
+                            </SelectItem>
+                            <SelectItem value="ignore">
+                              {getColumnTypeLabel('ignore')}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {mapping.mappedTo === 'branch' && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 flex-shrink-0"
+                            onClick={openBranchMappingDialog}
+                            title="Map branches"
+                          >
+                            <Settings2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -1484,6 +1581,80 @@ export function BankImportDialog({
             <Button onClick={() => setPreviewDialogOpen(false)}>
               Close Preview
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Branch Mapping Dialog */}
+      <Dialog open={branchMappingDialogOpen} onOpenChange={setBranchMappingDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Map Branches</DialogTitle>
+            <DialogDescription>
+              Map branch names from your file to existing branches in the system.
+              Unmatched branches will not have a branch assigned.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto py-4">
+            {uniqueBranchNames.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No branch names found in the file.</p>
+            ) : (
+              <div className="space-y-3">
+                {uniqueBranchNames.map((csvBranchName) => {
+                  const mappedBranchId = branchMappings[csvBranchName]
+                  const isAutoMatched = availableBranches.some(
+                    b => b.branch_name.toLowerCase() === csvBranchName.toLowerCase()
+                  )
+                  return (
+                    <div key={csvBranchName} className="flex items-center gap-4 p-3 rounded-lg border">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{csvBranchName}</p>
+                        {isAutoMatched && mappedBranchId && (
+                          <p className="text-xs text-green-600">Auto-matched</p>
+                        )}
+                      </div>
+                      <div className="flex-shrink-0 w-[200px]">
+                        <Select
+                          value={mappedBranchId?.toString() || 'unmapped'}
+                          onValueChange={(value) => {
+                            updateBranchMapping(
+                              csvBranchName,
+                              value === 'unmapped' ? null : parseInt(value, 10)
+                            )
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select branch..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unmapped">
+                              <span className="text-muted-foreground">Not mapped</span>
+                            </SelectItem>
+                            {availableBranches.map((branch) => (
+                              <SelectItem key={branch.branch_id} value={branch.branch_id.toString()}>
+                                {branch.branch_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex-shrink-0">
+            <div className="flex items-center justify-between w-full">
+              <p className="text-sm text-muted-foreground">
+                {Object.values(branchMappings).filter(v => v !== null).length} of {uniqueBranchNames.length} mapped
+              </p>
+              <Button onClick={() => setBranchMappingDialogOpen(false)}>
+                Done
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

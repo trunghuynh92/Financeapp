@@ -91,26 +91,34 @@ export function parseCSVText(text: string): ParsedCSVData {
 function findHeaderRow(lines: string[]): number {
   // Strategy:
   // 1. Look for row with multiple distinct non-empty columns (likely headers)
-  // 2. Check if row contains common header keywords (heavily weighted)
+  // 2. Check if CELLS contain common header keywords (not substrings in data)
   // 3. Skip rows that look like metadata (key-value pairs)
-  // 4. Prefer rows with more columns
+  // 4. Skip rows that look like data rows (contain dates, IDs, long text)
+  // 5. Prefer rows with more columns
 
+  // Header keywords - these should match ENTIRE CELLS or be the primary content
   const headerKeywords = [
-    'date', 'ngày', 'ngay', 'transaction date', 'giao dich',
+    'date', 'ngày', 'ngay', 'transaction date', 'giao dich', 'ngày giờ',
     'description', 'chi tiết', 'mô tả', 'particulars', 'details', 'dien giai', 'diễn giải',
     'debit', 'credit', 'chi', 'thu', 'amount', 'số tiền', 'ghi nợ', 'ghi có',
     'balance', 'số dư', 'sodu', 'running balance',
     'reference', 'but toan', 'số but toan', 'giao dịch', 'séc',
     'account', 'tai khoan', 'tài khoản',
     'bank', 'ngan hang', 'ngân hàng',
-    'fee', 'phi', 'phí', 'interest', 'lai', 'lãi'
+    'fee', 'phi', 'phí', 'interest', 'lai', 'lãi',
+    'nhận', 'nhan', 'loại', 'pttt', 'phiếu', 'người', 'điện thoại',
+    'mã', 'chi nhánh', 'lý do'
   ]
 
   // Strong indicators that this is a header row (Vietnamese "STT" = row number)
-  const strongHeaderIndicators = ['stt', 'no.', '#', 'row']
+  const strongHeaderIndicators = ['stt', 'no.', '#', 'row', 'mã thanh toán']
+
+  // Patterns that indicate a DATA row (not header)
+  const dateTimePattern = /\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/
+  const idPattern = /^#?\d{5,}$/  // IDs like #0179749
 
   let bestMatchIndex = 0
-  let bestMatchScore = 0
+  let bestMatchScore = -100
 
   for (let i = 0; i < Math.min(30, lines.length); i++) {
     const parsed = parseCSVLine(lines[i])
@@ -121,59 +129,96 @@ function findHeaderRow(lines: string[]): number {
 
     // Initialize score
     let score = 0
-    // Normalize line: remove newlines, convert to lowercase
-    const normalizedLine = lines[i].replace(/[\r\n]+/g, ' ').toLowerCase()
 
-    // Count header keyword matches (HEAVILY WEIGHTED - 3 points each)
+    // Count header keyword matches AT THE CELL LEVEL (not substring in data)
     let keywordMatches = 0
     let hasStrongIndicator = false
     let hasVeryLongCell = false
+    let hasDateTimeValue = false
+    let hasIdValue = false
 
-    for (const keyword of headerKeywords) {
-      if (normalizedLine.includes(keyword)) {
-        keywordMatches++
-      }
-    }
-
-    // Check for strong header indicators
-    for (const indicator of strongHeaderIndicators) {
-      if (normalizedLine.includes(indicator)) {
-        hasStrongIndicator = true
-        break
-      }
-    }
-
-    // Check for very long cells (likely metadata)
     for (const col of nonEmptyColumns) {
-      if (col.length > 50) {
+      const normalizedCell = col.toLowerCase().trim()
+
+      // Check if the cell IS a header keyword (exact or close match)
+      // A header cell is typically short (under 30 chars) and matches a keyword
+      if (normalizedCell.length <= 30) {
+        for (const keyword of headerKeywords) {
+          // Check if keyword matches the cell content closely
+          // Either exact match, or cell contains keyword as primary content
+          if (
+            normalizedCell === keyword ||
+            normalizedCell.includes(keyword) && normalizedCell.length <= keyword.length + 10
+          ) {
+            keywordMatches++
+            break // Only count one match per cell
+          }
+        }
+
+        // Check for strong header indicators
+        for (const indicator of strongHeaderIndicators) {
+          if (normalizedCell === indicator || normalizedCell.includes(indicator)) {
+            hasStrongIndicator = true
+            break
+          }
+        }
+      }
+
+      // Check for very long cells (likely data, not header)
+      if (col.length > 40) {
         hasVeryLongCell = true
-        break
+      }
+
+      // Check for date/time values (strong indicator this is a data row)
+      if (dateTimePattern.test(col)) {
+        hasDateTimeValue = true
+      }
+
+      // Check for ID values (strong indicator this is a data row)
+      if (idPattern.test(col.trim())) {
+        hasIdValue = true
       }
     }
 
+    // Score based on keyword matches (3 points each)
     score += keywordMatches * 3
 
-    // HUGE bonus for strong header indicators (like "STT")
+    // HUGE bonus for strong header indicators (like "STT", "Mã thanh toán")
     if (hasStrongIndicator) {
-      score += 10
+      score += 15
     }
 
     // Require minimum keyword matches to be considered a header
-    if (keywordMatches < 3) {
-      score -= 10
+    if (keywordMatches < 2) {
+      score -= 20
     }
 
-    // Heavy penalty: Row has very long cell content (likely metadata)
+    // HEAVY penalty: Row contains date/time values (this is DATA, not header!)
+    if (hasDateTimeValue) {
+      score -= 30
+    }
+
+    // HEAVY penalty: Row contains ID values (this is DATA, not header!)
+    if (hasIdValue) {
+      score -= 25
+    }
+
+    // Penalty: Row has very long cell content (likely data description)
     if (hasVeryLongCell) {
       score -= 15
     }
 
     // Bonus: More columns = more likely to be header (5+ columns gets bonus)
     if (nonEmptyColumns.length >= 5) {
-      score += 5
+      score += 3
     }
     if (nonEmptyColumns.length >= 8) {
-      score += 5 // Extra bonus for very wide tables
+      score += 3 // Extra bonus for very wide tables
+    }
+
+    // Bonus for row 0 if it has reasonable structure (often headers are first row)
+    if (i === 0 && keywordMatches >= 2) {
+      score += 5
     }
 
     // Penalty: If row looks like metadata (key-value pair pattern)
@@ -200,7 +245,7 @@ function findHeaderRow(lines: string[]): number {
       return !isNaN(parseFloat(cleaned)) && cleaned.length > 0
     })
     if (numericColumns.length / nonEmptyColumns.length > 0.5) {
-      score -= 5 // Penalty if more than 50% of columns are numeric
+      score -= 10 // Higher penalty if more than 50% of columns are numeric
     }
 
     if (score > bestMatchScore) {
@@ -800,6 +845,26 @@ function detectSingleColumnType(
       confidence: 0.8,
       sampleValues: sampleValues.slice(0, 5),
       reasoning: 'Column name suggests reference number or transaction ID',
+    }
+  }
+
+  // Branch column detection
+  if (
+    normalizedName.includes('branch') ||
+    normalizedName.includes('chi nhánh') || // Vietnamese
+    normalizedName.includes('chi nhanh') ||
+    normalizedName.includes('chinhanh') ||
+    normalizedName.includes('location') ||
+    normalizedName.includes('store') ||
+    normalizedName.includes('cửa hàng') ||
+    normalizedName.includes('cua hang')
+  ) {
+    return {
+      columnName,
+      suggestedType: 'branch',
+      confidence: 0.9,
+      sampleValues: sampleValues.slice(0, 5),
+      reasoning: 'Column name suggests branch or store location',
     }
   }
 

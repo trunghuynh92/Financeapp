@@ -179,23 +179,30 @@ function parseXLSXData(rawData: (string | number | null)[][]): ParsedCSVData {
  * Similar to CSV parser logic, but adapted for Excel data
  */
 function findHeaderRow(rows: (string | number | null)[][]): number {
+  // Header keywords - these should match ENTIRE CELLS or be the primary content
   const headerKeywords = [
-    'date', 'ngày', 'ngay', 'transaction date', 'giao dich',
+    'date', 'ngày', 'ngay', 'transaction date', 'giao dich', 'ngày giờ',
     'description', 'chi tiết', 'mô tả', 'particulars', 'details', 'dien giai', 'diễn giải',
     'debit', 'credit', 'chi', 'thu', 'amount', 'số tiền', 'ghi nợ', 'ghi có',
     'balance', 'số dư', 'sodu', 'running balance',
     'reference', 'but toan', 'số but toan', 'giao dịch', 'séc',
     'account', 'tai khoan', 'tài khoản',
     'bank', 'ngan hang', 'ngân hàng',
+    'nhận', 'nhan', 'loại', 'pttt', 'phiếu', 'người', 'điện thoại',
+    'mã', 'chi nhánh', 'lý do'
   ]
 
   // Strong indicators that this is a header row (Vietnamese "STT" = row number)
-  const strongHeaderIndicators = ['stt', 'no.', '#', 'row']
+  const strongHeaderIndicators = ['stt', 'no.', '#', 'row', 'mã thanh toán']
+
+  // Patterns that indicate a DATA row (not header)
+  const dateTimePattern = /\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/
+  const idPattern = /^#?\d{5,}$/  // IDs like #0179749
 
   let bestMatchIndex = 0
-  let bestMatchScore = 0
+  let bestMatchScore = -100
 
-  for (let i = 0; i < Math.min(20, rows.length); i++) {
+  for (let i = 0; i < Math.min(30, rows.length); i++) {
     const row = rows[i]
 
     // Skip rows with too few non-empty columns
@@ -207,54 +214,91 @@ function findHeaderRow(rows: (string | number | null)[][]): number {
     // Initialize score
     let score = 0
 
-    // Count header keyword matches (HEAVILY WEIGHTED - 3 points each)
+    // Count header keyword matches AT THE CELL LEVEL (not substring in data)
     let keywordMatches = 0
     let hasStrongIndicator = false
     let hasVeryLongCell = false
+    let hasDateTimeValue = false
+    let hasIdValue = false
 
     for (const cell of nonEmptyCells) {
       // Normalize cell: remove newlines, convert to lowercase
       const cellStr = String(cell).replace(/[\r\n]+/g, ' ').toLowerCase().trim()
 
-      // Check for strong header indicators (like "STT No.")
-      for (const indicator of strongHeaderIndicators) {
-        if (cellStr.includes(indicator)) {
-          hasStrongIndicator = true
-          break
+      // Check if the cell IS a header keyword (exact or close match)
+      // A header cell is typically short (under 30 chars) and matches a keyword
+      if (cellStr.length <= 30) {
+        // Check for strong header indicators (like "STT No.", "Mã thanh toán")
+        for (const indicator of strongHeaderIndicators) {
+          if (cellStr === indicator || cellStr.includes(indicator)) {
+            hasStrongIndicator = true
+            break
+          }
+        }
+
+        // Check for header keywords
+        for (const keyword of headerKeywords) {
+          // Check if keyword matches the cell content closely
+          // Either exact match, or cell contains keyword as primary content
+          if (
+            cellStr === keyword ||
+            cellStr.includes(keyword) && cellStr.length <= keyword.length + 10
+          ) {
+            keywordMatches++
+            break // Only count once per cell
+          }
         }
       }
 
-      // Check for header keywords
-      for (const keyword of headerKeywords) {
-        if (cellStr.includes(keyword)) {
-          keywordMatches++
-          break // Only count once per cell
-        }
-      }
-
-      // Check for very long cells (likely metadata like "Một triệu sáu trăm...")
-      if (cellStr.length > 50) {
+      // Check for very long cells (likely data, not header)
+      if (cellStr.length > 40) {
         hasVeryLongCell = true
+      }
+
+      // Check for date/time values (strong indicator this is a data row)
+      if (dateTimePattern.test(String(cell))) {
+        hasDateTimeValue = true
+      }
+
+      // Check for ID values (strong indicator this is a data row)
+      if (idPattern.test(String(cell).trim())) {
+        hasIdValue = true
       }
     }
 
+    // Score based on keyword matches (3 points each)
     score += keywordMatches * 3
 
-    // HUGE bonus for strong header indicators (like "STT")
+    // HUGE bonus for strong header indicators (like "STT", "Mã thanh toán")
     if (hasStrongIndicator) {
-      score += 10
+      score += 15
     }
 
     // Require minimum keyword matches to be considered a header
-    if (keywordMatches < 3) {
-      score -= 10
+    if (keywordMatches < 2) {
+      score -= 20
+    }
+
+    // HEAVY penalty: Row contains date/time values (this is DATA, not header!)
+    if (hasDateTimeValue) {
+      score -= 30
+    }
+
+    // HEAVY penalty: Row contains ID values (this is DATA, not header!)
+    if (hasIdValue) {
+      score -= 25
     }
 
     // Bonus: More columns = more likely to be header
     if (nonEmptyCells.length >= 5) {
-      score += 5
+      score += 3
     }
     if (nonEmptyCells.length >= 8) {
+      score += 3
+    }
+
+    // Bonus for row 0 if it has reasonable structure (often headers are first row)
+    if (i === 0 && keywordMatches >= 2) {
       score += 5
     }
 
@@ -265,10 +309,10 @@ function findHeaderRow(rows: (string | number | null)[][]): number {
       return !isNaN(parseFloat(str)) && str.length > 0
     })
     if (numericCells.length / nonEmptyCells.length > 0.5) {
-      score -= 5
+      score -= 10
     }
 
-    // Heavy penalty: Row has very long cell content (likely metadata)
+    // Penalty: Row has very long cell content (likely data description)
     if (hasVeryLongCell) {
       score -= 15
     }
