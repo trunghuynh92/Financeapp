@@ -15,23 +15,28 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 
 type Account = {
-  id: string;
-  name: string;
+  account_id: number;
+  account_name: string;
 };
 
 type TransactionType = {
-  id: string;
-  name: string;
+  transaction_type_id: number;
+  type_display_name: string;
 };
 
 export default function AddTransactionScreen() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, prefillAmount, prefillDescription, prefillDate } = useLocalSearchParams<{
+    id?: string;
+    prefillAmount?: string;
+    prefillDescription?: string;
+    prefillDate?: string;
+  }>();
   const isEditing = !!id;
 
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState(prefillDescription || '');
+  const [amount, setAmount] = useState(prefillAmount || '');
   const [isDebit, setIsDebit] = useState(true);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(prefillDate || new Date().toISOString().split('T')[0]);
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [selectedType, setSelectedType] = useState<string>('');
 
@@ -48,8 +53,8 @@ export default function AddTransactionScreen() {
     try {
       // Fetch accounts and transaction types
       const [accountsRes, typesRes] = await Promise.all([
-        supabase.from('accounts').select('id, name').order('name'),
-        supabase.from('transaction_types').select('id, name').order('name'),
+        supabase.from('accounts').select('account_id, account_name').order('account_name'),
+        supabase.from('transaction_types').select('transaction_type_id, type_display_name').order('type_display_name'),
       ]);
 
       if (accountsRes.data) setAccounts(accountsRes.data);
@@ -58,24 +63,18 @@ export default function AddTransactionScreen() {
       // If editing, fetch the transaction
       if (id) {
         const { data: transaction } = await supabase
-          .from('transactions')
+          .from('main_transaction')
           .select('*')
-          .eq('id', id)
+          .eq('main_transaction_id', id)
           .single();
 
         if (transaction) {
           setDescription(transaction.description || '');
           setDate(transaction.transaction_date);
-          setSelectedAccount(transaction.account_id);
-          setSelectedType(transaction.transaction_type_id);
-
-          if (transaction.debit_amount) {
-            setAmount(transaction.debit_amount.toString());
-            setIsDebit(true);
-          } else if (transaction.credit_amount) {
-            setAmount(transaction.credit_amount.toString());
-            setIsDebit(false);
-          }
+          setSelectedAccount(transaction.account_id?.toString() || '');
+          setSelectedType(transaction.transaction_type_id?.toString() || '');
+          setAmount(transaction.amount?.toString() || '');
+          setIsDebit(transaction.transaction_direction === 'debit');
         }
       }
     } catch (error) {
@@ -93,25 +92,37 @@ export default function AddTransactionScreen() {
 
     setIsSaving(true);
     try {
-      const transactionData = {
-        description,
+      const rawTransactionId = `mobile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Insert into original_transaction - trigger will auto-create main_transaction
+      const originalTransactionData = {
+        raw_transaction_id: rawTransactionId,
+        account_id: parseInt(selectedAccount),
         transaction_date: date,
-        account_id: selectedAccount,
-        transaction_type_id: selectedType,
+        description,
         debit_amount: isDebit ? parseFloat(amount) : null,
         credit_amount: !isDebit ? parseFloat(amount) : null,
+        transaction_source: 'user_manual',
       };
 
       if (isEditing) {
+        // For editing, update the main_transaction directly
         const { error } = await supabase
-          .from('transactions')
-          .update(transactionData)
-          .eq('id', id);
+          .from('main_transaction')
+          .update({
+            description,
+            transaction_date: date,
+            account_id: parseInt(selectedAccount),
+            transaction_type_id: parseInt(selectedType),
+            amount: parseFloat(amount),
+            transaction_direction: isDebit ? 'debit' : 'credit',
+          })
+          .eq('main_transaction_id', id);
         if (error) throw error;
       } else {
         const { error } = await supabase
-          .from('transactions')
-          .insert(transactionData);
+          .from('original_transaction')
+          .insert(originalTransactionData);
         if (error) throw error;
       }
 
@@ -134,11 +145,21 @@ export default function AddTransactionScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase
-                .from('transactions')
-                .delete()
-                .eq('id', id);
-              if (error) throw error;
+              // First get the raw_transaction_id from main_transaction
+              const { data: tx } = await supabase
+                .from('main_transaction')
+                .select('raw_transaction_id')
+                .eq('main_transaction_id', id)
+                .single();
+
+              if (tx?.raw_transaction_id) {
+                // Delete from original_transaction - cascade will delete main_transaction
+                const { error } = await supabase
+                  .from('original_transaction')
+                  .delete()
+                  .eq('raw_transaction_id', tx.raw_transaction_id);
+                if (error) throw error;
+              }
               router.back();
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to delete');
@@ -224,20 +245,20 @@ export default function AddTransactionScreen() {
             <View style={styles.chipContainer}>
               {accounts.map((account) => (
                 <TouchableOpacity
-                  key={account.id}
+                  key={account.account_id}
                   style={[
                     styles.chip,
-                    selectedAccount === account.id && styles.chipSelected,
+                    selectedAccount === account.account_id.toString() && styles.chipSelected,
                   ]}
-                  onPress={() => setSelectedAccount(account.id)}
+                  onPress={() => setSelectedAccount(account.account_id.toString())}
                 >
                   <Text
                     style={[
                       styles.chipText,
-                      selectedAccount === account.id && styles.chipTextSelected,
+                      selectedAccount === account.account_id.toString() && styles.chipTextSelected,
                     ]}
                   >
-                    {account.name}
+                    {account.account_name}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -251,20 +272,20 @@ export default function AddTransactionScreen() {
             <View style={styles.chipContainer}>
               {transactionTypes.map((type) => (
                 <TouchableOpacity
-                  key={type.id}
+                  key={type.transaction_type_id}
                   style={[
                     styles.chip,
-                    selectedType === type.id && styles.chipSelected,
+                    selectedType === type.transaction_type_id.toString() && styles.chipSelected,
                   ]}
-                  onPress={() => setSelectedType(type.id)}
+                  onPress={() => setSelectedType(type.transaction_type_id.toString())}
                 >
                   <Text
                     style={[
                       styles.chipText,
-                      selectedType === type.id && styles.chipTextSelected,
+                      selectedType === type.transaction_type_id.toString() && styles.chipTextSelected,
                     ]}
                   >
-                    {type.name}
+                    {type.type_display_name}
                   </Text>
                 </TouchableOpacity>
               ))}

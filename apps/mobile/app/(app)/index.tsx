@@ -14,13 +14,15 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
 type Transaction = {
-  id: string;
+  main_transaction_id: number;
   transaction_date: string;
   description: string;
-  debit_amount: number | null;
-  credit_amount: number | null;
-  account: { name: string } | null;
-  transaction_type: { name: string } | null;
+  amount: number;
+  transaction_direction: string;
+  account_id: number | null;
+  transaction_type_id: number | null;
+  account: { account_name: string } | null;
+  transaction_type: { type_display_name: string } | null;
 };
 
 export default function TransactionsScreen() {
@@ -32,21 +34,42 @@ export default function TransactionsScreen() {
   const fetchTransactions = useCallback(async () => {
     try {
       const { data, error } = await supabase
-        .from('transactions')
+        .from('main_transaction')
         .select(`
-          id,
+          main_transaction_id,
           transaction_date,
           description,
-          debit_amount,
-          credit_amount,
-          account:accounts(name),
-          transaction_type:transaction_types(name)
+          amount,
+          transaction_direction,
+          account_id,
+          transaction_type_id
         `)
         .order('transaction_date', { ascending: false })
         .limit(50);
 
       if (error) throw error;
-      setTransactions(data || []);
+
+      // Fetch accounts and transaction types separately to avoid PGRST201 error
+      const [accountsRes, typesRes] = await Promise.all([
+        supabase.from('accounts').select('account_id, account_name'),
+        supabase.from('transaction_types').select('transaction_type_id, type_display_name'),
+      ]);
+
+      const accountsMap = new Map(
+        (accountsRes.data || []).map(a => [a.account_id, a.account_name])
+      );
+      const typesMap = new Map(
+        (typesRes.data || []).map(t => [t.transaction_type_id, t.type_display_name])
+      );
+
+      // Map the data with account and type names
+      const transactionsWithNames = (data || []).map(tx => ({
+        ...tx,
+        account: { account_name: accountsMap.get(tx.account_id) || 'Unknown' },
+        transaction_type: { type_display_name: typesMap.get(tx.transaction_type_id) || 'Unknown' },
+      }));
+
+      setTransactions(transactionsWithNames);
     } catch (error) {
       console.error('Error fetching transactions:', error);
     } finally {
@@ -80,13 +103,12 @@ export default function TransactionsScreen() {
   };
 
   const renderTransaction = ({ item }: { item: Transaction }) => {
-    const amount = item.debit_amount || item.credit_amount || 0;
-    const isDebit = item.debit_amount !== null && item.debit_amount > 0;
+    const isDebit = item.transaction_direction === 'debit';
 
     return (
       <TouchableOpacity
         style={styles.transactionCard}
-        onPress={() => router.push(`/(app)/add-transaction?id=${item.id}`)}
+        onPress={() => router.push(`/(app)/add-transaction?id=${item.main_transaction_id}`)}
       >
         <View style={styles.transactionMain}>
           <View style={styles.transactionInfo}>
@@ -94,7 +116,7 @@ export default function TransactionsScreen() {
               {item.description || 'No description'}
             </Text>
             <Text style={styles.transactionMeta}>
-              {item.account?.name || 'Unknown'} • {item.transaction_type?.name || 'Unknown'}
+              {item.account?.account_name || 'Unknown'} • {item.transaction_type?.type_display_name || 'Unknown'}
             </Text>
           </View>
           <View style={styles.transactionAmount}>
@@ -104,7 +126,7 @@ export default function TransactionsScreen() {
                 isDebit ? styles.amountDebit : styles.amountCredit,
               ]}
             >
-              {isDebit ? '-' : '+'}{formatCurrency(amount)}
+              {isDebit ? '-' : '+'}{formatCurrency(item.amount)}
             </Text>
             <Text style={styles.dateText}>{formatDate(item.transaction_date)}</Text>
           </View>
@@ -126,7 +148,7 @@ export default function TransactionsScreen() {
       <FlatList
         data={transactions}
         renderItem={renderTransaction}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.main_transaction_id.toString()}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl

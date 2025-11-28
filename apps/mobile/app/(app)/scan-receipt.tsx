@@ -13,6 +13,7 @@ import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { supabase } from '../../lib/supabase';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://your-app.vercel.app';
 
@@ -58,6 +59,13 @@ export default function ScanReceiptScreen() {
 
     setIsProcessing(true);
     try {
+      // Get current session for auth token
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error('Not authenticated');
+      }
+
       // Create form data with the image
       const formData = new FormData();
       formData.append('file', {
@@ -66,17 +74,35 @@ export default function ScanReceiptScreen() {
         name: 'receipt.jpg',
       } as any);
 
-      // Call your existing OCR API
-      const response = await fetch(`${API_BASE_URL}/api/receipt/upload`, {
+      // Call mobile-friendly OCR API with auth token
+      const apiUrl = `${API_BASE_URL}/api/mobile/scan-receipt`;
+      console.log('Calling API:', apiUrl);
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         body: formData,
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${session.access_token}`,
         },
       });
 
+      console.log('Response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to process receipt');
+        const errorText = await response.text().catch(() => '');
+        console.log('Error response:', errorText);
+        let errorMessage = 'Failed to process receipt';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          if (response.status === 404) {
+            errorMessage = 'Receipt scanning API not available. Please try again later.';
+          } else if (response.status === 401) {
+            errorMessage = 'Authentication failed. Please sign in again.';
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -94,7 +120,7 @@ export default function ScanReceiptScreen() {
       console.error('Error processing receipt:', error);
       Alert.alert(
         'Processing Error',
-        'Could not process the receipt. You can still add the transaction manually.',
+        error.message || 'Could not process the receipt. You can still add the transaction manually.',
         [
           { text: 'Try Again', onPress: () => setCapturedImage(null) },
           { text: 'Add Manually', onPress: () => router.replace('/(app)/add-transaction') },
