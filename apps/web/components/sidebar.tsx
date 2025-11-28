@@ -72,7 +72,12 @@ export function Sidebar() {
     <div className="flex h-screen w-64 flex-col border-r bg-card">
       {/* Header */}
       <div className="flex h-16 items-center border-b px-6">
-        <h1 className="text-xl font-bold">Finance SaaS</h1>
+        <Link href="/dashboard" className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+            <span className="text-lg font-bold text-primary-foreground">C</span>
+          </div>
+          <span className="text-xl font-bold">Centrify</span>
+        </Link>
       </div>
 
       {/* Entity Switcher */}
