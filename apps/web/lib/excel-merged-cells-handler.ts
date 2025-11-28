@@ -166,13 +166,18 @@ export function smartForwardFill(
   const numCols = data[headerRow]?.length || 0
   const columnsNeedingFill: number[] = []
 
-  // Keywords that identify amount/numeric columns that should NEVER be forward-filled
-  const AMOUNT_COLUMN_KEYWORDS = [
+  // Keywords that identify columns that should NEVER be forward-filled
+  // This includes amount/numeric columns AND description/reason columns
+  const SKIP_FORWARD_FILL_KEYWORDS = [
+    // Amount columns
     'NO', 'CO', 'SODU', 'BALANCE', 'DEBIT', 'CREDIT',
     'AMOUNT', 'SOTIEN', 'GHINO', 'GHICO', 'SODU',
     'THU', 'CHI', 'PHATSINH', 'TANG', 'GIAM',
     'CUOI', 'DAU', 'TIEN', 'MONEY', 'VND', 'USD',
-    'WITHDRAWAL', 'DEPOSIT', 'RUT', 'NOP'
+    'WITHDRAWAL', 'DEPOSIT', 'RUT', 'NOP', 'NHAN',
+    // Description/reason columns - each row should have its own unique value
+    'LYDO', 'LY DO', 'REASON', 'DESCRIPTION', 'NOTE', 'GHICHU',
+    'CHITIET', 'DETAIL', 'DIENGIAI', 'DIEN GIAI', 'MOTA'
   ]
 
   // Analyze each column to detect if it needs forward-filling
@@ -180,14 +185,14 @@ export function smartForwardFill(
     const headerName = String(data[headerRow][colIndex] || '').toUpperCase().trim()
     const normalizedHeader = headerName.replace(/\s+/g, '')
 
-    // CRITICAL: Skip amount/numeric columns - these should NEVER be forward-filled
-    const isAmountColumn = AMOUNT_COLUMN_KEYWORDS.some(keyword =>
-      normalizedHeader.includes(keyword)
+    // CRITICAL: Skip certain columns - these should NEVER be forward-filled
+    const shouldSkip = SKIP_FORWARD_FILL_KEYWORDS.some(keyword =>
+      normalizedHeader.includes(keyword.replace(/\s+/g, ''))
     )
 
-    if (isAmountColumn) {
+    if (shouldSkip) {
       console.log(
-        `  Column ${colIndex} "${headerName}": Skipping (amount column - never forward-fill)`
+        `  Column ${colIndex} "${headerName}": Skipping (protected column - never forward-fill)`
       )
       continue
     }

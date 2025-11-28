@@ -692,6 +692,8 @@ function detectSingleColumnType(
     normalizedName.includes('date') ||
     normalizedName.includes('ngày') || // Vietnamese
     normalizedName.includes('ngay') ||
+    normalizedName.includes('giờ') || // Vietnamese for "time" (used in datetime columns like "Ngày giờ")
+    normalizedName.includes('gio') ||
     normalizedName.includes('giao dịch')
   ) {
     const dateDetection = detectDateFormat(sampleValues)
