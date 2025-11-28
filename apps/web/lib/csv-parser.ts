@@ -752,6 +752,8 @@ function detectSingleColumnType(
     normalizedName.includes('income') ||
     normalizedName.includes('thu') || // Vietnamese
     normalizedName.includes('nạp') ||
+    normalizedName.includes('nhận') || // Vietnamese for "receive"
+    normalizedName.includes('nhan') ||
     normalizedName.includes('ghi có')
   ) {
     const hasNumbers = sampleValues.some(v => typeof v === 'string' && !isNaN(parseFloat(v)))
@@ -864,6 +866,11 @@ export function parseAmount(value: string | number | null): number | null {
 
   // Remove whitespace
   let cleaned = value.toString().trim()
+
+  // Handle empty/dash values (various dash characters commonly used in Vietnamese bank statements)
+  if (cleaned === '-' || cleaned === '—' || cleaned === '–' || cleaned === '−' || cleaned === '') {
+    return null
+  }
 
   // Handle negative in parentheses: (1000) -> -1000
   if (cleaned.startsWith('(') && cleaned.endsWith(')')) {

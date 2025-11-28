@@ -802,7 +802,10 @@ function processRow(
         if (amount !== null && amount !== 0) {
           // Convert to positive if negative (e.g., Techcombank format)
           transactionData.debit_amount = Math.abs(amount)
-          transactionData.credit_amount = null
+          // Don't overwrite credit_amount if it was already set
+          if (transactionData.credit_amount === undefined) {
+            transactionData.credit_amount = null
+          }
           hasRequiredFields = true
         }
         break
@@ -816,7 +819,10 @@ function processRow(
         if (amount !== null && amount !== 0) {
           // Convert to positive if negative
           transactionData.credit_amount = Math.abs(amount)
-          transactionData.debit_amount = null
+          // Don't overwrite debit_amount if it was already set
+          if (transactionData.debit_amount === undefined) {
+            transactionData.debit_amount = null
+          }
           hasRequiredFields = true
         }
         break
