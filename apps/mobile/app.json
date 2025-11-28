@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Finance App",
-    "slug": "financeapp",
+    "name": "Centrify",
+    "slug": "centrify",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "financeapp",
+    "scheme": "centrify",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.financeapp.mobile"
+      "bundleIdentifier": "io.centrify.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,7 +23,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.financeapp.mobile"
+      "package": "io.centrify.app"
     },
     "web": {
       "favicon": "./assets/favicon.png",
