@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Plus, DollarSign, Calendar, AlertCircle, TrendingUp, User, Receipt, Pencil, Trash2 } from "lucide-react"
+import React, { useState, useEffect, useMemo } from "react"
+import { Plus, DollarSign, Calendar, AlertCircle, TrendingUp, User, Receipt, Pencil, Trash2, ChevronRight, ChevronDown, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -35,6 +35,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { CreateLoanDisbursementDialog } from "@/components/create-loan-disbursement-dialog"
 import { EditLoanDisbursementDialog } from "@/components/edit-loan-disbursement-dialog"
 import { RecordLoanPaymentDialog } from "@/components/record-loan-payment-dialog"
@@ -83,6 +85,8 @@ export function LoanDisbursementListCard({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [deletingLoan, setDeletingLoan] = useState<LoanDisbursementWithAccount | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [groupByBorrower, setGroupByBorrower] = useState(false)
+  const [expandedBorrowers, setExpandedBorrowers] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetchDisbursements()
@@ -250,6 +254,65 @@ export function LoanDisbursementListCard({
 
   const filteredDisbursements = disbursements
 
+  // Group disbursements by borrower
+  const groupedByBorrower = useMemo(() => {
+    const groups = new Map<string, {
+      borrowerName: string
+      partnerType: string | null
+      loans: LoanDisbursementWithAccount[]
+      totalPrincipal: number
+      totalRemaining: number
+      loanCount: number
+      hasOverdue: boolean
+    }>()
+
+    filteredDisbursements.forEach(loan => {
+      const borrowerName = (loan as any).partner?.partner_name || loan.borrower_name || 'Unknown'
+      const key = borrowerName.toLowerCase()
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          borrowerName,
+          partnerType: (loan as any).partner?.partner_type || null,
+          loans: [],
+          totalPrincipal: 0,
+          totalRemaining: 0,
+          loanCount: 0,
+          hasOverdue: false,
+        })
+      }
+
+      const group = groups.get(key)!
+      group.loans.push(loan)
+      group.totalPrincipal += Number(loan.principal_amount)
+      group.totalRemaining += Number(loan.remaining_balance)
+      group.loanCount += 1
+      if (loan.due_date && isOverdue(loan.due_date) && (loan.status === 'active' || loan.status === 'overdue')) {
+        group.hasOverdue = true
+      }
+    })
+
+    // Sort by total remaining (highest first)
+    return Array.from(groups.values()).sort((a, b) => b.totalRemaining - a.totalRemaining)
+  }, [filteredDisbursements])
+
+  const toggleBorrowerExpanded = (borrowerName: string) => {
+    const key = borrowerName.toLowerCase()
+    setExpandedBorrowers(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
+  const isBorrowerExpanded = (borrowerName: string) => {
+    return expandedBorrowers.has(borrowerName.toLowerCase())
+  }
+
   return (
     <>
       <Card>
@@ -310,22 +373,36 @@ export function LoanDisbursementListCard({
           )}
 
           {/* Filters */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Status:</span>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="overdue">Overdue</SelectItem>
+                    <SelectItem value="repaid">Repaid</SelectItem>
+                    <SelectItem value="partially_written_off">Partially Written Off</SelectItem>
+                    <SelectItem value="written_off">Written Off</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Status:</span>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="overdue">Overdue</SelectItem>
-                  <SelectItem value="repaid">Repaid</SelectItem>
-                  <SelectItem value="partially_written_off">Partially Written Off</SelectItem>
-                  <SelectItem value="written_off">Written Off</SelectItem>
-                </SelectContent>
-              </Select>
+              <Switch
+                id="group-by-borrower"
+                checked={groupByBorrower}
+                onCheckedChange={setGroupByBorrower}
+              />
+              <Label htmlFor="group-by-borrower" className="text-sm cursor-pointer flex items-center gap-1">
+                <Users className="h-4 w-4" />
+                Group by Borrower
+              </Label>
             </div>
           </div>
 
@@ -342,6 +419,187 @@ export function LoanDisbursementListCard({
                   ? 'No loan disbursements yet. Create your first loan to get started.'
                   : `No ${statusFilter} loans found.`}
               </p>
+            </div>
+          ) : groupByBorrower ? (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-8"></TableHead>
+                    <TableHead>Borrower</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Loans</TableHead>
+                    <TableHead>Total Principal</TableHead>
+                    <TableHead>Total Remaining</TableHead>
+                    <TableHead>Progress</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {groupedByBorrower.map((group) => {
+                    const isExpanded = isBorrowerExpanded(group.borrowerName)
+                    const progress = calculatePaymentProgress(group.totalPrincipal, group.totalRemaining)
+                    const paidAmount = group.totalPrincipal - group.totalRemaining
+
+                    return (
+                      <React.Fragment key={`group-${group.borrowerName}`}>
+                        {/* Borrower Summary Row */}
+                        <TableRow
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => toggleBorrowerExpanded(group.borrowerName)}
+                        >
+                          <TableCell className="w-8">
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              {group.borrowerName}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {group.partnerType && (
+                              <Badge variant="outline">
+                                {PARTNER_TYPE_LABELS[group.partnerType as PartnerType] || group.partnerType}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{group.loanCount} loan{group.loanCount > 1 ? 's' : ''}</Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {formatCurrency(group.totalPrincipal, currency as Currency)}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {formatCurrency(group.totalRemaining, currency as Currency)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div
+                                  className="h-2 rounded-full bg-green-500"
+                                  style={{ width: `${Math.min(progress, 100)}%` }}
+                                />
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {progress.toFixed(0)}% ({formatCurrency(paidAmount, currency as Currency)} received)
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {group.hasOverdue ? (
+                              <Badge className="bg-red-100 text-red-800 border-red-200">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                Has Overdue
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-green-100 text-green-800 border-green-200">
+                                Active
+                              </Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Expanded Loan Details */}
+                        {isExpanded && group.loans.map((loan) => {
+                          const loanProgress = calculatePaymentProgress(
+                            Number(loan.principal_amount),
+                            Number(loan.remaining_balance)
+                          )
+                          const loanPaidAmount = Number(loan.principal_amount) - Number(loan.remaining_balance)
+                          const overdueFlag = loan.due_date && isOverdue(loan.due_date)
+                          const dueSoonFlag = loan.due_date && isDueWithinDays(loan.due_date, 7)
+
+                          return (
+                            <TableRow key={loan.loan_disbursement_id} className="bg-muted/30">
+                              <TableCell></TableCell>
+                              <TableCell className="pl-8">
+                                <div className="text-sm text-muted-foreground">
+                                  {formatDate(loan.disbursement_date)}
+                                  {loan.interest_rate && ` • ${loan.interest_rate}% interest`}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {loan.due_date ? (
+                                  <div className="flex items-center gap-1 text-sm">
+                                    Due: {formatDate(loan.due_date)}
+                                    {overdueFlag && <AlertCircle className="h-3 w-3 text-red-500" />}
+                                    {!overdueFlag && dueSoonFlag && <AlertCircle className="h-3 w-3 text-orange-500" />}
+                                  </div>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">No due date</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={LOAN_STATUS_COLORS[loan.status]}>
+                                  {LOAN_STATUS_LABELS[loan.status]}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {formatCurrency(loan.principal_amount, currency as Currency)}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {formatCurrency(loan.remaining_balance, currency as Currency)}
+                              </TableCell>
+                              <TableCell>
+                                <div className="text-xs text-muted-foreground">
+                                  {loanProgress.toFixed(0)}% repaid
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      fetchLoanTransactions(
+                                        loan.loan_disbursement_id,
+                                        `Loan to ${loan.borrower_name || 'Unknown'}`
+                                      )
+                                    }}
+                                    disabled={loadingTransactions}
+                                    title="View transactions"
+                                  >
+                                    <Receipt className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      openEditDialog(loan)
+                                    }}
+                                    title="Edit loan"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      openDeleteDialog(loan)
+                                    }}
+                                    title="Delete loan"
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </React.Fragment>
+                    )
+                  })}
+                </TableBody>
+              </Table>
             </div>
           ) : (
             <div className="border rounded-lg">

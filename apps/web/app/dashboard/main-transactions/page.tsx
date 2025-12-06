@@ -31,6 +31,7 @@ import { DeleteSplitWarningDialog } from "@/components/main-transactions/DeleteS
 import { ReceiptUploadDialog } from "@/components/receipts/ReceiptUploadDialog"
 import { ReceiptPreviewDialog } from "@/components/receipts/ReceiptPreviewDialog"
 import { ReceiptImageDialog } from "@/components/receipts/ReceiptImageDialog"
+import { AICategorizeButton } from "@/components/ai-categorize-button"
 import { useEntity } from "@/contexts/EntityContext"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useToast } from "@/hooks/use-toast"
@@ -1454,6 +1455,33 @@ export default function MainTransactionsPage() {
                     <Upload className="h-4 w-4 mr-2" />
                     Upload Receipt
                   </Button>
+                  <AICategorizeButton
+                    transactions={transactions}
+                    transactionTypes={transactionTypes}
+                    categories={categories}
+                    entityType={currentEntity?.type === 'company' ? 'business' : 'personal'}
+                    currency={(accounts.find(a => a.account_id === parseInt(selectedAccount))?.currency || 'VND') as any}
+                    onApply={async (updates) => {
+                      // Bulk update transactions
+                      for (const update of updates) {
+                        await fetch(`/api/main-transactions/${update.main_transaction_id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            transaction_type_id: update.transaction_type_id,
+                            category_id: update.category_id,
+                          }),
+                        })
+                      }
+                      // Refresh transactions
+                      fetchTransactions()
+                      toast({
+                        title: "Categories Applied",
+                        description: `Updated ${updates.length} transaction(s) with AI suggestions.`,
+                      })
+                    }}
+                    disabled={loading}
+                  />
                 </div>
               )}
             </div>
