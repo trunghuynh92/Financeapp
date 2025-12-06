@@ -15,6 +15,7 @@ export interface TransactionType {
   affects_cashflow: boolean
   display_order: number
   is_active: boolean
+  entity_type: 'business' | 'personal' | 'both'
   created_at: string
 }
 
@@ -226,6 +227,10 @@ export type TransactionTypeCode =
   | 'DEBT_PAY'   // Debt Payment (repaying)
   | 'CC_CHARGE'  // Credit Card Charge (affects_cashflow=false)
   | 'CC_PAY'     // Credit Card Payment (affects_cashflow=true)
-  | 'INV'        // Investment
   | 'LOAN_DISBURSE'  // Loan Disbursement (lending)
   | 'LOAN_COLLECT'   // Loan Collection (receiving repayment)
+  | 'INV_CONTRIB'    // Investment Contribution (putting money into investment)
+  | 'INV_WITHDRAW'   // Investment Withdrawal (taking money out of investment)
+  | 'CAPITAL_IN'     // Capital Contribution (shareholder/owner invests in business)
+  | 'CAPITAL_OUT'    // Owner's Drawings (owner withdraws from business)
+  | 'DIVIDEND'       // Dividend Distribution (profit distribution to shareholders)

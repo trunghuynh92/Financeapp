@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -150,6 +150,15 @@ export default function MainTransactionsPage() {
   const [savePresetDialogOpen, setSavePresetDialogOpen] = useState(false)
   const [newPresetName, setNewPresetName] = useState("")
   const [selectedPreset, setSelectedPreset] = useState<string>("")
+
+  // Filter transaction types by entity type (personal entities don't see business-only types)
+  const filteredTransactionTypes = useMemo(() => {
+    if (!currentEntity) return transactionTypes
+    const entityType = currentEntity.type === 'company' ? 'business' : 'personal'
+    return transactionTypes.filter(type =>
+      type.entity_type === 'both' || type.entity_type === entityType
+    )
+  }, [transactionTypes, currentEntity])
 
   // Fetch transaction types, categories, branches, accounts on mount
   useEffect(() => {
@@ -484,7 +493,7 @@ export default function MainTransactionsPage() {
 
           // Update display fields for type
           if (field === 'transaction_type_id') {
-            const type = transactionTypes.find(t => t.transaction_type_id === updates.transaction_type_id)
+            const type = filteredTransactionTypes.find(t => t.transaction_type_id === updates.transaction_type_id)
             if (type) {
               updated.transaction_type = type.type_display_name
               updated.transaction_type_code = type.type_code
@@ -1015,7 +1024,7 @@ export default function MainTransactionsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
-                  {transactionTypes.map((type) => (
+                  {filteredTransactionTypes.map((type) => (
                     <SelectItem key={type.transaction_type_id} value={type.transaction_type_id.toString()}>
                       {type.type_display_name}
                     </SelectItem>
@@ -2172,7 +2181,7 @@ export default function MainTransactionsPage() {
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         onSuccess={handleEditSuccess}
-        transactionTypes={transactionTypes}
+        transactionTypes={filteredTransactionTypes}
         categories={categories}
         branches={branches}
         projects={projects}
@@ -2184,7 +2193,7 @@ export default function MainTransactionsPage() {
         open={splitDialogOpen}
         onOpenChange={setSplitDialogOpen}
         onSuccess={handleSplitSuccess}
-        transactionTypes={transactionTypes}
+        transactionTypes={filteredTransactionTypes}
         categories={categories}
         branches={branches}
         projects={projects}
@@ -2197,7 +2206,7 @@ export default function MainTransactionsPage() {
         selectedIds={selectedIds}
         selectedTransactions={transactions.filter(tx => selectedIds.has(tx.main_transaction_id))}
         onSuccess={handleBulkEditSuccess}
-        transactionTypes={transactionTypes}
+        transactionTypes={filteredTransactionTypes}
         categories={categories}
         branches={branches}
         projects={projects}
@@ -2303,7 +2312,7 @@ export default function MainTransactionsPage() {
         open={addTransactionDialogOpen}
         onOpenChange={setAddTransactionDialogOpen}
         accounts={accounts.filter(acc => acc.account_type === 'bank' || acc.account_type === 'cash')}
-        transactionTypes={transactionTypes}
+        transactionTypes={filteredTransactionTypes}
         categories={categories}
         branches={branches}
         projects={projects}
@@ -2471,7 +2480,7 @@ export default function MainTransactionsPage() {
                   <SelectValue placeholder="Select transaction type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {transactionTypes.map((type) => (
+                  {filteredTransactionTypes.map((type) => (
                     <SelectItem key={type.transaction_type_id} value={type.transaction_type_id.toString()}>
                       {type.type_display_name}
                     </SelectItem>

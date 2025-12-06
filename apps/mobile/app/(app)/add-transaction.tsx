@@ -263,7 +263,9 @@ export default function AddTransactionScreen() {
                       selectedType?.type_code === 'TRF_OUT' ||
                       selectedType?.type_code === 'DEBT_PAY' ||
                       selectedType?.type_code === 'LOAN_DISBURSE' ||
-                      selectedType?.type_code === 'INV';
+                      selectedType?.type_code === 'INV_CONTRIB' ||
+                      selectedType?.type_code === 'CAPITAL_OUT' ||
+                      selectedType?.type_code === 'DIVIDEND';
 
       const rawTransactionId = `mobile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 

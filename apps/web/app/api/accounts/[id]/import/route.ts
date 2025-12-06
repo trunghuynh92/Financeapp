@@ -107,11 +107,35 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid column mappings format' }, { status: 400 })
     }
 
-    // Parse file based on type (CSV or XLSX)
+    // Check if client sent pre-parsed data (preferred - avoids re-parsing and mismatch issues)
+    const parsedDataStr = formData.get('parsedData') as string | null
+
+    // Parse file or use pre-parsed data
     const fileExt = file.name.split('.').pop()?.toLowerCase()
     let parsedCSV
 
-    if (fileExt === 'xlsx' || fileExt === 'xls') {
+    // PREFERRED: Use pre-parsed data from client (avoids mismatch between client/server parsing)
+    if (parsedDataStr) {
+      try {
+        const clientParsedData = JSON.parse(parsedDataStr)
+        console.log('✅ Using pre-parsed data from client (no re-parsing needed)')
+        console.log(`   Headers: ${clientParsedData.headers?.length || 0} columns`)
+        console.log(`   Rows: ${clientParsedData.rows?.length || 0} rows`)
+
+        parsedCSV = {
+          headers: clientParsedData.headers,
+          rows: clientParsedData.rows,
+          totalRows: clientParsedData.totalRows || clientParsedData.rows?.length || 0,
+          detectedHeaderRow: 0,
+        }
+      } catch (err) {
+        console.error('Failed to parse pre-parsed data, falling back to file parsing:', err)
+        // Fall through to file parsing below
+      }
+    }
+
+    // FALLBACK: Parse file if no pre-parsed data (for backwards compatibility or if client parsing failed)
+    if (!parsedCSV && (fileExt === 'xlsx' || fileExt === 'xls')) {
       // Parse Excel file on server (use ArrayBuffer, not FileReader)
       const XLSX = await import('xlsx')
       const buffer = await file.arrayBuffer()
@@ -135,12 +159,24 @@ export async function POST(
       const mergeAnalysis = analyzeMergedCells(worksheet)
       console.log('📊 Excel file merge analysis:', mergeAnalysis)
 
+      // First, convert to array WITHOUT processing to find the actual header row
+      const rawData = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        raw: true,
+        defval: null,
+      }) as (string | number | null)[][]
+
+      // Detect header row BEFORE processing merged cells
+      const detectedHeaderRow = findExcelHeaderRow(rawData)
+      console.log(`📋 Detected header row at index: ${detectedHeaderRow}`)
+
       // Process worksheet with merged cells handler
       // This will: 1) Unmerge cells, 2) Smart forward-fill (text only), 3) Remove empty rows
       const processedData = processWorksheetWithMergedCells(workbook, worksheet, {
         autoForwardFill: true,      // ENABLE smart forward-fill - only fills text columns, never amounts
         removeEmptyRows: true,      // Remove completely empty rows
-        headerRow: 0,               // Assume header is in first row
+        headerRow: detectedHeaderRow, // Use detected header row instead of assuming row 0
+        skipMergeBeforeHeader: true,  // Don't unmerge metadata rows before header
       })
 
       console.log(`📋 Processed Excel data: ${processedData.length} rows`)
@@ -169,7 +205,19 @@ export async function POST(
         return String(cell).replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim()
       })
 
-      console.log('🔍 Excel headers (from row 0):', headers)
+      console.log('🔍 Excel headers (from processed row 0):', headers)
+      console.log('🔍 Column mappings from client:', columnMappings.map((m: ColumnMapping) => `"${m.csvColumn}" -> ${m.mappedTo}`))
+
+      // Check if headers match column mappings
+      const clientColumnNames = columnMappings.map((m: ColumnMapping) => m.csvColumn)
+      const missingColumns = clientColumnNames.filter((col: string) => !headers.includes(col))
+      if (missingColumns.length > 0) {
+        console.error('❌ MISMATCH: Client column names not found in server headers:', missingColumns)
+        console.error('   Client expects:', clientColumnNames)
+        console.error('   Server has:', headers)
+      } else {
+        console.log('✅ All client column names found in server headers')
+      }
 
       // Build data rows (skip header row)
       const rows: import('@/types/import').ParsedCSVRow[] = []
@@ -215,8 +263,8 @@ export async function POST(
       if (rows.length > 0) {
         console.log('  First data row:', rows[0])
       }
-    } else {
-      // Parse CSV file (default)
+    } else if (!parsedCSV) {
+      // Parse CSV file (default) - only if we don't have pre-parsed data
       const csvText = await file.text()
       parsedCSV = parseCSVText(csvText)
     }
@@ -1007,4 +1055,156 @@ function processRow(
   transactionData.transaction_sequence = rowIndex + 1 // +1 to start sequence from 1
 
   return transactionData
+}
+
+/**
+ * Find the row index that contains actual column headers in Excel data
+ * This mirrors the logic in xlsx-parser.ts for consistency
+ */
+function findExcelHeaderRow(rows: (string | number | null)[][]): number {
+  // Header keywords - these should match ENTIRE CELLS or be the primary content
+  const headerKeywords = [
+    'date', 'ngày', 'ngay', 'transaction date', 'giao dich', 'ngày giờ',
+    'description', 'chi tiết', 'mô tả', 'particulars', 'details', 'dien giai', 'diễn giải',
+    'debit', 'credit', 'chi', 'thu', 'amount', 'số tiền', 'ghi nợ', 'ghi có',
+    'balance', 'số dư', 'sodu', 'running balance',
+    'reference', 'but toan', 'số but toan', 'giao dịch', 'séc',
+    'account', 'tai khoan', 'tài khoản',
+    'bank', 'ngan hang', 'ngân hàng',
+    'nhận', 'nhan', 'loại', 'pttt', 'phiếu', 'người', 'điện thoại',
+    'mã', 'chi nhánh', 'lý do', 'phát sinh', 'nội dung'
+  ]
+
+  // Strong indicators that this is a header row (Vietnamese "STT" = row number)
+  const strongHeaderIndicators = ['stt', 'no.', '#', 'row', 'mã thanh toán']
+
+  // Patterns that indicate a DATA row (not header)
+  const dateTimePattern = /\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/
+  const idPattern = /^#?\d{5,}$/  // IDs like #0179749
+
+  let bestMatchIndex = 0
+  let bestMatchScore = -100
+
+  for (let i = 0; i < Math.min(30, rows.length); i++) {
+    const row = rows[i]
+
+    // Skip rows with too few non-empty columns
+    const nonEmptyCells = row.filter(cell =>
+      cell !== null && cell !== undefined && String(cell).trim().length > 0
+    )
+    if (nonEmptyCells.length < 3) continue
+
+    // Initialize score
+    let score = 0
+
+    // Count header keyword matches AT THE CELL LEVEL (not substring in data)
+    let keywordMatches = 0
+    let hasStrongIndicator = false
+    let hasVeryLongCell = false
+    let hasDateTimeValue = false
+    let hasIdValue = false
+
+    for (const cell of nonEmptyCells) {
+      // Normalize cell: remove newlines, convert to lowercase
+      const cellStr = String(cell).replace(/[\r\n]+/g, ' ').toLowerCase().trim()
+
+      // Check if the cell IS a header keyword (exact or close match)
+      // A header cell is typically short (under 30 chars) and matches a keyword
+      if (cellStr.length <= 30) {
+        // Check for strong header indicators (like "STT No.", "Mã thanh toán")
+        for (const indicator of strongHeaderIndicators) {
+          if (cellStr === indicator || cellStr.includes(indicator)) {
+            hasStrongIndicator = true
+            break
+          }
+        }
+
+        // Check for header keywords
+        for (const keyword of headerKeywords) {
+          // Check if keyword matches the cell content closely
+          // Either exact match, or cell contains keyword as primary content
+          if (
+            cellStr === keyword ||
+            cellStr.includes(keyword) && cellStr.length <= keyword.length + 10
+          ) {
+            keywordMatches++
+            break // Only count once per cell
+          }
+        }
+      }
+
+      // Check for very long cells (likely data, not header)
+      if (cellStr.length > 40) {
+        hasVeryLongCell = true
+      }
+
+      // Check for date/time values (strong indicator this is a data row)
+      if (dateTimePattern.test(String(cell))) {
+        hasDateTimeValue = true
+      }
+
+      // Check for ID values (strong indicator this is a data row)
+      if (idPattern.test(String(cell).trim())) {
+        hasIdValue = true
+      }
+    }
+
+    // Score based on keyword matches (3 points each)
+    score += keywordMatches * 3
+
+    // HUGE bonus for strong header indicators (like "STT", "Mã thanh toán")
+    if (hasStrongIndicator) {
+      score += 15
+    }
+
+    // Require minimum keyword matches to be considered a header
+    if (keywordMatches < 2) {
+      score -= 20
+    }
+
+    // HEAVY penalty: Row contains date/time values (this is DATA, not header!)
+    if (hasDateTimeValue) {
+      score -= 30
+    }
+
+    // HEAVY penalty: Row contains ID values (this is DATA, not header!)
+    if (hasIdValue) {
+      score -= 25
+    }
+
+    // Bonus: More columns = more likely to be header
+    if (nonEmptyCells.length >= 5) {
+      score += 3
+    }
+    if (nonEmptyCells.length >= 8) {
+      score += 3
+    }
+
+    // Bonus for row 0 if it has reasonable structure (often headers are first row)
+    if (i === 0 && keywordMatches >= 2) {
+      score += 5
+    }
+
+    // Penalty: Row contains mostly numbers (likely a data row)
+    const numericCells = nonEmptyCells.filter(cell => {
+      if (typeof cell === 'number') return true
+      const str = String(cell).replace(/[,.\s-]/g, '')
+      return !isNaN(parseFloat(str)) && str.length > 0
+    })
+    if (numericCells.length / nonEmptyCells.length > 0.5) {
+      score -= 10
+    }
+
+    // Penalty: Row has very long cell content (likely data description)
+    if (hasVeryLongCell) {
+      score -= 15
+    }
+
+    if (score > bestMatchScore) {
+      bestMatchScore = score
+      bestMatchIndex = i
+    }
+  }
+
+  return bestMatchIndex
 }

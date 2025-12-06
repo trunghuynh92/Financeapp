@@ -636,6 +636,14 @@ export function BankImportDialog({
       formData.append('dateFormat', dateFormat)
       formData.append('hasNegativeDebits', hasNegativeDebits.toString())
 
+      // Send pre-parsed data to avoid re-parsing on server (eliminates mismatch issues)
+      // Filter rows by date range before sending
+      formData.append('parsedData', JSON.stringify({
+        headers: parsedData.headers,
+        rows: filteredRows,  // Only send rows within the date range
+        totalRows: filteredRows.length,
+      }))
+
       // Include branch mappings if any have been configured
       if (Object.keys(branchMappings).length > 0) {
         formData.append('branchMappings', JSON.stringify(branchMappings))

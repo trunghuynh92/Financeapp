@@ -37,14 +37,14 @@ export const TRANSACTION_TYPE_RULES: TransactionTypeRule[] = [
   {
     account_types: ['bank', 'cash'],
     transaction_direction: 'debit',
-    allowed_type_codes: ['EXP', 'TRF_OUT', 'DEBT_PAY', 'CC_PAY', 'INV', 'LOAN_DISBURSE', 'INV_CONTRIB'],
-    description: 'Bank/Cash - Money out: expenses, transfers out, paying debts, paying credit cards, investments, lending to borrowers, investment contributions'
+    allowed_type_codes: ['EXP', 'TRF_OUT', 'DEBT_PAY', 'CC_PAY', 'LOAN_DISBURSE', 'INV_CONTRIB', 'CAPITAL_OUT', 'DIVIDEND'],
+    description: 'Bank/Cash - Money out: expenses, transfers out, paying debts, paying credit cards, lending to borrowers, investment contributions, owner drawings, dividends'
   },
   {
     account_types: ['bank', 'cash'],
     transaction_direction: 'credit',
-    allowed_type_codes: ['INC', 'TRF_IN', 'DEBT_TAKE', 'LOAN_COLLECT', 'INV_WITHDRAW'],
-    description: 'Bank/Cash - Money in: income, transfers in, borrowing money, collecting loan repayments, investment withdrawals'
+    allowed_type_codes: ['INC', 'TRF_IN', 'DEBT_TAKE', 'LOAN_COLLECT', 'INV_WITHDRAW', 'CAPITAL_IN'],
+    description: 'Bank/Cash - Money in: income, transfers in, borrowing money, collecting loan repayments, investment withdrawals, capital contributions'
   },
 
   // ============================================================================
@@ -122,8 +122,8 @@ export const TRANSACTION_TYPE_RULES: TransactionTypeRule[] = [
   {
     account_types: ['investment'],
     transaction_direction: 'debit',
-    allowed_type_codes: ['INV', 'EXP', 'INV_WITHDRAW'],
-    description: 'Investment - Outflow: buying investments, investment fees, withdrawing from investment'
+    allowed_type_codes: ['EXP', 'INV_WITHDRAW'],
+    description: 'Investment - Outflow: investment fees/losses, withdrawing from investment'
   },
   {
     account_types: ['investment'],

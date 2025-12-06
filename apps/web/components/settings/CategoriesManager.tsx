@@ -314,7 +314,11 @@ export function CategoriesManager() {
       <div className="space-y-4">
         {renderCategorySection("Income Categories", "INC", entityType, `${entityType}-income`)}
         {renderCategorySection("Expense Categories", "EXP", entityType, `${entityType}-expense`)}
-        {renderCategorySection("Investment Categories", "INV", entityType, `${entityType}-investment`)}
+        {renderCategorySection("Investment Contribution Categories", "INV_CONTRIB", entityType, `${entityType}-investment`)}
+        {renderCategorySection("Investment Withdrawal Categories", "INV_WITHDRAW", entityType, `${entityType}-inv-withdraw`)}
+        {renderCategorySection("Capital Contribution Categories", "CAPITAL_IN", entityType, `${entityType}-capital-in`)}
+        {renderCategorySection("Owner's Drawings Categories", "CAPITAL_OUT", entityType, `${entityType}-capital-out`)}
+        {renderCategorySection("Dividend Categories", "DIVIDEND", entityType, `${entityType}-dividend`)}
         {renderCategorySection("Loan Disbursement Categories", "LOAN_DISBURSE", entityType, `${entityType}-loan-disburse`)}
         {renderCategorySection("Loan Collection Categories", "LOAN_COLLECT", entityType, `${entityType}-loan-collect`)}
         {renderCategorySection("Debt Take Categories", "DEBT_TAKE", entityType, `${entityType}-debt-take`)}

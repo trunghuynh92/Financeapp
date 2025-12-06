@@ -419,7 +419,7 @@ export default function CashFlowPage() {
                   <h3 className="font-semibold text-blue-900">Liquidity Buffer Available</h3>
                   <p className="text-sm text-blue-700 mt-1">
                     Cash will run low in <strong>{data.runway.cash_runway_months.toFixed(1)} months</strong>,
-                    but you have <strong>{formatCurrency(data.liquidity.total_investments + data.liquidity.receivables_balance, 'VND')}</strong> in
+                    but you have <strong>{formatCurrency(data.liquidity.total_investments + data.liquidity.receivables_balance, 'VND', true)}</strong> in
                     investments and receivables that extend your runway to <strong>{data.runway.liquidity_runway_months.toFixed(1)} months</strong>.
                   </p>
                 </div>
@@ -438,7 +438,7 @@ export default function CashFlowPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {formatCurrency(data.current_balance, 'VND')}
+                  {formatCurrency(data.current_balance, 'VND', true)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Available now</p>
               </CardContent>
@@ -455,7 +455,7 @@ export default function CashFlowPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-blue-600">
-                    {formatCurrency(data.liquidity.total_liquid_assets, 'VND')}
+                    {formatCurrency(data.liquidity.total_liquid_assets, 'VND', true)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     Cash + Investments + Receivables
@@ -464,13 +464,13 @@ export default function CashFlowPage() {
                     {data.liquidity.investment_balance > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Investments:</span>
-                        <span className="font-medium">{formatCurrency(data.liquidity.investment_balance, 'VND')}</span>
+                        <span className="font-medium">{formatCurrency(data.liquidity.investment_balance, 'VND', true)}</span>
                       </div>
                     )}
                     {data.liquidity.receivables_balance > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Receivables:</span>
-                        <span className="font-medium">{formatCurrency(data.liquidity.receivables_balance, 'VND')}</span>
+                        <span className="font-medium">{formatCurrency(data.liquidity.receivables_balance, 'VND', true)}</span>
                       </div>
                     )}
                   </div>
@@ -489,7 +489,7 @@ export default function CashFlowPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency(filteredSummary.total_projected_income, 'VND')}
+                    {formatCurrency(filteredSummary.total_projected_income, 'VND', true)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Next {monthsAhead} months</p>
                 </CardContent>
@@ -505,7 +505,7 @@ export default function CashFlowPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-600">
-                  {formatCurrency(filteredSummary.total_obligations, 'VND')}
+                  {formatCurrency(filteredSummary.total_obligations, 'VND', true)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Next {monthsAhead} months</p>
               </CardContent>
@@ -522,7 +522,7 @@ export default function CashFlowPage() {
                 </CardHeader>
                 <CardContent>
                   <div className={`text-2xl font-bold ${filteredSummary.net_projected_change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {filteredSummary.net_projected_change >= 0 ? '+' : ''}{formatCurrency(filteredSummary.net_projected_change, 'VND')}
+                    {filteredSummary.net_projected_change >= 0 ? '+' : ''}{formatCurrency(filteredSummary.net_projected_change, 'VND', true)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Income - Expenses</p>
                 </CardContent>
@@ -697,11 +697,12 @@ export default function CashFlowPage() {
                               <div className="text-lg font-bold text-yellow-600">
                                 {formatCurrency(
                                   data.credit_lines!.scenario_adjusted_available ?? data.credit_lines!.total_available,
-                                  'VND'
+                                  'VND',
+                                  true
                                 )}
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                of {formatCurrency(data.credit_lines!.total_limit, 'VND')} limit
+                                of {formatCurrency(data.credit_lines!.total_limit, 'VND', true)} limit
                               </div>
                             </div>
                           </div>
@@ -774,7 +775,7 @@ export default function CashFlowPage() {
                                   <span className="text-xs font-medium truncate">{account.account_name}</span>
                                 </div>
                                 <div className="flex justify-between text-xs">
-                                  <span className="text-green-600">{formatCurrency(account.available_credit, 'VND')}</span>
+                                  <span className="text-green-600">{formatCurrency(account.available_credit, 'VND', true)}</span>
                                   <span className="text-muted-foreground">{account.utilization_percent.toFixed(0)}%</span>
                                 </div>
                                 <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mt-1">

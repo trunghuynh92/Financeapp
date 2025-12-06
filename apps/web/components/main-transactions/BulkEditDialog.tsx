@@ -58,10 +58,10 @@ export function BulkEditDialog({
   const isMixed = !allCredit && !allDebit
 
   // Credit transaction type codes (money IN)
-  const creditTypeCodes = ['INC', 'TRF_IN', 'DEBT_TAKE', 'LOAN_COLLECT', 'INV_WITHDRAW', 'CC_PAY']
+  const creditTypeCodes = ['INC', 'TRF_IN', 'DEBT_TAKE', 'LOAN_COLLECT', 'INV_WITHDRAW', 'CC_PAY', 'CAPITAL_IN']
 
   // Debit transaction type codes (money OUT)
-  const debitTypeCodes = ['EXP', 'TRF_OUT', 'DEBT_PAY', 'INV', 'LOAN_DISBURSE', 'CC_CHARGE', 'INV_CONTRIB']
+  const debitTypeCodes = ['EXP', 'TRF_OUT', 'DEBT_PAY', 'LOAN_DISBURSE', 'CC_CHARGE', 'INV_CONTRIB', 'CAPITAL_OUT', 'DIVIDEND']
 
   // Filter transaction types based on selection
   const filteredTransactionTypes = isMixed

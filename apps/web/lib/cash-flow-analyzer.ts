@@ -4,11 +4,17 @@
  * This module analyzes historical transaction data to predict future income and expenses.
  * It implements a hierarchical priority system to prevent double-counting.
  *
+ * OPTIMIZATION: Uses SQL views for aggregation when available (migration 094)
+ * Falls back to JS-based aggregation if views don't exist.
+ *
  * @see docs/CASHFLOW_SYSTEM_2.0.md for full documentation
  */
 
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { startOfMonth, endOfMonth, subMonths, format, parseISO } from 'date-fns'
+
+// Flag to track if SQL views are available (set on first query)
+let sqlViewsAvailable: boolean | null = null
 
 export interface HistoricalIncome {
   category_id: number
@@ -53,6 +59,143 @@ export interface BudgetWarning {
   budget: number
   variance: number
 }
+
+// ============================================================================
+// SQL VIEW-BASED OPTIMIZED FUNCTIONS
+// These use pre-aggregated SQL views for better performance
+// ============================================================================
+
+/**
+ * Check if SQL optimization views are available
+ */
+async function checkSqlViewsAvailable(): Promise<boolean> {
+  if (sqlViewsAvailable !== null) return sqlViewsAvailable
+
+  const supabase = createSupabaseServerClient()
+  try {
+    const { error } = await supabase
+      .from('income_prediction_stats')
+      .select('entity_id')
+      .limit(1)
+
+    sqlViewsAvailable = !error
+    console.log(`[Cash Flow Optimizer] SQL views available: ${sqlViewsAvailable}`)
+  } catch {
+    sqlViewsAvailable = false
+  }
+  return sqlViewsAvailable
+}
+
+/**
+ * OPTIMIZED: Analyze income using SQL view
+ * Uses income_prediction_stats view for pre-aggregated data
+ */
+async function analyzeHistoricalIncomeOptimized(
+  entityId: string
+): Promise<HistoricalIncome[]> {
+  const supabase = createSupabaseServerClient()
+
+  const { data, error } = await supabase
+    .from('income_prediction_stats')
+    .select('*')
+    .eq('entity_id', entityId)
+
+  if (error) {
+    console.error('[Income Optimizer] SQL view query failed:', error)
+    return []
+  }
+
+  console.log(`[Income Optimizer] SQL view returned ${data?.length || 0} categories`)
+
+  return (data || []).map((row: any) => ({
+    category_id: row.category_id,
+    category_name: row.category_name,
+    monthly_average: parseFloat(row.monthly_average) || 0,
+    months_of_data: row.months_of_data,
+    is_recurring: row.is_recurring,
+    confidence: row.confidence as 'high' | 'medium' | 'low',
+    source: row.is_recurring ? 'recurring' : (row.months_of_data >= 3 ? 'average' : 'estimate')
+  }))
+}
+
+/**
+ * OPTIMIZED: Analyze expenses using SQL view
+ * Uses expense_prediction_stats view for pre-aggregated data
+ */
+async function analyzeHistoricalExpensesOptimized(
+  entityId: string
+): Promise<HistoricalExpense[]> {
+  const supabase = createSupabaseServerClient()
+
+  const { data, error } = await supabase
+    .from('expense_prediction_stats')
+    .select('*')
+    .eq('entity_id', entityId)
+
+  if (error) {
+    console.error('[Expense Optimizer] SQL view query failed:', error)
+    return []
+  }
+
+  console.log(`[Expense Optimizer] SQL view returned ${data?.length || 0} categories`)
+
+  return (data || []).map((row: any) => ({
+    category_id: row.category_id,
+    category_name: row.category_name,
+    monthly_average: parseFloat(row.monthly_average) || 0,
+    months_of_data: row.months_of_data,
+    confidence: row.confidence as 'high' | 'medium' | 'low',
+    variance_percentage: parseFloat(row.variance_percentage) || 0,
+    has_scheduled_payment: false
+  }))
+}
+
+/**
+ * OPTIMIZED: Get scheduled payment amounts by category using SQL view
+ */
+async function getScheduledAmountsByCategoryOptimized(
+  entityId: string,
+  monthKey: string
+): Promise<Map<number, number>> {
+  const supabase = createSupabaseServerClient()
+
+  const monthStart = startOfMonth(parseISO(monthKey + '-01'))
+
+  const { data, error } = await supabase
+    .from('scheduled_payments_monthly')
+    .select('category_id, total_amount')
+    .eq('entity_id', entityId)
+    .eq('month', format(monthStart, 'yyyy-MM-dd'))
+
+  if (error) {
+    console.error('[Scheduled Optimizer] SQL view query failed:', error)
+    return new Map()
+  }
+
+  const categoryAmounts = new Map<number, number>()
+  data?.forEach((row: any) => {
+    if (row.category_id) {
+      categoryAmounts.set(row.category_id, parseFloat(row.total_amount) || 0)
+    }
+  })
+
+  return categoryAmounts
+}
+
+/**
+ * OPTIMIZED: Get categories with scheduled payments using SQL view
+ */
+async function getCategoriesWithScheduledPaymentsOptimized(
+  entityId: string,
+  monthKey: string
+): Promise<Set<number>> {
+  const amounts = await getScheduledAmountsByCategoryOptimized(entityId, monthKey)
+  return new Set(amounts.keys())
+}
+
+// ============================================================================
+// ORIGINAL FUNCTIONS (fallback when SQL views not available)
+// ============================================================================
 
 /**
  * Analyze historical income patterns from past transactions
@@ -216,6 +359,7 @@ export async function analyzeHistoricalIncome(
 /**
  * Get categories that already have scheduled payments
  * These should be excluded from historical expense predictions to prevent double-counting
+ * Uses SQL views for optimization when available
  *
  * @param entityId - The entity to check
  * @param monthKey - The month to check for (format: 'yyyy-MM')
@@ -225,6 +369,14 @@ export async function getCategoriesWithScheduledPayments(
   entityId: string,
   monthKey: string
 ): Promise<Set<number>> {
+  // Try optimized SQL view first
+  const useOptimized = await checkSqlViewsAvailable()
+
+  if (useOptimized) {
+    return getCategoriesWithScheduledPaymentsOptimized(entityId, monthKey)
+  }
+
+  // Fallback to original query
   const supabase = createSupabaseServerClient()
 
   const monthStart = startOfMonth(parseISO(monthKey + '-01'))
@@ -262,11 +414,20 @@ export async function getCategoriesWithScheduledPayments(
 /**
  * Get scheduled payment amounts by category for a given month
  * Returns a map of category_id -> total scheduled amount
+ * Uses SQL views for optimization when available
  */
 export async function getScheduledAmountsByCategory(
   entityId: string,
   monthKey: string
 ): Promise<Map<number, number>> {
+  // Try optimized SQL view first
+  const useOptimized = await checkSqlViewsAvailable()
+
+  if (useOptimized) {
+    return getScheduledAmountsByCategoryOptimized(entityId, monthKey)
+  }
+
+  // Fallback to original query
   const supabase = createSupabaseServerClient()
 
   const monthStart = startOfMonth(parseISO(monthKey + '-01'))
@@ -457,6 +618,7 @@ export async function analyzeHistoricalExpenses(
 
 /**
  * Calculate total predicted income for a month
+ * Uses SQL views for optimization when available
  *
  * @param entityId - The entity to analyze
  * @returns Total predicted monthly income and breakdown
@@ -464,7 +626,17 @@ export async function analyzeHistoricalExpenses(
 export async function calculatePredictedIncome(
   entityId: string
 ): Promise<{ total: number; breakdown: IncomeBreakdown[] }> {
-  const incomeData = await analyzeHistoricalIncome(entityId, 6)
+  // Try optimized SQL view first
+  const useOptimized = await checkSqlViewsAvailable()
+
+  let incomeData: HistoricalIncome[]
+  if (useOptimized) {
+    console.log('[Cash Flow] Using SQL-optimized income analysis')
+    incomeData = await analyzeHistoricalIncomeOptimized(entityId)
+  } else {
+    console.log('[Cash Flow] Using JS-based income analysis (SQL views not available)')
+    incomeData = await analyzeHistoricalIncome(entityId, 6)
+  }
 
   const breakdown: IncomeBreakdown[] = incomeData.map(income => ({
     category_name: income.category_name,
@@ -480,6 +652,7 @@ export async function calculatePredictedIncome(
 
 /**
  * Calculate predicted expenses for a month, excluding scheduled payments
+ * Uses SQL views for optimization when available
  *
  * @param entityId - The entity to analyze
  * @param monthKey - The month to predict for
@@ -489,8 +662,21 @@ export async function calculatePredictedExpenses(
   entityId: string,
   monthKey: string
 ): Promise<PredictedExpense[]> {
-  const expenseData = await analyzeHistoricalExpenses(entityId, monthKey, 6)
-  const scheduledAmounts = await getScheduledAmountsByCategory(entityId, monthKey)
+  // Try optimized SQL view first
+  const useOptimized = await checkSqlViewsAvailable()
+
+  let expenseData: HistoricalExpense[]
+  let scheduledAmounts: Map<number, number>
+
+  if (useOptimized) {
+    console.log('[Cash Flow] Using SQL-optimized expense analysis')
+    expenseData = await analyzeHistoricalExpensesOptimized(entityId)
+    scheduledAmounts = await getScheduledAmountsByCategoryOptimized(entityId, monthKey)
+  } else {
+    console.log('[Cash Flow] Using JS-based expense analysis (SQL views not available)')
+    expenseData = await analyzeHistoricalExpenses(entityId, monthKey, 6)
+    scheduledAmounts = await getScheduledAmountsByCategory(entityId, monthKey)
+  }
 
   const predictions: PredictedExpense[] = []
 
